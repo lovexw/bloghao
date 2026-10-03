@@ -1,0 +1,165 @@
+import { escAttr } from './sanitize'
+
+/**
+ * 轻量 Markdown 渲染器（编辑器 Markdown 模式使用）
+ * 支持：# 标题、**粗体**、*斜体*、`行内代码`、``` 代码块、> 引用、
+ * -/1. 列表、![图](src)、[链接](href)、--- 分隔线、表格不支持（v1）
+ */
+
+interface CodeSpan {
+  placeholder: string
+  html: string
+}
+
+function inline(s: string, codes: CodeSpan[]): string {
+  // 1. 提取行内代码，避免内部被二次格式化
+  s = s.replace(/`([^`]+)`/g, (_m, code: string) => {
+    const placeholder = `\u0000${codes.length}\u0000`
+    codes.push({ placeholder, html: `<code>${escAttr(code)}</code>` })
+    return placeholder
+  })
+  // 2. 图片
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (_m, alt: string, src: string, title?: string) => {
+    if (!safeUrlMd(src)) return _m
+    return `<img src="${escAttr(src)}" alt="${escAttr(alt)}"${title ? ` title="${escAttr(title)}"` : ''}>`
+  })
+  // 3. 链接
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text: string, href: string) => {
+    if (!safeUrlMd(href)) return m
+    return `<a href="${escAttr(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${text}</a>`
+  })
+  // 4. 粗体 / 斜体 / 删除线
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  s = s.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+  s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>')
+  // 5. 还原行内代码
+  for (const c of codes) s = s.split(c.placeholder).join(c.html)
+  return s
+}
+
+function safeUrlMd(v: string): boolean {
+  const t = v.trim().toLowerCase()
+  if (/^(javascript|vbscript|data|file|blob):/.test(t)) return false
+  if (/^[a-z][a-z0-9+.-]*:/.test(t)) return /^https?:/.test(t)
+  return true
+}
+
+function escLine(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+export function mdToHtml(md: string): string {
+  const lines = md.replace(/\r\n?/g, '\n').split('\n')
+  const out: string[] = []
+  let para: string[] = []
+  let listType: 'ul' | 'ol' | null = null
+  let quote: string[] = []
+  let codeLang = ''
+  let codeBuf: string[] = []
+
+  const flushPara = () => {
+    if (para.length) {
+      const codes: CodeSpan[] = []
+      out.push(`<p>${inline(escLine(para.join('<br>')), codes)}</p>`)
+      para = []
+    }
+  }
+  const flushList = () => {
+    if (listType) {
+      out.push(`</${listType}>`)
+      listType = null
+    }
+  }
+  const flushQuote = () => {
+    if (quote.length) {
+      const codes: CodeSpan[] = []
+      out.push(`<blockquote>${inline(escLine(quote.join('<br>')), codes)}</blockquote>`)
+      quote = []
+    }
+  }
+  const flushAll = () => {
+    flushPara()
+    flushList()
+    flushQuote()
+  }
+
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '')
+
+    if (codeLang) {
+      if (/^```\s*$/.test(line)) {
+        out.push(`<pre><code${codeLang !== 'code' ? ` class="language-${escAttr(codeLang)}"` : ''}>${escLine(codeBuf.join('\n'))}</code></pre>`)
+        codeLang = ''
+        codeBuf = []
+      } else {
+        codeBuf.push(raw)
+      }
+      continue
+    }
+    const fence = /^```(\w*)\s*$/.exec(line)
+    if (fence) {
+      flushAll()
+      codeLang = fence[1] || 'code'
+      continue
+    }
+    if (!line.trim()) {
+      flushAll()
+      continue
+    }
+    const h = /^(#{1,4})\s+(.*)$/.exec(line)
+    if (h) {
+      flushAll()
+      const level = h[1].length
+      const codes: CodeSpan[] = []
+      out.push(`<h${level}>${inline(escLine(h[2]), codes)}</h${level}>`)
+      continue
+    }
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+      flushAll()
+      out.push('<hr>')
+      continue
+    }
+    const q = /^>\s?(.*)$/.exec(line)
+    if (q) {
+      flushPara()
+      flushList()
+      quote.push(q[1])
+      continue
+    }
+    const ul = /^[-*+]\s+(.*)$/.exec(line)
+    if (ul) {
+      flushPara()
+      flushQuote()
+      if (listType !== 'ul') {
+        flushList()
+        out.push('<ul>')
+        listType = 'ul'
+      }
+      const codes: CodeSpan[] = []
+      out.push(`<li>${inline(escLine(ul[1]), codes)}</li>`)
+      continue
+    }
+    const ol = /^\d+[.)]\s+(.*)$/.exec(line)
+    if (ol) {
+      flushPara()
+      flushQuote()
+      if (listType !== 'ol') {
+        flushList()
+        out.push('<ol>')
+        listType = 'ol'
+      }
+      const codes: CodeSpan[] = []
+      out.push(`<li>${inline(escLine(ol[1]), codes)}</li>`)
+      continue
+    }
+    flushList()
+    flushQuote()
+    para.push(escLine(line))
+  }
+  // 结尾处理
+  if (codeLang) {
+    out.push(`<pre><code>${escLine(codeBuf.join('\n'))}</code></pre>`)
+  }
+  flushAll()
+  return out.join('\n')
+}

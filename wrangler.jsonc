@@ -1,0 +1,31 @@
+// 墨博 MoBlog —— Cloudflare Workers 配置
+// 部署前需要把下面 d1_databases 的 database_id 换成你自己的，详见 docs/DEPLOY.md
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "moblog",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+
+  // 静态资源目录（后台 SPA / 插件 / favicon），其余请求进入 Worker
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // 主题 CSS 以文本形式打进 Worker，随页面内联输出（零额外请求）
+  "rules": [{ "type": "Text", "globs": ["**/*.css"] }],
+
+  // D1 数据库：wrangler d1 create moblog-db 后，把返回的 database_id 填到这里
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "moblog-db",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+    }
+  ],
+
+  // R2 存储桶（图床）：wrangler r2 bucket create moblog-images
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "moblog-images" }],
+
+  "observability": { "enabled": true }
+}

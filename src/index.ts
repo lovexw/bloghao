@@ -1,0 +1,74 @@
+import { Hono } from 'hono'
+import { api } from './api'
+import { getSettings, listPosts } from './db'
+import { renderAbout, renderHome, renderNotFound, renderPost } from './pages'
+import { buildRss, buildSitemap } from './rss'
+import type { Env, SessionUser } from './types'
+
+const app = new Hono<{ Bindings: Env; Variables: { user: SessionUser | null } }>()
+
+app.route('/api', api)
+
+/* ---------------- 公开页面（SSR + 主题渲染） ---------------- */
+app.get('/', renderHome)
+app.get('/tag/:tag', renderHome)
+app.get('/post/:slug', renderPost)
+app.get('/about', renderAbout)
+
+app.get('/rss.xml', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  const { items } = await listPosts(c.env.DB, { status: 'published', limit: 50 })
+  const siteUrl = (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')
+  c.header('Content-Type', 'application/rss+xml; charset=utf-8')
+  c.header('Cache-Control', 'public, max-age=600')
+  return c.body(buildRss(settings, items, siteUrl))
+})
+
+app.get('/sitemap.xml', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  const { items } = await listPosts(c.env.DB, { status: 'published', limit: 1000 })
+  const siteUrl = (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')
+  c.header('Content-Type', 'application/xml; charset=utf-8')
+  c.header('Cache-Control', 'public, max-age=600')
+  return c.body(buildSitemap(settings, items, siteUrl))
+})
+
+app.get('/robots.txt', (c) =>
+  c.text(`User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${new URL(c.req.url).origin}/sitemap.xml\n`)
+)
+
+/* ---------------- R2 图床 ---------------- */
+app.get('/images/*', async (c) => {
+  const raw = c.req.path.slice('/images/'.length)
+  let key = raw
+  try {
+    key = decodeURIComponent(raw)
+  } catch {
+    /* 保持原样 */
+  }
+  if (!key.startsWith('u/')) return c.text('Not found', 404)
+  const obj = await c.env.IMAGES.get(key)
+  if (!obj) return c.text('Not found', 404)
+  if (obj.httpEtag && c.req.header('If-None-Match') === obj.httpEtag) {
+    return new Response(null, { status: 304, headers: { ETag: obj.httpEtag } })
+  }
+  const headers = new Headers()
+  obj.writeHttpMetadata(headers)
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/octet-stream')
+  headers.set('ETag', obj.httpEtag)
+  headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  return new Response(obj.body, { headers })
+})
+
+/* ---------------- 后台入口 ---------------- */
+app.get('/admin', (c) => c.redirect('/admin/'))
+
+/* ---------------- 404 / 500 ---------------- */
+app.notFound((c) => renderNotFound(c))
+
+app.onError((err, c) => {
+  console.error('Unhandled error:', err)
+  return c.text('服务开小差了，请稍后再试。', 500)
+})
+
+export default app
