@@ -44,7 +44,7 @@ export function home(d: {
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="mn-footer">
     <span>${esc(s.footerText || '')}</span>
-    <span><a href="/rss.xml">RSS</a></span>
+    <span><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -99,7 +99,7 @@ export function about(d: { settings: SettingsMap; contentHtml: string }): string
     <h1 class="mn-title">关于</h1>
     <div class="rich">${d.contentHtml}</div>
   </article>
-  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a></span></footer>
+  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 

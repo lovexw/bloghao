@@ -53,7 +53,7 @@ export function home(d: {
   </main>
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="pp-footer">
-    ${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/about">关于</a><a href="/rss.xml">RSS</a></span>
+    ${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -109,7 +109,7 @@ export function about(d: { settings: SettingsMap; contentHtml: string }): string
     <h1 class="pp-title">关于</h1>
     <div class="pp-body rich">${d.contentHtml}</div>
   </article>
-  <footer class="pp-footer">${esc(d.settings.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a></span></footer>
+  <footer class="pp-footer">${esc(d.settings.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 

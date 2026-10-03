@@ -80,7 +80,7 @@ export function home(d: {
   </main>
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="wx-footer">
-    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/about">关于</a><a href="/rss.xml">RSS</a></span>
+    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -167,7 +167,7 @@ export function about(d: { settings: SettingsMap; contentHtml: string }): string
     <div class="wx-meta-main"><a class="wx-account" href="/">${esc(d.settings.siteName)}</a></div>
   </div>
   <article class="rich">${d.contentHtml}</article>
-  <footer class="wx-footer">${esc(d.settings.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a></span></footer>
+  <footer class="wx-footer">${esc(d.settings.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 
