@@ -80,6 +80,7 @@ export function siteNav(o: { cls: string; categories: CategoryLink[]; active?: s
     `<a class="${o.cls}-link${active ? ' is-active' : ''}" href="${href}">${esc(label)}</a>`
   const links = [
     item('/', '首页', o.active === 'home'),
+    item('/weibo', '微博', o.active === 'weibo'),
     ...o.categories.map((cat) => item(categoryLink(cat), cat.name, o.active === cat.slug)),
     item('/search', '搜索', o.active === 'search'),
     item('/random', '随机', false),
@@ -118,6 +119,69 @@ export function toHomePost(row: PostRow, tags: string[], commentCount?: number, 
     commentCount,
     readingMinutes,
   }
+}
+
+/* ---------------- 微博（随手记）共享构建器 ----------------
+ * HTML 结构各主题共用（语义化 .wb-* class），视觉由主题 CSS 塑形。
+ */
+export interface WeiboItemView {
+  id: number
+  content: string
+  images: string[]
+  created_at: number
+}
+
+/** 微博时间：今年「10月3日 14:20」，往年带年份 */
+export function weiboTime(ts: number): string {
+  const d = new Date(ts)
+  const p = (x: number) => String(x).padStart(2, '0')
+  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear()
+    ? `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`
+    : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+}
+
+/** 微博图片网格：1 张大图，2/4 张两列，其余三列（微博式） */
+export function weiboImageGrid(images: string[]): string {
+  const n = images.length
+  if (!n) return ''
+  const cls = n === 1 ? 'wb-imgs-1' : n === 2 || n === 4 ? 'wb-imgs-2' : 'wb-imgs-3'
+  const imgs = images.map((u) => `<img src="${esc(u)}" loading="lazy" alt="">`).join('')
+  return `<div class="wb-imgs ${cls}">${imgs}</div>`
+}
+
+export function weiboCards(o: { settings: SettingsMap; items: WeiboItemView[]; avatarHtml: string }): string {
+  const name = o.settings.siteName || '微博'
+  return o.items
+    .map(
+      (w) => `<article class="wb-card" id="wb-${w.id}">
+  <header class="wb-head">
+    <span class="wb-avatar">${o.avatarHtml}</span>
+    <div class="wb-who">
+      <span class="wb-name">${esc(name)}</span>
+      <time class="wb-time" datetime="${new Date(w.created_at).toISOString()}">${weiboTime(w.created_at)}</time>
+    </div>
+  </header>
+  ${w.content ? `<div class="wb-text">${esc(w.content)}</div>` : ''}
+  ${weiboImageGrid(w.images)}
+</article>`
+    )
+    .join('\n')
+}
+
+/** 微博页翻页：上一页 / 下一页（页数少，无需页码跳转） */
+export function weiboPager(page: number, totalPages: number): string {
+  if (totalPages <= 1) return ''
+  const prev =
+    page > 1
+      ? `<a class="wb-pager-btn" href="/weibo?page=${page - 1}">← 新一条</a>`
+      : '<span class="wb-pager-btn is-disabled">← 新一条</span>'
+  const next =
+    page < totalPages
+      ? `<a class="wb-pager-btn" href="/weibo?page=${page + 1}">更早的 →</a>`
+      : '<span class="wb-pager-btn is-disabled">更早的 →</span>'
+  return `<nav class="wb-pager">${prev}<span class="wb-pager-info">${page} / ${totalPages}</span>${next}</nav>`
 }
 
 export interface PagerContext {

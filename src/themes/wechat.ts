@@ -9,16 +9,32 @@ import {
   pagerHtml,
   siteNav,
   tagLink,
+  weiboCards,
+  weiboPager,
   type CategoryLink,
   type HomePostView,
+  type WeiboItemView,
 } from '../render'
 import css from './wechat.css'
 
 const id = 'wechat'
 
-function avatar(name: string): string {
-  const ch = (name || '博').trim().charAt(0) || '博'
+/** 站点头像：设置过 avatarUrl 用图片，否则退回站名首字 */
+function avatar(s: SettingsMap): string {
+  if (s.avatarUrl) {
+    return `<img class="wx-avatar wx-avatar-img" src="${esc(s.avatarUrl)}" alt="${esc(s.siteName)}">`
+  }
+  const ch = (s.siteName || '博').trim().charAt(0) || '博'
   return `<span class="wx-avatar" aria-hidden="true">${esc(ch)}</span>`
+}
+
+/** 刊头搜索框：位于标语与标签导航之间 */
+function searchForm(q: string | undefined): string {
+  return `<form class="wx-search" action="/search" method="get" role="search">
+  <svg class="wx-search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
+  <input class="wx-search-input" type="search" name="q" value="${esc(q || '')}" placeholder="搜一搜站内的文章…" maxlength="60" aria-label="搜索文章">
+  <button class="wx-search-btn" type="submit">搜索</button>
+</form>`
 }
 
 /** 刊头下的文字导航：全部 / 热门标签（分类、搜索走顶部站点导航） */
@@ -40,6 +56,7 @@ export function home(d: {
   totalPages: number
   total: number
   tag?: string
+  q?: string
   hotTags: string[]
   categories: CategoryLink[]
   navActive?: string
@@ -78,9 +95,10 @@ export function home(d: {
   return `<div class="wx-page">
   ${siteNav({ cls: 'wx-snav', categories: d.categories, active: d.navActive })}
   <header class="wx-masthead">
-    ${avatar(s.siteName)}
+    ${avatar(s)}
     <h1 class="wx-masthead-name">${esc(s.siteName)}</h1>
     ${s.siteDescription ? `<p class="wx-masthead-desc">${esc(s.siteDescription)}</p>` : ''}
+    ${searchForm(d.q)}
     ${mastheadNav(d.tag, d.hotTags)}
   </header>
   ${d.notice ? `<div class="wx-notice">${d.notice}</div>` : ''}
@@ -89,7 +107,7 @@ export function home(d: {
   </main>
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="wx-footer">
-    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -139,7 +157,7 @@ export function post(d: {
   ${siteNav({ cls: 'wx-snav', categories: d.categories })}
   <h1 class="wx-title">${esc(p.title)}</h1>
   <div class="wx-meta">
-    <a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(s.siteName)}</a>
+    <a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(s)}</a>
     <div class="wx-meta-main">
       <a class="wx-account" href="/">${esc(s.siteName)}</a>
       <span class="wx-date">${fmtDateCN(p.published_at)} · ${p.readingMinutes} 分钟</span>
@@ -157,7 +175,7 @@ export function post(d: {
   </div>
   ${related}
   ${d.comments.html}
-  <footer class="wx-footer">${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/about">关于</a><a href="/admin">管理</a></span></footer>
+  <footer class="wx-footer">${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 
@@ -165,11 +183,38 @@ export function about(d: { settings: SettingsMap; contentHtml: string; categorie
   return `<div class="wx-article">
   ${siteNav({ cls: 'wx-snav', categories: d.categories })}
   <h1 class="wx-title">关于</h1>
-  <div class="wx-meta"><a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(d.settings.siteName)}</a>
+  <div class="wx-meta"><a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(d.settings)}</a>
     <div class="wx-meta-main"><a class="wx-account" href="/">${esc(d.settings.siteName)}</a></div>
   </div>
   <article class="rich">${d.contentHtml}</article>
-  <footer class="wx-footer">${esc(d.settings.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/admin">管理</a></span></footer>
+  <footer class="wx-footer">${esc(d.settings.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 微博页：随手记时间线 */
+export function weibo(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  items: WeiboItemView[]
+  page: number
+  totalPages: number
+  total: number
+}): string {
+  const s = d.settings
+  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: avatar(s) })
+  return `<div class="wx-page">
+  ${siteNav({ cls: 'wx-snav', categories: d.categories, active: 'weibo' })}
+  <header class="wb-page-head">
+    <h1 class="wb-page-title">微博</h1>
+    <p class="wb-page-sub">${d.total > 0 ? `随手记 · 共 ${d.total} 条` : '随手记，想写就写'}</p>
+  </header>
+  <main class="wb-list">
+    ${cards || '<p class="wb-empty">还没发过微博，去后台随手写一条吧。</p>'}
+  </main>
+  ${weiboPager(d.page, d.totalPages)}
+  <footer class="wx-footer">
+    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
 </div>`
 }
 

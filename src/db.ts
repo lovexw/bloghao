@@ -1,4 +1,4 @@
-import type { CategoryRow, CommentRow, PostRow, SettingsMap } from './types'
+import type { CategoryRow, CommentRow, PostRow, SettingsMap, WeiboRow } from './types'
 import { clampInt } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   postsPerPage: '10',
   about: '<p>在这里写下关于你的故事。</p>',
   faviconUrl: '',
+  avatarUrl: '',
 }
 
 export async function getSettings(db: D1Database): Promise<SettingsMap> {
@@ -228,6 +229,60 @@ export async function categoryNameMap(db: D1Database, postIds: number[]): Promis
   const m = new Map<number, string>()
   for (const r of results ?? []) m.set(r.post_id, r.name)
   return m
+}
+
+/* ---------------- 微博（随手记） ---------------- */
+
+export const WEIBO_MAX_IMAGES = 9
+
+/** 校验并规整微博图片数组：只接受站内 /images/ 与 http(s) 外链，最多 9 张 */
+export function parseWeiboImages(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .filter((x): x is string => typeof x === 'string')
+    .map((s) => s.trim())
+    .filter((s) => s.startsWith('/images/') || /^https?:\/\//i.test(s))
+    .slice(0, WEIBO_MAX_IMAGES)
+}
+
+export function weiboImageList(row: Pick<WeiboRow, 'images'>): string[] {
+  try {
+    const a = JSON.parse(row.images || '[]')
+    return Array.isArray(a) ? a.filter((x: unknown) => typeof x === 'string' && x.trim()).slice(0, WEIBO_MAX_IMAGES) : []
+  } catch {
+    return []
+  }
+}
+
+export interface ListWeiboResult {
+  items: WeiboRow[]
+  total: number
+  page: number
+  totalPages: number
+}
+
+export async function listWeibo(
+  db: D1Database,
+  opts: { status?: 'published' | 'draft' | 'all'; page?: number; limit?: number } = {}
+): Promise<ListWeiboResult> {
+  const page = clampInt(opts.page, 1, 100000, 1)
+  const limit = clampInt(opts.limit, 1, 100, 15)
+  const where = opts.status && opts.status !== 'all' ? 'WHERE status = ?' : ''
+  const binds: unknown[] = opts.status && opts.status !== 'all' ? [opts.status] : []
+  const order = 'ORDER BY COALESCE(published_at, created_at) DESC, id DESC'
+  const [itemsRes, countRes] = await Promise.all([
+    db
+      .prepare(`SELECT * FROM weibo ${where} ${order} LIMIT ? OFFSET ?`)
+      .bind(...binds, limit, (page - 1) * limit)
+      .all<WeiboRow>(),
+    db.prepare(`SELECT COUNT(*) AS n FROM weibo ${where}`).bind(...binds).first<{ n: number }>(),
+  ])
+  const total = countRes?.n ?? 0
+  return { items: itemsRes.results ?? [], total, page, totalPages: Math.max(1, Math.ceil(total / limit)) }
+}
+
+export async function getWeiboById(db: D1Database, id: number): Promise<WeiboRow | null> {
+  return db.prepare('SELECT * FROM weibo WHERE id = ?').bind(id).first<WeiboRow>()
 }
 
 export async function countUsers(db: D1Database): Promise<number> {

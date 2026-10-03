@@ -68,6 +68,18 @@ CREATE TABLE IF NOT EXISTS post_categories (
 );
 CREATE INDEX IF NOT EXISTS idx_post_categories_cat ON post_categories (category_id);
 
+-- 微博：随手记，短文字 + 最多 9 张图，无标题无 slug
+CREATE TABLE IF NOT EXISTS weibo (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  content      TEXT    NOT NULL DEFAULT '',
+  images       TEXT    NOT NULL DEFAULT '[]', -- JSON 数组，如 ["/images/u/202510/xxx.jpg"]
+  status       TEXT    NOT NULL DEFAULT 'published', -- draft | published
+  published_at INTEGER,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_weibo_status ON weibo (status, published_at DESC);
+
 CREATE TABLE IF NOT EXISTS uploads (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   key        TEXT    NOT NULL UNIQUE,

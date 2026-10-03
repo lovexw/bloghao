@@ -42,6 +42,16 @@ export interface PostRow {
   updated_at: number
 }
 
+export interface WeiboRow {
+  id: number
+  content: string
+  images: string
+  status: PostStatus
+  published_at: number | null
+  created_at: number
+  updated_at: number
+}
+
 export interface CommentRow {
   id: number
   post_id: number

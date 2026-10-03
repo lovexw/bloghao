@@ -8,10 +8,22 @@ import {
   listApprovedComments,
   listCategories,
   listPosts,
+  listWeibo,
   parseTags,
   relatedPosts,
+  weiboImageList,
 } from './db'
-import { commentsHtml, page, pagerHtml, toHomePost, stripCoverDuplicate, type CategoryLink } from './render'
+import {
+  commentsHtml,
+  page,
+  pagerHtml,
+  toHomePost,
+  stripCoverDuplicate,
+  weiboCards,
+  weiboPager,
+  type CategoryLink,
+  type WeiboItemView,
+} from './render'
 import { sanitizeHtml } from './sanitize'
 import { getTheme, THEMES } from './themes/registry'
 import type { Env, PostRow, SessionUser, SettingsMap } from './types'
@@ -120,11 +132,10 @@ async function renderList(
   let emptyText = ''
   let title = ''
   if (opts.mode === 'search') {
-    notice = `<form class="search-form" action="/search" method="get" role="search"><input class="search-input" type="search" name="q" value="${esc(q)}" placeholder="搜索文章标题或内容…" maxlength="60"><button class="search-btn" type="submit">搜索</button></form>${
-      q
-        ? `<p class="search-meta">找到 ${r.total} 篇与「${esc(q)}」相关的文章</p>`
-        : '<p class="search-meta">输入关键词，回车或点「搜索」</p>'
-    }`
+    // 搜索框已移到刊头标签上方，这里只展示结果信息
+    notice = q
+      ? `<p class="search-meta">找到 ${r.total} 篇与「${esc(q)}」相关的文章</p>`
+      : '<p class="search-meta">输入关键词，回车或点「搜索」</p>'
     emptyText = q ? `没有找到与「${esc(q)}」相关的文章，换个关键词试试。` : ''
     title = q ? `搜索：${q}` : '搜索'
   } else if (opts.mode === 'category' && category) {
@@ -142,6 +153,7 @@ async function renderList(
     totalPages: opts.mode === 'search' ? 1 : r.totalPages,
     total: r.total,
     tag: opts.mode === 'home' ? tag : undefined,
+    q: opts.mode === 'search' ? q : undefined,
     hotTags: tags,
     categories,
     navActive:
@@ -246,6 +258,34 @@ export async function renderAbout(c: C): Promise<Response> {
   c.header('Cache-Control', 'no-cache')
   return c.html(
     page({ settings, css: theme.css, title: '关于', description: `关于 ${settings.siteName}`, path: '/about', body: html })
+  )
+}
+
+/** 微博页（/weibo）：随手记时间线，复用主题的页面骨架与站点导航 */
+export async function renderWeibo(c: C): Promise<Response> {
+  baseHeaders(c)
+  const settings = await getSettings(c.env.DB)
+  const theme = getTheme(settings.theme)
+  const url = new URL(c.req.url)
+  const perPage = 15
+  const [r, categories] = await Promise.all([
+    listWeibo(c.env.DB, { status: 'published', page: clampInt(url.searchParams.get('page'), 1, 100000, 1), limit: perPage }),
+    navCategories(c),
+  ])
+  // 页码越界时回到最后一页重取一次
+  if (r.page > r.totalPages && r.total > 0) {
+    Object.assign(r, await listWeibo(c.env.DB, { status: 'published', page: r.totalPages, limit: perPage }))
+  }
+  const items: WeiboItemView[] = r.items.map((w) => ({
+    id: w.id,
+    content: w.content,
+    images: weiboImageList(w),
+    created_at: w.published_at ?? w.created_at,
+  }))
+  const html = theme.weibo({ settings, categories, items, page: r.page, totalPages: r.totalPages, total: r.total })
+  c.header('Cache-Control', 'no-cache')
+  return c.html(
+    page({ settings, css: theme.css, title: '微博', description: `${settings.siteName}的随手记`, path: '/weibo', body: html })
   )
 }
 

@@ -8,12 +8,28 @@ import {
   pagerHtml,
   siteNav,
   tagLink,
+  weiboCards,
+  weiboPager,
   type CategoryLink,
   type HomePostView,
+  type WeiboItemView,
 } from '../render'
 import css from './minimal.css'
 
 const id = 'minimal'
+
+/** 站点头像：设置过 avatarUrl 才展示（极简主题默认不占位） */
+function avatar(s: SettingsMap): string {
+  return s.avatarUrl ? `<img class="mn-avatar" src="${esc(s.avatarUrl)}" alt="${esc(s.siteName)}">` : ''
+}
+
+/** 搜索框：引言与列表之间 */
+function searchForm(q: string | undefined): string {
+  return `<form class="mn-search" action="/search" method="get" role="search">
+  <input class="mn-search-input" type="search" name="q" value="${esc(q || '')}" placeholder="Search…" maxlength="60" aria-label="搜索文章">
+  <button class="mn-search-btn" type="submit">搜索</button>
+</form>`
+}
 
 export function home(d: {
   settings: SettingsMap
@@ -22,6 +38,7 @@ export function home(d: {
   totalPages: number
   total: number
   tag?: string
+  q?: string
   hotTags: string[]
   categories: CategoryLink[]
   navActive?: string
@@ -47,13 +64,14 @@ export function home(d: {
   return `<div class="mn-wrap">
   ${siteNav({ cls: 'mn-snav', categories: d.categories, active: d.navActive })}
   <header class="mn-header">
-    <a class="mn-logo" href="/">${esc(s.siteName)}</a>
+    <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
     <nav class="mn-nav">
       ${nav}
       <a class="mn-nav-link" href="/about">关于</a>
     </nav>
   </header>
   <p class="mn-intro">${esc(s.siteDescription)}</p>
+  ${searchForm(d.q)}
   ${d.notice ? `<div class="mn-notice">${d.notice}</div>` : ''}
   <main class="mn-list">
     ${items || `<p class="mn-empty">${d.emptyText || 'Nothing here yet. Start writing.'}</p>`}
@@ -61,7 +79,7 @@ export function home(d: {
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="mn-footer">
     <span>${esc(s.footerText || '')}</span>
-    <span><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -108,7 +126,7 @@ export function post(d: {
     ${related}
     ${d.comments.html}
   </article>
-  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/admin">管理</a><a href="/rss.xml">RSS</a></span></footer>
+  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/weibo">微博</a><a href="/admin">管理</a><a href="/rss.xml">RSS</a></span></footer>
 </div>`
 }
 
@@ -120,7 +138,35 @@ export function about(d: { settings: SettingsMap; contentHtml: string; categorie
     <h1 class="mn-title">关于</h1>
     <div class="rich">${d.contentHtml}</div>
   </article>
-  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/admin">管理</a></span></footer>
+  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 微博页：随手记时间线 */
+export function weibo(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  items: WeiboItemView[]
+  page: number
+  totalPages: number
+  total: number
+}): string {
+  const s = d.settings
+  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: avatar(s) })
+  return `<div class="mn-wrap">
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, active: 'weibo' })}
+  <header class="mn-header">
+    <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
+    <nav class="mn-nav"><a class="mn-nav-link is-active" href="/weibo">微博</a><a class="mn-nav-link" href="/about">关于</a></nav>
+  </header>
+  <main class="wb-list">
+    ${cards || '<p class="wb-empty">Nothing here yet.</p>'}
+  </main>
+  ${weiboPager(d.page, d.totalPages)}
+  <footer class="mn-footer">
+    <span>${esc(s.footerText || '')}</span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
 </div>`
 }
 

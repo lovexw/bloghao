@@ -8,12 +8,31 @@ import {
   pagerHtml,
   siteNav,
   tagLink,
+  weiboCards,
+  weiboPager,
   type CategoryLink,
   type HomePostView,
+  type WeiboItemView,
 } from '../render'
 import css from './midnight.css'
 
 const id = 'midnight'
+
+/** 站点头像：设置过 avatarUrl 用图片，否则退回呼吸圆点 */
+function logoMark(s: SettingsMap): string {
+  return s.avatarUrl
+    ? `<img class="md-logo-avatar" src="${esc(s.avatarUrl)}" alt="${esc(s.siteName)}">`
+    : '<span class="md-logo-dot"></span>'
+}
+
+/** 搜索框：hero 之内、正文列表之上 */
+function searchForm(q: string | undefined): string {
+  return `<form class="md-search" action="/search" method="get" role="search">
+  <svg class="md-search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
+  <input class="md-search-input" type="search" name="q" value="${esc(q || '')}" placeholder="grep 站内文章…" maxlength="60" aria-label="搜索文章">
+  <button class="md-search-btn" type="submit">搜索</button>
+</form>`
+}
 
 export function home(d: {
   settings: SettingsMap
@@ -22,6 +41,7 @@ export function home(d: {
   totalPages: number
   total: number
   tag?: string
+  q?: string
   hotTags: string[]
   categories: CategoryLink[]
   navActive?: string
@@ -48,12 +68,13 @@ export function home(d: {
   return `<div class="md-wrap">
   ${siteNav({ cls: 'md-snav', categories: d.categories, active: d.navActive })}
   <header class="md-header">
-    <a class="md-logo" href="/"><span class="md-logo-dot"></span>${esc(s.siteName)}</a>
+    <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
     <nav class="md-nav">${nav}<a class="md-nav-link" href="/about">关于</a></nav>
   </header>
   <section class="md-hero">
     <h1>${esc(s.siteName)}</h1>
     <p>${esc(s.siteDescription)}</p>
+    ${searchForm(d.q)}
   </section>
   ${d.notice ? `<div class="md-notice">${d.notice}</div>` : ''}
   <main class="md-list">
@@ -62,7 +83,7 @@ export function home(d: {
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="md-footer">
     <span>${esc(s.footerText || '')}</span>
-    <span><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -109,19 +130,51 @@ export function post(d: {
     ${related}
     ${d.comments.html}
   </article>
-  <footer class="md-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/admin">管理</a><a href="/rss.xml">RSS</a></span></footer>
+  <footer class="md-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/weibo">微博</a><a href="/admin">管理</a><a href="/rss.xml">RSS</a></span></footer>
 </div>`
 }
 
 export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[] }): string {
   return `<div class="md-wrap">
   ${siteNav({ cls: 'md-snav', categories: d.categories })}
-  <header class="md-header"><a class="md-logo" href="/"><span class="md-logo-dot"></span>${esc(d.settings.siteName)}</a></header>
+  <header class="md-header"><a class="md-logo" href="/">${logoMark(d.settings)}${esc(d.settings.siteName)}</a></header>
   <article class="md-article">
     <h1 class="md-title">关于</h1>
     <div class="rich">${d.contentHtml}</div>
   </article>
-  <footer class="md-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/admin">管理</a></span></footer>
+  <footer class="md-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 微博页：随手记时间线 */
+export function weibo(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  items: WeiboItemView[]
+  page: number
+  totalPages: number
+  total: number
+}): string {
+  const s = d.settings
+  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: logoMark(s) })
+  return `<div class="md-wrap">
+  ${siteNav({ cls: 'md-snav', categories: d.categories, active: 'weibo' })}
+  <header class="md-header">
+    <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
+    <nav class="md-nav"><a class="md-nav-link is-active" href="/weibo">weibo</a><a class="md-nav-link" href="/about">关于</a></nav>
+  </header>
+  <section class="md-hero md-hero-slim">
+    <h1>微博</h1>
+    <p>${d.total > 0 ? `随手记 · 共 ${d.total} 条` : '随手记，想写就写'}</p>
+  </section>
+  <main class="md-list wb-list">
+    ${cards || '<p class="md-empty wb-empty">夜航微博还是空的。</p>'}
+  </main>
+  ${weiboPager(d.page, d.totalPages)}
+  <footer class="md-footer">
+    <span>${esc(s.footerText || '')}</span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
 </div>`
 }
 

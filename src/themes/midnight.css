@@ -39,6 +39,7 @@ img { max-width: 100%; height: auto; }
 }
 .md-logo { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; font-family: var(--md-mono); }
 .md-logo-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--md-accent); box-shadow: 0 0 10px rgba(88, 166, 255, 0.8); }
+.md-logo-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 8px rgba(88, 166, 255, 0.6); }
 .md-nav { display: flex; gap: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .md-nav::-webkit-scrollbar { display: none; }
 .md-nav-link { font-size: 13px; color: var(--md-sub); font-family: var(--md-mono); transition: color 0.2s ease; white-space: nowrap; }
@@ -48,6 +49,32 @@ img { max-width: 100%; height: auto; }
 .md-hero { padding: 34px 0 40px; border-bottom: 1px solid var(--md-line); }
 .md-hero h1 { font-size: 30px; letter-spacing: 0.01em; }
 .md-hero p { color: var(--md-sub); margin-top: 10px; font-size: 15px; max-width: 40em; }
+
+/* ---------- 搜索（hero 内，正文列表上方） ---------- */
+.md-search { position: relative; max-width: 420px; margin-top: 24px; }
+.md-search-ico {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px;
+  fill: none; stroke: var(--md-sub); stroke-width: 2; stroke-linecap: round;
+  pointer-events: none;
+}
+.md-search-input {
+  width: 100%; font-size: 16px; font-family: var(--md-mono);
+  padding: 10px 76px 10px 38px;
+  border: 1px solid var(--md-line); border-radius: 999px;
+  background: var(--md-card); color: var(--md-ink); outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.md-search-input::placeholder { color: #56606c; }
+.md-search-input:focus { border-color: var(--md-accent); box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12); }
+.md-search-btn {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  font-size: 13px; font-family: var(--md-mono); padding: 6px 14px;
+  border: none; border-radius: 999px;
+  background: var(--md-accent); color: #0f1115; cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.md-search-btn:hover { opacity: 0.88; }
 
 .md-list { padding: 24px 0 0; display: grid; gap: 14px; }
 .md-card {
@@ -218,3 +245,41 @@ img { max-width: 100%; height: auto; }
 }
 .pager-go:hover { border-color: var(--md-accent); color: var(--md-accent); }
 .md-footer span a { margin-left: 14px; }
+
+/* ---------- 微博（随手记） ---------- */
+.md-hero-slim { padding: 26px 0 30px; }
+.md-hero-slim h1 { font-size: 24px; }
+.wb-list { margin-top: 8px; }
+.wb-card { background: var(--md-card); border: 1px solid var(--md-line); border-radius: 14px; padding: 16px 20px 18px; }
+.wb-head { display: flex; align-items: center; gap: 10px; }
+.wb-avatar { display: flex; flex: 0 0 auto; }
+.wb-avatar .md-logo-dot { width: 34px; height: 34px; box-shadow: 0 0 14px rgba(88, 166, 255, 0.5); }
+.wb-avatar .md-logo-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
+.wb-who { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wb-name { font-size: 14px; font-weight: 700; font-family: var(--md-mono); }
+.wb-time { font-size: 12px; color: var(--md-sub); font-family: var(--md-mono); }
+.wb-text { margin-top: 12px; font-size: 15.5px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+.wb-imgs { margin-top: 12px; display: grid; gap: 6px; }
+.wb-imgs img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
+.wb-imgs-1 img { width: auto; height: auto; max-width: 100%; max-height: 420px; }
+.wb-imgs-2 { grid-template-columns: 1fr 1fr; }
+.wb-imgs-2 img { aspect-ratio: 1/1; }
+.wb-imgs-3 { grid-template-columns: repeat(3, 1fr); }
+.wb-imgs-3 img { aspect-ratio: 1/1; }
+.wb-empty { padding: 64px 0; }
+.wb-pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 26px 0 0; }
+.wb-pager-btn {
+  font-size: 13px; color: var(--md-sub); font-family: var(--md-mono);
+  background: var(--md-card); border: 1px solid var(--md-line); border-radius: 8px;
+  padding: 6px 14px;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.wb-pager-btn:hover { border-color: var(--md-accent); color: var(--md-accent); }
+.wb-pager-btn.is-disabled { opacity: 0.35; }
+.wb-pager-info { font-size: 12px; color: var(--md-sub); font-family: var(--md-mono); }
+
+@media (max-width: 480px) {
+  .wb-card { padding: 14px 14px 16px; }
+  .wb-imgs { gap: 4px; }
+  .wb-imgs-1 img { max-height: 360px; }
+}

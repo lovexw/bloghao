@@ -25,10 +25,11 @@ import css from './mytheme.css'
 const id = 'mytheme'
 
 export function home(d: {
-  settings: Record<string, string>   // 全站设置（siteName/siteDescription/footerText…）
+  settings: Record<string, string>   // 全站设置（siteName/siteDescription/avatarUrl/footerText…）
   posts: HomePostView[]              // 当前页文章列表
   page: number; totalPages: number; total: number
   tag?: string                       // /tag/xxx 筛选时当前标签
+  q?: string                         // /search 页当前关键词（刊头搜索框回填用）
   hotTags: string[]                  // 热门标签（做导航用）
 }): string {
   return `<div class="my-page">
@@ -65,6 +66,20 @@ export function about(d: { settings: Record<string, string>; contentHtml: string
   return `<div class="my-about"><div class="rich">${d.contentHtml}</div></div>`
 }
 
+export function weibo(d: {
+  settings: Record<string, string>
+  categories: CategoryLink[]         // 顶部站点导航数据
+  items: WeiboItemView[]             // 微博列表 { id, content, images, created_at }
+  page: number; totalPages: number; total: number
+}): string {
+  // 卡片/翻页可用 render.ts 的 weiboCards / weiboPager（语义化 .wb-* class，样式由你的 CSS 塑形）
+  return `<div class="my-page">
+    <h1>微博</h1>
+    ${weiboCards({ settings: d.settings, items: d.items, avatarHtml: '' })}
+    ${weiboPager(d.page, d.totalPages)}
+  </div>`
+}
+
 export { id, css }
 ```
 
@@ -91,6 +106,9 @@ export const THEMES: Record<string, ThemeModule> = {
 | `commentsHtml({...})` | 完整留言区（列表 + 表单 + 蜜罐），语义化 class：`.cmt-*` |
 | `likesBtn(slug, likes)` | 点赞按钮，配 `public/site.js` 自动工作，class `.like-btn` |
 | `tagLink(name)` | 标签链接 `/tag/<encodeURIComponent(name)>` |
+| `weiboCards({settings,items,avatarHtml})` | 微博卡片列表（头像 + 文字 + 图片网格），class `.wb-*` |
+| `weiboPager(page,totalPages)` | 微博翻页（上一条 / 更早），class `.wb-pager*` |
+| `weiboImageGrid(images)` | 微博图片网格（1 大图 / 2·4 双列 / 其余三列） |
 
 ## 交互约定
 

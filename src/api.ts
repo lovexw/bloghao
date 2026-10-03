@@ -20,15 +20,19 @@ import {
   getPostBySlug,
   getPostCategoryId,
   getSettings,
+  getWeiboById,
   listApprovedComments,
   listCategories,
   listPosts,
+  listWeibo,
   parseTags,
+  parseWeiboImages,
   saveSettings,
   seedWelcomePost,
   setPostCategory,
   uniqueCategorySlug,
   uniqueSlug,
+  weiboImageList,
 } from './db'
 import { mdToHtml } from './markdown'
 import { toHomePost } from './render'
@@ -331,6 +335,70 @@ api.delete('/admin/posts/:id', async (c) => {
   return c.json({ ok: true })
 })
 
+/* ---------------- 微博管理（随手记） ---------------- */
+const WEIBO_MAX_CHARS = 5000
+
+async function readWeiboPayload(c: { req: { json: () => Promise<unknown> } }) {
+  const raw = await c.req.json().catch(() => null)
+  if (!raw || typeof raw !== 'object') return null
+  const b = raw as Record<string, unknown>
+  return {
+    content: String(b.content ?? '').trim().slice(0, WEIBO_MAX_CHARS),
+    images: parseWeiboImages(b.images),
+    status: b.status === 'published' ? 'published' : 'draft',
+  }
+}
+
+api.get('/admin/weibo', async (c) => {
+  const statusParam = c.req.query('status')
+  const status = statusParam === 'published' || statusParam === 'draft' ? statusParam : 'all'
+  const r = await listWeibo(c.env.DB, {
+    status,
+    page: clampInt(c.req.query('page'), 1, 100000, 1),
+    limit: clampInt(c.req.query('limit'), 1, 100, 20),
+  })
+  return c.json({
+    items: r.items.map((w) => ({ ...w, imageList: weiboImageList(w) })),
+    total: r.total,
+    page: r.page,
+    totalPages: r.totalPages,
+  })
+})
+
+api.post('/admin/weibo', async (c) => {
+  const p = await readWeiboPayload(c)
+  if (!p) return jsonError('请求格式错误')
+  if (!p.content && !p.images.length) return jsonError('写点什么，或者配张图吧')
+  const now = Date.now()
+  const res = await c.env.DB.prepare(
+    'INSERT INTO weibo (content, images, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+  )
+    .bind(p.content, JSON.stringify(p.images), p.status, p.status === 'published' ? now : null, now, now)
+    .run()
+  const row = await getWeiboById(c.env.DB, Number(res.meta.last_row_id))
+  return c.json({ ok: true, weibo: row ? { ...row, imageList: weiboImageList(row) } : null })
+})
+
+api.put('/admin/weibo/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const existing = await getWeiboById(c.env.DB, id)
+  if (!existing) return jsonError('这条微博不存在', 404)
+  const p = await readWeiboPayload(c)
+  if (!p) return jsonError('请求格式错误')
+  if (!p.content && !p.images.length) return jsonError('写点什么，或者配张图吧')
+  const publishedAt = p.status === 'published' ? (existing.published_at ?? Date.now()) : null
+  await c.env.DB.prepare('UPDATE weibo SET content = ?, images = ?, status = ?, published_at = ?, updated_at = ? WHERE id = ?')
+    .bind(p.content, JSON.stringify(p.images), p.status, publishedAt, Date.now(), id)
+    .run()
+  const row = await getWeiboById(c.env.DB, id)
+  return c.json({ ok: true, weibo: row ? { ...row, imageList: weiboImageList(row) } : null })
+})
+
+api.delete('/admin/weibo/:id', async (c) => {
+  await c.env.DB.prepare('DELETE FROM weibo WHERE id = ?').bind(Number(c.req.param('id'))).run()
+  return c.json({ ok: true })
+})
+
 /* ---------------- 分类管理 ---------------- */
 
 /** 校验并规整分类的 slug：留空则用名称本身（中文可作 slug，URL 会编码） */
@@ -503,7 +571,7 @@ api.put('/admin/settings', async (c) => {
       patch[key] = sanitizeHtml(v.slice(0, 100_000))
       continue
     }
-    if (key === 'faviconUrl') {
+    if (key === 'faviconUrl' || key === 'avatarUrl') {
       // 只接受站内 /images/ 地址或 http(s) 外链，防止 javascript: 之类注入
       const u = v.trim().slice(0, 500)
       patch[key] = u.startsWith('/images/') || /^https?:\/\//i.test(u) ? u : ''

@@ -11,6 +11,9 @@ const state = {
   themes: [],
 }
 
+/* 微博编辑态：null = 新建；点「编辑」后暂存，离开微博页时清空 */
+let wbEditing = null
+
 /* ---------------- 工具 ---------------- */
 export function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
@@ -80,6 +83,7 @@ const I = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
   post: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 4h9l4 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5M9 13h7M9 17h5"/></svg>',
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a1 1 0 0 1 1-1h5l2 2.5h9a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg>',
+  weibo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3v4l4.5-4H21a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><path d="M8 9h9M8 13h6"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l11-11-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg>',
   comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
@@ -121,6 +125,14 @@ function authView(mode) {
       if (isSetup) body.displayName = f.displayName.value.trim()
       const d = await api(isSetup ? '/auth/setup' : '/auth/login', { method: 'POST', body })
       state.user = d.user
+      // 登录前拿不到设置，这里补拉一次，侧栏头像等依赖设置的 UI 立即生效
+      if (!state.settings) {
+        try {
+          state.settings = (await api('/admin/settings')).settings
+        } catch {
+          /* ignore */
+        }
+      }
       toast(isSetup ? '账号创建成功 🎉' : '欢迎回来 👋')
       location.hash = '#/'
       navigate()
@@ -139,6 +151,7 @@ async function shellView(active, contentHTML) {
       <nav class="side-nav">
         <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/">${I.home}<span>概览</span></a>
         <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts">${I.post}<span>文章</span></a>
+        <a class="side-item${active === 'weibo' ? ' is-active' : ''}" href="#/weibo">${I.weibo}<span>微博</span></a>
         <a class="side-item${active === 'categories' ? ' is-active' : ''}" href="#/categories">${I.folder}<span>分类</span></a>
         <a class="side-item${active === 'editor' ? ' is-active' : ''}" href="#/editor/new">${I.edit}<span>写作</span></a>
         <a class="side-item${active === 'comments' ? ' is-active' : ''}" href="#/comments">${I.comment}<span>评论</span>${pending ? `<span class="side-badge">${pending}</span>` : ''}</a>
@@ -147,7 +160,7 @@ async function shellView(active, contentHTML) {
         <a class="side-item" href="/" target="_blank" rel="noopener">${I.home}<span>查看主页</span></a>
       </nav>
       <div class="side-user">
-        <span class="side-user-avatar">${esc((state.user.display_name || state.user.username).charAt(0).toUpperCase())}</span>
+        ${state.settings?.avatarUrl ? `<img class="side-user-avatar" src="${esc(state.settings.avatarUrl)}" alt="">` : `<span class="side-user-avatar">${esc((state.user.display_name || state.user.username).charAt(0).toUpperCase())}</span>`}
         <span class="side-user-name">${esc(state.user.display_name || state.user.username)}</span>
         <button class="side-logout" id="btn-logout">退出</button>
       </div>
@@ -300,6 +313,169 @@ async function viewPosts() {
       await api(`/admin/posts/${id}`, { method: 'DELETE' })
       toast('已删除')
       viewPosts()
+    })
+  })
+}
+
+/* ---------------- 微博（随手记） ---------------- */
+const WB_MAX_IMAGES = 9
+const WB_MAX_CHARS = 5000
+
+async function viewWeibo() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || '')
+  const page = parseInt(q.get('page') || '1', 10)
+  let d
+  try {
+    d = await api(`/admin/weibo?page=${page}`)
+  } catch (e) {
+    return handleApiErr(e)
+  }
+  state.pendingComments = 0
+
+  const images = wbEditing ? [...wbEditing.images] : []
+  const rows = d.items
+    .map(
+      (w) => `<div class="wb-row" data-id="${w.id}">
+      <div class="wb-row-main">
+        <div class="wb-row-text">${w.content ? esc(w.content) : '<span class="dim">（无文字）</span>'}</div>
+        ${w.imageList.length ? `<div class="wb-row-thumbs">${w.imageList.map((u) => `<img src="${esc(u)}" loading="lazy" alt="">`).join('')}</div>` : ''}
+        <div class="wb-row-meta">
+          ${w.status === 'published' ? '<span class="chip chip-green">已发布</span>' : '<span class="chip chip-gray">草稿</span>'}
+          ${w.imageList.length ? `<span>${w.imageList.length} 图</span><span>·</span>` : ''}
+          <span>${fmtDateTime(w.published_at || w.updated_at)}</span>
+        </div>
+      </div>
+      <div class="post-ops">
+        <a class="btn btn-ghost btn-sm" href="/weibo" target="_blank">查看</a>
+        <button class="btn btn-ghost btn-sm" data-act="edit">编辑</button>
+        <button class="btn btn-ghost btn-sm" data-act="toggle">${w.status === 'published' ? '下架' : '发布'}</button>
+        <button class="btn btn-ghost btn-sm btn-danger" data-act="del">删除</button>
+      </div>
+    </div>`
+    )
+    .join('')
+
+  await shellView(
+    'weibo',
+    `<div class="page-head"><div><div class="page-title">微博</div><div class="page-sub">随手记：短文字 + 图片，不用起标题</div></div></div>
+    <div class="panel wb-composer">
+      <textarea class="textarea wb-input" id="wb-content" maxlength="${WB_MAX_CHARS}" placeholder="有什么新鲜事？">${esc(wbEditing?.content || '')}</textarea>
+      <div class="wb-imgs" id="wb-imgs"></div>
+      <div class="wb-composer-foot">
+        <button class="btn btn-ghost btn-sm" id="wb-add-img" type="button">${I.image} 加图（${images.length}/${WB_MAX_IMAGES}）</button>
+        <span class="wb-count" id="wb-count">${(wbEditing?.content || '').length} / ${WB_MAX_CHARS}</span>
+        <span class="spacer"></span>
+        ${wbEditing
+          ? '<button class="btn btn-sm" id="wb-cancel" type="button">取消</button><button class="btn btn-primary btn-sm" id="wb-save" type="button">保存修改</button>'
+          : '<button class="btn btn-sm" id="wb-draft" type="button">存草稿</button><button class="btn btn-primary btn-sm" id="wb-publish" type="button">发布</button>'}
+      </div>
+    </div>
+    <div class="panel">${rows || '<div class="empty-box">还没发过微博，在上面写一条吧</div>'}</div>
+    ${d.totalPages > 1 ? `<div class="pager-admin"><button class="btn btn-sm" id="pg-prev" ${page <= 1 ? 'disabled' : ''}>上一页</button><span>${d.page} / ${d.totalPages}</span><button class="btn btn-sm" id="pg-next" ${page >= d.totalPages ? 'disabled' : ''}>下一页</button></div>` : ''}`
+  )
+
+  const contentEl = document.getElementById('wb-content')
+  const addImgBtn = document.getElementById('wb-add-img')
+  const countEl = document.getElementById('wb-count')
+
+  function renderImgs() {
+    const box = document.getElementById('wb-imgs')
+    box.innerHTML = images
+      .map(
+        (u, i) => `<span class="wb-tile"><img src="${esc(u)}" alt=""><button class="wb-tile-del" data-i="${i}" type="button" title="移除">×</button></span>`
+      )
+      .join('')
+    box.querySelectorAll('.wb-tile-del').forEach((b) =>
+      b.addEventListener('click', () => {
+        images.splice(Number(b.dataset.i), 1)
+        renderImgs()
+      })
+    )
+    addImgBtn.innerHTML = `${I.image} 加图（${images.length}/${WB_MAX_IMAGES}）`
+  }
+
+  function pickImages() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/jpeg,image/png,image/webp,image/gif'
+    input.multiple = true
+    input.onchange = async () => {
+      const list = [...input.files].slice(0, WB_MAX_IMAGES - images.length)
+      if (!list.length) return toast(`最多 ${WB_MAX_IMAGES} 张图`, true)
+      const label = addImgBtn.textContent
+      for (const f of list) {
+        try {
+          addImgBtn.textContent = `上传中 ${f.name.slice(0, 12)}…`
+          const r = await uploadFile(f, null)
+          images.push(r.url)
+          renderImgs()
+        } catch (e) {
+          toast(e.message, true)
+        }
+      }
+      addImgBtn.textContent = label
+      renderImgs()
+    }
+    input.click()
+  }
+
+  async function saveWeibo(status) {
+    const content = contentEl.value.trim()
+    if (!content && !images.length) return toast('写点什么，或者配张图吧', true)
+    try {
+      if (wbEditing) {
+        await api(`/admin/weibo/${wbEditing.id}`, { method: 'PUT', body: { content, images, status: wbEditing.status } })
+        wbEditing = null
+        toast('已保存')
+      } else {
+        await api('/admin/weibo', { method: 'POST', body: { content, images, status } })
+        toast(status === 'published' ? '已发布 🎉' : '草稿已保存')
+      }
+      viewWeibo()
+    } catch (e) {
+      toast(e.message, true)
+    }
+  }
+
+  renderImgs()
+  if (wbEditing) window.scrollTo({ top: 0 })
+  contentEl.addEventListener('input', () => (countEl.textContent = `${contentEl.value.length} / ${WB_MAX_CHARS}`))
+  addImgBtn.addEventListener('click', pickImages)
+  document.getElementById('wb-save')?.addEventListener('click', () => saveWeibo(wbEditing?.status || 'draft'))
+  document.getElementById('wb-publish')?.addEventListener('click', () => saveWeibo('published'))
+  document.getElementById('wb-draft')?.addEventListener('click', () => saveWeibo('draft'))
+  document.getElementById('wb-cancel')?.addEventListener('click', () => {
+    wbEditing = null
+    viewWeibo()
+  })
+
+  const prev = document.getElementById('pg-prev')
+  const next = document.getElementById('pg-next')
+  if (prev) prev.addEventListener('click', () => (location.hash = `#/weibo?page=${page - 1}`))
+  if (next) next.addEventListener('click', () => (location.hash = `#/weibo?page=${page + 1}`))
+
+  $app.querySelectorAll('.wb-row').forEach((row) => {
+    const id = Number(row.dataset.id)
+    const w = d.items.find((x) => String(x.id) === String(id))
+    row.querySelector('[data-act=edit]').addEventListener('click', () => {
+      wbEditing = { id: w.id, content: w.content, images: [...w.imageList], status: w.status }
+      viewWeibo()
+    })
+    row.querySelector('[data-act=toggle]').addEventListener('click', async () => {
+      const publish = w.status !== 'published'
+      try {
+        await api(`/admin/weibo/${id}`, { method: 'PUT', body: { content: w.content, images: w.imageList, status: publish ? 'published' : 'draft' } })
+        toast(publish ? '已发布 🎉' : '已转为草稿')
+        viewWeibo()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
+    row.querySelector('[data-act=del]').addEventListener('click', async () => {
+      if (!(await confirmBox('确定删除这条微博？该操作不可恢复。'))) return
+      await api(`/admin/weibo/${id}`, { method: 'DELETE' })
+      toast('已删除')
+      viewWeibo()
     })
   })
 }
@@ -572,6 +748,15 @@ async function viewSettings() {
         <div class="form-item"><label>站点描述</label><input class="input" id="st-siteDescription" value="${esc(s.siteDescription)}" maxlength="120"></div>
         <div class="form-item"><label>页脚文字</label><input class="input" id="st-footerText" value="${esc(s.footerText)}" maxlength="120"></div>
         <div class="form-item">
+          <label>站点头像（显示在首页刊头、微博与后台，圆形/方角由主题决定）</label>
+          <div class="fav-row">
+            <span id="avatar-preview-slot">${s.avatarUrl ? `<img class="avatar-preview" src="${esc(s.avatarUrl)}" alt="站点头像">` : '<span class="fav-empty">未设置，显示站名首字</span>'}</span>
+            <button class="btn btn-sm" id="btn-avatar-upload" type="button">上传头像</button>
+            <button class="btn btn-sm btn-ghost" id="btn-avatar-clear" type="button">恢复默认</button>
+          </div>
+          <input type="hidden" id="st-avatarUrl" value="${esc(s.avatarUrl || '')}">
+        </div>
+        <div class="form-item">
           <label>网站图标（浏览器标签页小图，PNG / ICO / WebP，存 R2 图床）</label>
           <div class="fav-row">
             <span id="fav-preview-slot">${s.faviconUrl ? `<img class="fav-preview" src="${esc(s.faviconUrl)}" alt="站点图标">` : '<span class="fav-empty">未设置，使用默认图标</span>'}</span>
@@ -633,6 +818,35 @@ async function viewSettings() {
       : '<span class="fav-empty">未设置，使用默认图标</span>'
   }
 
+  function renderAvatarSlot(url) {
+    document.getElementById('avatar-preview-slot').innerHTML = url
+      ? `<img class="avatar-preview" src="${esc(url)}" alt="站点头像">`
+      : '<span class="fav-empty">未设置，显示站名首字</span>'
+  }
+
+  document.getElementById('btn-avatar-upload').addEventListener('click', () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/jpeg,image/png,image/webp,image/gif'
+    input.onchange = async () => {
+      if (!input.files[0]) return
+      try {
+        const d = await uploadFile(input.files[0])
+        document.getElementById('st-avatarUrl').value = d.url
+        renderAvatarSlot(d.url)
+        toast('头像已上传，记得点「保存全部」生效')
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+    input.click()
+  })
+  document.getElementById('btn-avatar-clear').addEventListener('click', () => {
+    document.getElementById('st-avatarUrl').value = ''
+    renderAvatarSlot('')
+    toast('已恢复默认，记得点「保存全部」生效')
+  })
+
   document.getElementById('btn-fav-upload').addEventListener('click', () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -664,6 +878,7 @@ async function viewSettings() {
       siteUrl: g('st-siteUrl').value.trim(),
       footerText: g('st-footerText').value.trim(),
       faviconUrl: g('st-faviconUrl').value.trim(),
+      avatarUrl: g('st-avatarUrl').value.trim(),
       theme: $app.querySelector('.theme-card.is-active')?.dataset.theme || 'wechat',
       allowComments: g('st-allowComments').checked ? '1' : '0',
       moderateComments: g('st-moderateComments').checked ? '1' : '0',
@@ -730,6 +945,7 @@ async function navigate() {
   const [path] = h.split('?')
   const parts = path.split('/')
   const name = parts[0] || 'home'
+  if (name !== 'weibo') wbEditing = null
 
   if (!state.user) {
     authView(state.needsSetup ? 'setup' : 'login')
@@ -738,6 +954,7 @@ async function navigate() {
   try {
     if (name === 'home') await viewHome()
     else if (name === 'posts') await viewPosts()
+    else if (name === 'weibo') await viewWeibo()
     else if (name === 'categories') await viewCategories()
     else if (name === 'comments') await viewComments()
     else if (name === 'media') await viewMedia()

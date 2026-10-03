@@ -15,14 +15,24 @@ export interface ThemeModule {
     totalPages: number
     total: number
     tag?: string
+    /** 搜索页当前关键词（刊头搜索框回填用） */
+    q?: string
     hotTags: string[]
     /** 顶部导航数据与高亮：'home' | 分类 slug | 'search' | '' */
     categories: import('../render').CategoryLink[]
     navActive?: string
-    /** 列表上方的通知区（搜索框/分类说明），由 pages 层构建好的 HTML */
+    /** 列表上方的通知区（搜索结果/分类说明），由 pages 层构建好的 HTML */
     notice?: string
     /** 空列表文案（搜索/分类页有定制文案） */
     emptyText?: string
+  }): string
+  weibo(d: {
+    settings: Record<string, string>
+    categories: import('../render').CategoryLink[]
+    items: import('../render').WeiboItemView[]
+    page: number
+    totalPages: number
+    total: number
   }): string
   post(d: {
     settings: Record<string, string>
