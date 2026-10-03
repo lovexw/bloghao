@@ -6,3 +6,12 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# emlog 迁移工具产物（脚本保留，数据不进库）
+scripts/emlog-migrate/staging/
+scripts/emlog-migrate/data.json
+scripts/emlog-migrate/report.json
+scripts/emlog-migrate/import.sql
+scripts/emlog-migrate/uploads-extra.sql
+scripts/emlog-migrate/images.json
+scripts/emlog-migrate/download-results.json

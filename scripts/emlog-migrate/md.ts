@@ -1,4 +1,4 @@
-import { escAttr } from './sanitize'
+import { escAttr } from '../../src/sanitize.ts'
 
 /**
  * 轻量 Markdown 渲染器（编辑器 Markdown 模式使用）
