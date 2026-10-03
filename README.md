@@ -7,7 +7,7 @@
 **微信有公众号，你有博客号。** 轻松开号，认真写字 · 公众号风格 · 免费部署 · MIT 开源
 
 > 本仓库是博客号的开源**博客引擎**（Workers + D1 + R2）。官网与社区请见：
-> [github.com/lovexw/bloghao](https://github.com/lovexw/bloghao) · [bloghao.com](https://bloghao.com)
+> [github.com/lovexw/bloghao](https://github.com/lovexw/bloghao) · [bloghao.pages.dev](https://bloghao.pages.dev)
 
 [在线示例](https://bloghao-blog.0471666.workers.dev) ·
 [五分钟部署](#-五分钟部署) ·
