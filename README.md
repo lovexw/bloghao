@@ -15,7 +15,7 @@ MoBlog 是一个**完全构建在 Cloudflare 免费套餐**上的博客系统：
 
 - ✍️ **公众号风格的写作后台**：标题、正文、封面、标签一屏完成；截图直接 `⌘/Ctrl + V` 粘贴进正文自动上传 R2；支持拖拽上传、Markdown 模式互转、自动保存草稿、一键预览。
 - 🩺 **排版体检**：内置《微信公众平台编辑器插件开发规范》静态检查（固定宽度、行高叠字、`height:0`、`text-align:start/end`、`<pre>` 包正文、字体族、`!important`、嵌套层级、图片 `data-w` 等），发布前一键体检。
-- 🎨 **四套主题**：`wechat` 微信公众号（默认，支持 Dark Mode）/ `paper` 纸墨 / `minimal` 极简 / `midnight` 夜航。主题即代码模块，开放注册（见 [docs/THEMES.md](docs/THEMES.md)）。
+- 🎨 **四套主题**：`wechat` 微信公众号（默认，明亮清爽）/ `paper` 纸墨 / `minimal` 极简 / `midnight` 夜航。主题即代码模块，开放注册（见 [docs/THEMES.md](docs/THEMES.md)）。
 - 🧩 **编辑器插件**：`window.MoBlog.registerPlugin({...})` 即可给工具栏加按钮（见 [docs/PLUGINS.md](docs/PLUGINS.md)）。
 - 🔒 **安全**：PBKDF2 密码哈希、HttpOnly 会话 Cookie、同源校验防 CSRF、HTML 白名单净化防 XSS、评论蜜罐 + 限流、上传类型/大小白名单、CSP 安全响应头。
 - ⚡ **快**：SSR 直出 + 主题 CSS 内联（零额外请求），文章图片 immutable 长缓存 + ETag 304。

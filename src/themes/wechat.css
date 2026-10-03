@@ -2,7 +2,7 @@
  * 遵循《微信公众平台编辑器插件开发规范》：
  * - 全站响应式，正文不设固定宽度
  * - 行高 >= 字号；正文 17px / 1.75 行高，贴近公众号阅读体验
- * - 支持 Dark Mode（对齐微信正文底色 #191919）
+ * - 恒定明亮配色（站长偏好，未启用自动 Dark Mode）
  */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -275,34 +275,11 @@ img { max-width: 100%; height: auto; }
 .cmt-submit:hover { opacity: 0.85; }
 .cmt-closed { color: #bbb; font-size: 14px; padding: 16px 0; }
 
-/* ---------- Dark Mode（对齐微信正文底色） ---------- */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --wx-text: #c3c3c3;
-    --wx-sub: #7d7d7d;
-    --wx-bg: #111;
-    --wx-card: #1e1e1e;
-    --wx-line: #2c2c2c;
-  }
-  body { background: var(--wx-bg); }
-  .wx-item-title, .rich h1, .rich h2, .rich h3, .rich h4 { color: #ddd; }
-  .wx-item:active { background: #262626; }
-  .rich blockquote { background: #262626; border-left-color: #3a3a3a; color: #999; }
-  .rich pre { background: #262626; }
-  .rich code { background: #2d2d2d; }
-  .rich th { background: #262626; }
-  .rich th, .rich td { border-color: #333; }
-  .rich hr { border-top-color: #333; }
-  .wx-action, .like-btn { background: var(--wx-card); border-color: #3a3a3a; color: #aaa; }
-  .wx-action:hover, .like-btn:hover { border-color: var(--wx-green); color: var(--wx-green); }
-  .wx-related-item { background: var(--wx-card); }
-  .wx-related-item h3 { color: #ccc; }
-  .wx-tab { background: #262626; color: #999; }
-  .cmt-input, .cmt-textarea { background: #262626; color: #ddd; }
-  .cmt-input:focus, .cmt-textarea:focus { box-shadow: 0 0 0 2px rgba(7, 193, 96, 0.45); }
-  .wx-thumb img, .wx-cover img { background: #262626; }
-  .rich mark { background: #5c4a12; color: #eee; }
-}
+/* ---------- Dark Mode ----------
+ * 站长偏好：保持明亮风格，已关闭自动暗色切换。
+ * 如需恢复，参考微信公众平台 Dark Mode 规范补一段
+ * @media (prefers-color-scheme: dark) 覆写 --wx-* 变量即可。
+ */
 
 /* ---------- 小屏适配 ---------- */
 @media (max-width: 480px) {

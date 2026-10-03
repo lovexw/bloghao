@@ -48,7 +48,7 @@ export const THEMES: Record<string, ThemeModule> = {
     ...wechat,
     id: 'wechat',
     name: '微信公众号',
-    description: '订阅号卡片流 + 公众号文章页排版，自带 Dark Mode',
+    description: '订阅号卡片流 + 公众号文章页排版，明亮清爽',
   } as ThemeModule,
   paper: {
     ...paper,

@@ -153,9 +153,10 @@ export async function countUsers(db: D1Database): Promise<number> {
 export async function seedWelcomePost(db: D1Database, authorId: number): Promise<void> {
   const now = Date.now()
   const content = `<p>你好呀，我是你的博客小院的第一篇文章 👋</p><p>这个博客完全住在 <strong>Cloudflare</strong> 上：网页由 Workers 渲染，文字存进 D1，图片传到 R2 图床——全世界的访问者都很快，而且每月免费额度足够你写很多年。</p><h2>写作的感觉，是最重要的</h2><p>打开 <a href="/admin/">后台</a>，你会看到一个熟悉的界面：像写公众号一样写作。标题、正文、封面、标签，都在一屏里；截图直接 <strong>Ctrl/⌘ + V</strong> 粘贴进正文，图片会自动传到你的 R2 图床。</p><blockquote>写博客最好的状态：像发一条微博一样轻，像写一篇文章一样认真。</blockquote><h3>试试这些</h3><ul><li>粘贴一张截图，体验自动上传</li><li>点右上角「体检」，检查排版是否符合微信排版规范</li><li>在「设置」里切换四套主题：微信风 / 纸墨 / 极简 / 夜航</li></ul><p>现在，删掉这篇文章，写下你自己的第一篇吧。</p>`
+  // OR IGNORE：slug 已存在（例如线上已手动播种过）时静默跳过，保证首次创建管理员永不失败
   await db
     .prepare(
-      `INSERT INTO posts (slug, title, content, summary, cover, tags, status, pinned, author_id, published_at, created_at, updated_at)
+      `INSERT OR IGNORE INTO posts (slug, title, content, summary, cover, tags, status, pinned, author_id, published_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, '', ?, 'published', 0, ?, ?, ?, ?)`
     )
     .bind(
