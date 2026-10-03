@@ -2,7 +2,7 @@
 // 部署前需要把下面 d1_databases 的 database_id 换成你自己的，详见 docs/DEPLOY.md
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "bloghao",
+  "name": "bloghao-blog",
   "main": "src/index.ts",
   "compatibility_date": "2025-09-01",
 
@@ -20,7 +20,7 @@
     {
       "binding": "DB",
       "database_name": "bloghao-db",
-      "database_id": "7e6a761c-0e97-4b12-8722-a61082d9de77"
+      "database_id": "182e6b3f-1eaf-4bd7-974c-628ab62bc0eb"
     }
   ],
 
