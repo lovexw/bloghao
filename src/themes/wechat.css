@@ -148,7 +148,7 @@ img { max-width: 100%; height: auto; }
 .wx-cover { margin: 0 0 20px; }
 .wx-cover img { width: 100%; border-radius: 8px; display: block; }
 
-/* 正文排版（对齐公众号默认样式） */
+/* 正文排版（对齐公众号默认样式；标题/引用/代码强分层级） */
 .rich {
   font-size: 17px;
   line-height: 1.75;
@@ -157,54 +157,81 @@ img { max-width: 100%; height: auto; }
   word-break: break-word;
 }
 .rich p, .rich section { margin: 0 0 20px; }
+.rich strong, .rich b { color: #111; }
+
 .rich h1, .rich h2, .rich h3, .rich h4 {
-  margin: 32px 0 16px;
+  margin: 36px 0 18px;
   font-weight: 600;
   line-height: 1.4;
   color: #111;
 }
-.rich h1 { font-size: 21px; }
-.rich h2 { font-size: 19px; }
-.rich h3 { font-size: 17px; }
+.rich h1 { font-size: 22px; }
+.rich h2 { font-size: 20px; position: relative; padding-left: 13px; }
+.rich h2::before {
+  content: '';
+  position: absolute; left: 0; top: 6px;
+  width: 4px; height: 17px;
+  border-radius: 2px;
+  background: var(--wx-accent);
+}
+.rich h3 { font-size: 17px; font-weight: 700; position: relative; padding-left: 15px; }
+.rich h3::before {
+  content: '';
+  position: absolute; left: 1px; top: 9px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--wx-accent);
+  opacity: 0.75;
+}
 .rich h4 { font-size: 16px; }
-.rich img { border-radius: 4px; height: auto; }
-.rich video { width: 100%; border-radius: 4px; margin-bottom: 20px; }
+.rich img { border-radius: 8px; height: auto; }
+.rich video { width: 100%; border-radius: 8px; margin-bottom: 20px; }
 .rich blockquote {
   margin: 0 0 20px;
-  padding: 12px 14px;
-  background: #f7f7f7;
-  border-left: 3px solid #d8d8d8;
-  border-radius: 2px;
-  color: #666;
+  padding: 14px 16px;
+  background: #faf6ee;
+  border-left: 3px solid rgba(178, 58, 41, 0.55);
+  border-radius: 0 6px 6px 0;
+  color: #6e675e;
   font-size: 15px;
 }
 .rich blockquote p:last-child { margin-bottom: 0; }
 .rich ul, .rich ol { margin: 0 0 20px; padding-left: 24px; }
 .rich li { margin-bottom: 6px; }
-.rich a { color: var(--wx-link); }
-.rich hr { border: none; border-top: 1px solid var(--wx-line); margin: 28px 0; }
+.rich li::marker { color: var(--wx-accent); }
+.rich a {
+  color: var(--wx-link);
+  text-decoration: underline;
+  text-decoration-color: rgba(87, 107, 149, 0.3);
+  text-underline-offset: 3px;
+}
+.rich a:hover { text-decoration-color: currentColor; }
+.rich hr { border: none; width: 64px; margin: 34px auto; border-top: 2px solid #ddd2bd; }
 .rich pre {
-  background: #f6f8fa;
-  border-radius: 6px;
-  padding: 14px;
+  background: #2f2b26;
+  color: #ece5d8;
+  border-radius: 8px;
+  padding: 16px 18px;
   overflow-x: auto;
   margin: 0 0 20px;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.65;
 }
-.rich pre code { background: none; padding: 0; font-size: 14px; }
+.rich pre code { background: none; padding: 0; font-size: 14px; color: inherit; }
 .rich code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  background: #f1f1f1;
+  background: #f4eee2;
+  color: #a3422c;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 15px;
 }
 .rich table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 15px; }
-.rich th, .rich td { border: 1px solid #e5e5e5; padding: 8px 10px; text-align: left; }
-.rich th { background: #fafafa; }
-.rich mark { background: #fff3c2; padding: 0 2px; }
-.rich figcaption { font-size: 13px; color: #999; text-align: center; margin-top: 6px; }
+.rich th, .rich td { border: 1px solid #e8e2d9; padding: 8px 12px; text-align: left; }
+.rich th { background: #f8f3e9; font-weight: 600; }
+.rich tr:nth-child(even) td { background: #fcfaf5; }
+.rich mark { background: #fdeeb3; padding: 0 2px; }
+.rich figcaption { font-size: 13px; color: #a29a8c; text-align: center; margin-top: 6px; }
 
 .wx-tags { margin: 8px 0 24px; display: flex; gap: 8px; flex-wrap: wrap; }
 .wx-tag { font-size: 13px; color: var(--wx-link); background: rgba(87, 107, 149, 0.08); padding: 4px 12px; border-radius: 999px; }
