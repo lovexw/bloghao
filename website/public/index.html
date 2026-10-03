@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>墨博 MoBlog —— 住在 Cloudflare 上的轻写作博客</title>
+<meta name="description" content="墨博 MoBlog：完全运行在 Cloudflare Workers + D1 + R2 上的开源博客系统。公众号风格写作后台、排版规范体检、四套精美主题、图片粘贴自动上云，免费套餐即可部署。">
+<meta property="og:title" content="墨博 MoBlog —— 住在 Cloudflare 上的轻写作博客">
+<meta property="og:description" content="公众号风格写作 · 排版规范体检 · 四套主题 · 图片粘贴自动上云 · 免费部署">
+<meta property="og:image" content="./assets/editor.png">
+<meta property="og:type" content="website">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="nav-logo" href="#top">
+      <img src="./favicon.svg" alt="墨博 logo">墨博 <span class="nav-logo-en">MoBlog</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">特性</a>
+      <a href="#themes">主题</a>
+      <a href="#editor">编辑器</a>
+      <a href="#start">快速开始</a>
+      <a href="#docs">文档</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="nav-demo" href="https://moblog.0471666.workers.dev" target="_blank" rel="noopener">在线示例 ↗</a>
+      <a class="btn btn-ghost" href="https://github.com/lovexw/moblog" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================= Hero ================= -->
+  <section class="hero">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="wrap hero-inner">
+      <span class="hero-badge reveal">☁️ 100% 运行在 Cloudflare 免费套餐 · MIT 开源</span>
+      <h1 class="reveal">写作，本该这么轻</h1>
+      <p class="hero-sub reveal">
+        墨博是一套完全跑在 Cloudflare Workers + D1 + R2 上的开源博客系统。<br class="pc-only">
+        像发微博一样轻地写，像公众号一样美地排，全世界的访客都快。
+      </p>
+      <div class="hero-cta reveal">
+        <a class="btn btn-primary btn-lg" href="#start">☁️ 五分钟部署我的博客</a>
+        <a class="btn btn-lg" href="https://moblog.0471666.workers.dev" target="_blank" rel="noopener">先看看示例博客 ↗</a>
+      </div>
+      <figure class="hero-shot reveal">
+        <div class="shot-frame">
+          <div class="shot-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <img src="./assets/editor.png" alt="墨博编辑器：公众号风格写作区，右侧为摘要 / 封面 / 标签栏" loading="eager">
+        </div>
+        <figcaption>写作后台：截图直接粘贴，自动上传 R2 图床</figcaption>
+      </figure>
+      <ul class="hero-chips reveal" aria-label="技术栈">
+        <li>⚡ Workers 全球边缘</li>
+        <li>🗄️ D1 数据库</li>
+        <li>🖼️ R2 图床</li>
+        <li>🔒 鉴权 / 净化 / CSP 内置</li>
+        <li>💸 免费套餐就够</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= 特性 ================= -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <h2 class="sec-title reveal">为「想写点东西的人」而生</h2>
+      <p class="sec-sub reveal">不折腾服务器，不研究运维。注册账号 → 部署 → 开写，剩下的交给墨博。</p>
+      <div class="grid-3">
+        <article class="card reveal">
+          <div class="card-icon ic-green">✍️</div>
+          <h3>公众号风的写作后台</h3>
+          <p>标题、正文、封面、标签一屏完成；截图 <b>⌘V 粘贴即上传</b>，支持拖拽、Markdown 模式、自动保存草稿、随时预览。</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon ic-green">🩺</div>
+          <h3>排版规范体检</h3>
+          <p>内置《微信公众平台编辑器插件开发规范》检查：固定宽度、行高叠字、<code>!important</code>、嵌套层级…发布前一键体检，一键修复。</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon ic-green">🖼️</div>
+          <h3>R2 图床，终身免费额度</h3>
+          <p>图片视频存进你自己的 R2 桶，不走第三方，没有外链失效焦虑；长缓存 + ETag，秒开。</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon ic-green">🎨</div>
+          <h3>四套主题即点即换</h3>
+          <p>微信公众号 / 纸墨 / 极简 / 夜航，后台点一下立即生效。主题就是代码模块，欢迎贡献第五套。</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon ic-green">🧩</div>
+          <h3>开放的插件系统</h3>
+          <p><code>window.MoBlog.registerPlugin({...})</code> 一个文件给编辑器加按钮，无需构建、无需重启，示例插件开箱即玩。</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon ic-green">🔒</div>
+          <h3>安全是默认值</h3>
+          <p>PBKDF2 密码哈希、HttpOnly 会话、CSRF 同源校验、HTML 白名单净化、评论蜜罐与限流、CSP 响应头，全部默认开启。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 主题 ================= -->
+  <section class="section section-tint" id="themes">
+    <div class="wrap">
+      <h2 class="sec-title reveal">四套主题，四种心情</h2>
+      <p class="sec-sub reveal">后台「设置 → 外观」一点即换，响应式适配手机与桌面。</p>
+      <div class="theme-row">
+        <figure class="phone reveal">
+          <img src="./assets/theme-wechat.png" alt="微信公众号主题">
+          <figcaption><b>微信公众号</b><span>明亮清爽 · 订阅号卡片流</span></figcaption>
+        </figure>
+        <figure class="phone reveal">
+          <img src="./assets/theme-paper.png" alt="纸墨主题">
+          <figcaption><b>纸墨</b><span>宋体排印 · 印章红</span></figcaption>
+        </figure>
+        <figure class="phone reveal">
+          <img src="./assets/theme-minimal.png" alt="极简主题">
+          <figcaption><b>极简</b><span>黑白灰 · 大留白</span></figcaption>
+        </figure>
+        <figure class="phone reveal">
+          <img src="./assets/theme-midnight.png" alt="夜航主题">
+          <figcaption><b>夜航</b><span>星图蓝 · 开发者日志风</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 编辑器 & 阅读 ================= -->
+  <section class="section" id="editor">
+    <div class="wrap split">
+      <div class="split-text reveal">
+        <h2 class="sec-title">写起来顺手，<br>读起来讲究</h2>
+        <ul class="ticks">
+          <li><b>677px 写作区</b>，和公众号图文同宽，写出来的就是发出来的</li>
+          <li><b>排版体检报告</b>逐条引用规范编号，支持一键修复</li>
+          <li><b>草稿自动保存</b>，手滑关掉页面也不丢字</li>
+          <li><b>留言区</b>支持先审后展、蜜罐防机器人</li>
+          <li>自带 <b>RSS / sitemap / OG 标签</b>，SEO 开箱即用</li>
+          <li>管理后台有<b>概览统计、媒体库、评论管理</b>，麻雀虽小</li>
+        </ul>
+        <div class="split-cta">
+          <a class="btn btn-primary" href="https://moblog.0471666.workers.dev/post/hello-moblog" target="_blank" rel="noopener">看一篇示例文章 ↗</a>
+          <a class="btn" href="https://moblog.0471666.workers.dev/admin/" target="_blank" rel="noopener">进后台转一圈 ↗</a>
+        </div>
+      </div>
+      <div class="split-media reveal">
+        <div class="shot-frame shot-frame-sm">
+          <img src="./assets/dashboard.png" alt="墨博后台概览：文章 / 阅读 / 点赞 / 评论统计">
+        </div>
+        <div class="shot-frame shot-frame-float">
+          <img src="./assets/article.png" alt="微信公众号主题的文章页">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 快速开始 ================= -->
+  <section class="section section-tint" id="start">
+    <div class="wrap wrap-narrow">
+      <h2 class="sec-title reveal">五分钟，把博客搬到云上</h2>
+      <p class="sec-sub reveal">需要一个免费的 Cloudflare 账号，完事。</p>
+      <ol class="steps reveal">
+        <li>
+          <b>克隆并安装</b>
+          <pre><code>git clone https://github.com/lovexw/moblog.git
+cd moblog &amp;&amp; npm install
+npx wrangler login</code></pre>
+        </li>
+        <li>
+          <b>创建资源（D1 数据库 + R2 图床）</b>
+          <pre><code>npx wrangler d1 create moblog-db
+npx wrangler r2 bucket create moblog-images
+# 把返回的 database_id 填进 wrangler.jsonc</code></pre>
+        </li>
+        <li>
+          <b>初始化数据库并部署</b>
+          <pre><code>npx wrangler d1 execute DB --remote --file schema.sql
+npm run deploy</code></pre>
+        </li>
+        <li>
+          <b>创建管理员，开写！</b>
+          <p class="step-note">访问 <code>https://moblog.你的子域.workers.dev/admin/</code>，首次进入即创建管理员账号，欢迎文章已就位。</p>
+        </li>
+      </ol>
+      <p class="reveal steps-more">推上 GitHub 后可开启自动部署（Actions 已内置）→ <a href="https://github.com/lovexw/moblog/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">完整部署教程</a></p>
+    </div>
+  </section>
+
+  <!-- ================= 文档 ================= -->
+  <section class="section" id="docs">
+    <div class="wrap">
+      <h2 class="sec-title reveal">文档齐全，随便改</h2>
+      <p class="sec-sub reveal">全部中文，放在仓库里，欢迎 PR 补充。</p>
+      <div class="grid-3 grid-docs">
+        <a class="card card-link reveal" href="https://github.com/lovexw/moblog/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">
+          <h3>🚀 部署教程</h3><p>从注册 Cloudflare 到绑定自定义域名、自动部署、备份与恢复。</p>
+        </a>
+        <a class="card card-link reveal" href="https://github.com/lovexw/moblog/blob/main/docs/GUIDE.md" target="_blank" rel="noopener">
+          <h3>📖 使用手册</h3><p>后台导览、写文章全流程、快捷键、评论与媒体管理、设置逐项说明。</p>
+        </a>
+        <a class="card card-link reveal" href="https://github.com/lovexw/moblog/blob/main/docs/THEMES.md" target="_blank" rel="noopener">
+          <h3>🎨 主题开发</h3><p>三步注册一套新主题，公共积木与排版规范底线。</p>
+        </a>
+        <a class="card card-link reveal" href="https://github.com/lovexw/moblog/blob/main/docs/PLUGINS.md" target="_blank" rel="noopener">
+          <h3>🧩 插件开发</h3><p>一个 JS 文件扩展编辑器，插件 API 与加载机制。</p>
+        </a>
+        <a class="card card-link reveal" href="https://github.com/lovexw/moblog/blob/main/docs/API.md" target="_blank" rel="noopener">
+          <h3>🔌 API 参考</h3><p>全部公开 / 管理接口，写自己的客户端。</p>
+        </a>
+        <a class="card card-link reveal" href="https://github.com/lovexw/moblog/blob/main/docs/wechat-typography-spec.md" target="_blank" rel="noopener">
+          <h3>🩺 排版规范</h3><p>微信编辑器插件开发规范的落地对照表与体检规则。</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 尾部 CTA ================= -->
+  <section class="section final">
+    <div class="wrap wrap-narrow final-inner reveal">
+      <h2>把写作变成每天的小事</h2>
+      <p>免费部署，代码全在 GitHub，改造成你喜欢的样子。</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="https://github.com/lovexw/moblog" target="_blank" rel="noopener">⭐ 去 GitHub 点个 Star</a>
+        <a class="btn btn-lg" href="#start">部署我的博客</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <span>© <span id="year">2026</span> 墨博 MoBlog · MIT License</span>
+    <span class="footer-links">
+      <a href="https://github.com/lovexw/moblog" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://moblog.0471666.workers.dev" target="_blank" rel="noopener">示例博客</a>
+      <a href="https://developers.weixin.qq.com/doc/service/guide/product/plugin_spec.html" target="_blank" rel="noopener">微信排版规范</a>
+    </span>
+  </div>
+</footer>
+
+<script src="./site.js" defer></script>
+</body>
+</html>

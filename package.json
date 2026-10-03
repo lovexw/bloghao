@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:site": "wrangler deploy --config website/wrangler.jsonc",
     "typecheck": "tsc --noEmit",
     "db:init:local": "wrangler d1 execute DB --local --file schema.sql",
     "db:init:remote": "wrangler d1 execute DB --remote --file schema.sql"
