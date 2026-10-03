@@ -10,6 +10,12 @@ npm run typecheck      # TypeScript 类型检查，提交前必须通过
 npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 ```
 
+## Git 约定
+
+- 本工作区**只负责这一个仓库**：origin = `github.com/lovexw/bloghao-blog`，不做其他项目/仓库的操作
+- 提交信息沿用 `theme:` / `mobile:` / `docs:` / `brand:` 等前缀的中文风格
+- 推送即 `git push origin main`
+
 ## 全站移动端适配（长期约定）
 
 任何 UI 改动——前台页面、后台管理、编辑器——都必须保证手机端可用，**移动端写作（后台编辑器）是硬要求**：
