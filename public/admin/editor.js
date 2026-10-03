@@ -311,8 +311,8 @@ export async function mountEditor(root, postId) {
   <div class="ed-topbar">
     <a class="ed-back" href="#/posts">← 文章</a>
     <span class="ed-status-pill chip ${post.status === 'published' ? 'chip-green' : 'chip-gray'}" id="ed-pill">${post.status === 'published' ? '已发布' : '草稿'}</span>
+    <span class="ed-save-state" id="ed-save-state">—</span>
     <div class="ed-top-ops">
-      <span class="ed-save-state" id="ed-save-state">—</span>
       <button class="btn btn-sm" id="ed-check" title="按微信排版规范检查正文">${IC.check} 体检</button>
       <button class="btn btn-sm" id="ed-preview">${IC.eye} 预览</button>
       <button class="btn btn-sm" id="ed-save">${IC.cloud} 存草稿</button>
@@ -363,6 +363,7 @@ export async function mountEditor(root, postId) {
       </div>
     </div>
     <aside class="ed-drawer" id="ed-drawer">
+      <button class="ed-drawer-close" id="ed-drawer-close" title="收起">×</button>
       <div class="drawer-title">摘要</div>
       <textarea class="textarea" id="ed-summary" rows="3" maxlength="500" placeholder="不填则自动截取正文前 80 字">${esc(post.summary)}</textarea>
 
@@ -943,6 +944,13 @@ export async function mountEditor(root, postId) {
   document.getElementById('ed-drawer-toggle').addEventListener('click', () => {
     document.getElementById('ed-drawer').classList.toggle('is-hidden')
   })
+  document.getElementById('ed-drawer-close').addEventListener('click', () => {
+    document.getElementById('ed-drawer').classList.add('is-hidden')
+  })
+  // 小屏下抽屉是覆盖层，编辑器打开时默认收起
+  if (window.matchMedia('(max-width: 860px)').matches) {
+    document.getElementById('ed-drawer').classList.add('is-hidden')
+  }
 
   /* ---------- 封面 ---------- */
   const coverBox = document.getElementById('ed-cover-box')
