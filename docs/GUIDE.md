@@ -169,4 +169,4 @@ npx wrangler r2 object get bloghao-images/ --file=?   # 图片按需从媒体库
 
 ---
 
-遇到没覆盖到的问题？去 [GitHub Issues](https://github.com/lovexw/bloghao/issues) 提一个，或者在示例博客的留言区聊聊 🙂
+遇到没覆盖到的问题？去 [GitHub Issues](https://github.com/lovexw/bloghao-blog/issues) 提一个，或者在示例博客的留言区聊聊 🙂

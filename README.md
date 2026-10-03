@@ -2,12 +2,14 @@
 
 <img src="public/favicon.svg" width="76" alt="博客号 BlogHao">
 
-# 博客号 BlogHao
+# 博客号 BlogHao（博客引擎）
 
 **微信有公众号，你有博客号。** 轻松开号，认真写字 · 公众号风格 · 免费部署 · MIT 开源
 
-[官网](https://bloghao-site.0471666.workers.dev) ·
-[在线示例](https://bloghao.0471666.workers.dev) ·
+> 本仓库是博客号的开源**博客引擎**（Workers + D1 + R2）。官网与社区请见：
+> [github.com/lovexw/bloghao](https://github.com/lovexw/bloghao) · [bloghao.com](https://bloghao.com)
+
+[在线示例](https://bloghao-blog.0471666.workers.dev) ·
 [五分钟部署](#-五分钟部署) ·
 [文档](#-文档)
 
@@ -64,7 +66,7 @@
 
 ```bash
 # 1. 克隆并安装
-git clone https://github.com/lovexw/bloghao.git
+git clone https://github.com/lovexw/bloghao-blog.git
 cd bloghao && npm install
 npx wrangler login
 
