@@ -8,13 +8,13 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --wx-green: #07c160;
+  --wx-accent: #b23a29;
   --wx-link: #576b95;
   --wx-text: #333;
   --wx-sub: #9e9e9e;
-  --wx-bg: #ededed;
+  --wx-bg: #f6f4f0;
   --wx-card: #fff;
-  --wx-line: #e6e6e6;
+  --wx-line: #e8e2d9;
 }
 
 html { -webkit-text-size-adjust: 100%; }
@@ -46,7 +46,7 @@ img { max-width: 100%; height: auto; }
   width: 48px; height: 48px;
   flex: 0 0 48px;
   border-radius: 10px;
-  background: var(--wx-green);
+  background: var(--wx-accent);
   color: #fff;
   font-size: 24px; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
@@ -70,7 +70,7 @@ img { max-width: 100%; height: auto; }
   background: rgba(255, 255, 255, 0.9);
   transition: all 0.2s ease;
 }
-.wx-tab.is-active { background: var(--wx-green); color: #fff; }
+.wx-tab.is-active { background: var(--wx-accent); color: #fff; }
 
 .wx-feed {
   background: var(--wx-card);
@@ -98,8 +98,8 @@ img { max-width: 100%; height: auto; }
 .wx-item-meta { font-size: 12px; color: #b2b2b2; margin-top: 8px; display: flex; gap: 8px; align-items: center; }
 .wx-pin {
   font-weight: 400; font-style: normal;
-  color: var(--wx-green);
-  border: 1px solid var(--wx-green);
+  color: var(--wx-accent);
+  border: 1px solid var(--wx-accent);
   border-radius: 3px; padding: 0 4px; font-size: 11px;
 }
 .wx-thumb { flex: 0 0 78px; }
@@ -129,7 +129,7 @@ img { max-width: 100%; height: auto; }
   padding: 6px 14px;
   transition: all 0.2s ease;
 }
-.pager-btn.is-current { background: var(--wx-green); color: #fff; }
+.pager-btn.is-current { background: var(--wx-accent); color: #fff; }
 .pager-btn.is-disabled { opacity: 0.4; pointer-events: none; }
 
 /* ---------- 文章页 ---------- */
@@ -215,8 +215,8 @@ img { max-width: 100%; height: auto; }
   padding: 8px 20px;
   transition: all 0.2s ease;
 }
-.wx-action:hover, .like-btn:hover { border-color: var(--wx-green); color: var(--wx-green); }
-.like-btn.liked { background: var(--wx-green); border-color: var(--wx-green); color: #fff; }
+.wx-action:hover, .like-btn:hover { border-color: var(--wx-accent); color: var(--wx-accent); }
+.like-btn.liked { background: var(--wx-accent); border-color: var(--wx-accent); color: #fff; }
 .like-btn.liked svg path { fill: currentColor; }
 .like-btn b { font-weight: 500; }
 
@@ -253,7 +253,7 @@ img { max-width: 100%; height: auto; }
   outline: none;
   transition: box-shadow 0.2s ease;
 }
-.cmt-input:focus { box-shadow: 0 0 0 2px rgba(7, 193, 96, 0.35); }
+.cmt-input:focus { box-shadow: 0 0 0 2px rgba(178, 58, 41, 0.32); }
 .cmt-hp { position: absolute; left: -9999px; height: 0; width: 0; opacity: 0; }
 .cmt-textarea {
   width: 100%; font: inherit; font-size: 15px;
@@ -263,11 +263,11 @@ img { max-width: 100%; height: auto; }
   outline: none;
   transition: box-shadow 0.2s ease;
 }
-.cmt-textarea:focus { box-shadow: 0 0 0 2px rgba(7, 193, 96, 0.35); }
+.cmt-textarea:focus { box-shadow: 0 0 0 2px rgba(178, 58, 41, 0.32); }
 .cmt-form-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; }
 .cmt-tip { font-size: 12px; color: #bbb; }
 .cmt-submit {
-  background: var(--wx-green); color: #fff;
+  background: var(--wx-accent); color: #fff;
   border: none; border-radius: 999px;
   font-size: 14px; padding: 8px 24px;
   transition: opacity 0.2s ease;
