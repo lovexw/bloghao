@@ -27,8 +27,8 @@ body {
   line-height: 1.6;
 }
 
-a { color: inherit; text-decoration: none; }
-button { font: inherit; cursor: pointer; }
+a { color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 img { max-width: 100%; height: auto; }
 
 /* ---------- 主页 ---------- */
@@ -287,13 +287,29 @@ img { max-width: 100%; height: auto; }
 
 /* ---------- 小屏适配 ---------- */
 @media (max-width: 560px) {
-  .wx-post { grid-template-columns: 1fr auto; }
+  .wx-post { grid-template-columns: 1fr auto; padding: 20px 0; }
   .wx-post-date { grid-column: 1 / -1; grid-row: 1; padding-top: 0; margin-bottom: 4px; }
   .wx-post-main { grid-column: 1; grid-row: 2; }
   .wx-post-thumb { grid-column: 2; grid-row: 2; }
+  .wx-post-title { font-size: 17.5px; }
+  .wx-post-abs { font-size: 13.5px; }
+  .wx-article { padding-top: 12px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+  .wx-title { font-size: 21px; }
+  .wx-action, .like-btn { padding: 9px 22px; }
+  /* 输入框字号 ≥16px，避免 iOS Safari 聚焦时自动放大页面 */
+  .cmt-input, .cmt-textarea { font-size: 16px; }
+  .rich table { display: block; width: max-content; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 @media (max-width: 480px) {
-  .wx-related-grid { grid-template-columns: 1fr 1fr; }
-  .wx-page { padding-left: 16px; padding-right: 16px; }
+  .wx-masthead { padding: 40px 0 26px; }
+  .wx-masthead .wx-avatar { width: 56px; height: 56px; flex-basis: 56px; font-size: 24px; margin-bottom: 14px; box-shadow: 0 4px 14px rgba(178, 58, 41, 0.18); }
+  .wx-masthead-name { font-size: 22px; }
+  .wx-masthead-desc { font-size: 13.5px; }
+  .wx-nav { margin-top: 16px; gap: 4px 18px; }
+  .wx-nav-link { font-size: 13px; }
+  .wx-page { padding-left: 16px; padding-right: 16px; padding-bottom: calc(44px + env(safe-area-inset-bottom)); }
   .wx-article { padding-left: 12px; padding-right: 12px; }
+  .wx-post { column-gap: 14px; }
+  .wx-post-thumb, .wx-post-thumb img { width: 64px; height: 64px; }
+  .wx-related-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
 }
