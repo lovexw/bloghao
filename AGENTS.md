@@ -1,4 +1,4 @@
-# BlogHao 博客号 —— 二次开发约定
+# xwblog（基于博客号 BlogHao 二次开发）—— 开发约定
 
 完全跑在 Cloudflare（Workers + D1 + R2）上的轻写作博客系统。后端约 10 个 TS 文件（hono），后台为原生 JS SPA，**无构建链**：改完即生效。
 
@@ -12,7 +12,8 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 
 ## Git 约定
 
-- 本工作区**只负责这一个仓库**：origin = `github.com/lovexw/bloghao-blog`，不做其他项目/仓库的操作
+- 本工作区**只负责这一个仓库**：origin = `github.com/lovexw/bloghao-xwblog`，不做其他项目/仓库的操作
+- 上游原项目：`github.com/lovexw/bloghao-blog`（remote `upstream`，可用于同步上游更新）
 - 提交信息沿用 `theme:` / `mobile:` / `docs:` / `brand:` 等前缀的中文风格
 - 推送即 `git push origin main`
 
