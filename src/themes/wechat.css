@@ -32,16 +32,8 @@ button { font: inherit; cursor: pointer; }
 img { max-width: 100%; height: auto; }
 
 /* ---------- 主页 ---------- */
-.wx-page { max-width: 640px; margin: 0 auto; padding: 12px 12px 40px; }
+.wx-page { max-width: 640px; margin: 0 auto; padding: 0 20px 44px; }
 
-.wx-profile {
-  background: var(--wx-card);
-  border-radius: 12px;
-  padding: 18px 16px;
-  display: flex;
-  gap: 14px;
-  align-items: center;
-}
 .wx-avatar {
   width: 48px; height: 48px;
   flex: 0 0 48px;
@@ -52,85 +44,97 @@ img { max-width: 100%; height: auto; }
   display: flex; align-items: center; justify-content: center;
   user-select: none;
 }
-.wx-name { font-size: 18px; font-weight: 600; }
-.wx-desc { font-size: 13px; color: var(--wx-sub); margin-top: 3px; }
 
-.wx-tabs {
-  display: flex; gap: 8px;
-  padding: 14px 4px 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
+/* 刊头：居中刊名 + 标语 + 文字导航 */
+.wx-masthead { text-align: center; padding: 56px 0 34px; }
+.wx-masthead .wx-avatar {
+  width: 64px; height: 64px; flex-basis: 64px;
+  border-radius: 50%;
+  font-size: 28px;
+  margin: 0 auto 18px;
+  box-shadow: 0 6px 20px rgba(178, 58, 41, 0.2);
 }
-.wx-tabs::-webkit-scrollbar { display: none; }
-.wx-tab {
-  flex: 0 0 auto;
-  font-size: 13px; color: #777;
-  padding: 5px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  transition: all 0.2s ease;
-}
-.wx-tab.is-active { background: var(--wx-accent); color: #fff; }
+.wx-masthead-name { font-size: 26px; font-weight: 700; letter-spacing: 0.02em; color: #1a1a1a; }
+.wx-masthead-desc { font-size: 14px; color: #8f887d; line-height: 1.7; margin-top: 10px; }
+.wx-nav { margin-top: 22px; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 24px; }
+.wx-nav-link { font-size: 13.5px; color: #8f887d; padding: 2px 0; transition: color 0.2s ease; }
+.wx-nav-link:hover { color: var(--wx-accent); }
+.wx-nav-link.is-active { color: var(--wx-accent); font-weight: 600; }
 
-.wx-feed {
-  background: var(--wx-card);
-  border-radius: 12px;
-  overflow: hidden;
-}
-.wx-item {
-  display: flex; gap: 12px;
-  padding: 16px;
+/* 文章列表：日期外置 + 细线分隔的编辑部式排版 */
+.wx-feed { min-height: 120px; }
+.wx-post {
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  column-gap: 20px;
+  align-items: start;
+  padding: 26px 0;
   border-bottom: 1px solid var(--wx-line);
-  transition: background 0.15s ease;
 }
-.wx-item:last-child { border-bottom: none; }
-.wx-item:active { background: #f5f5f5; }
-.wx-item-main { flex: 1; min-width: 0; }
-.wx-item-title {
-  font-size: 17px; font-weight: 600; line-height: 1.4;
+.wx-post:first-child { padding-top: 8px; }
+.wx-post:last-child { border-bottom: none; }
+.wx-post-date {
+  grid-column: 1;
+  font-size: 13px; color: #b5aea1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  padding-top: 5px;
+  white-space: nowrap;
+}
+.wx-post-main { grid-column: 2; min-width: 0; }
+.wx-post-title {
+  font-size: 19px; font-weight: 600; line-height: 1.5;
   color: #1a1a1a;
+  transition: color 0.15s ease;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.wx-item-abs {
-  font-size: 14px; color: #999; line-height: 1.5; margin-top: 5px;
+.wx-post:hover .wx-post-title, .wx-post:active .wx-post-title { color: var(--wx-accent); }
+.wx-post-abs {
+  font-size: 14px; color: #978f82; line-height: 1.75; margin-top: 7px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.wx-item-meta { font-size: 12px; color: #b2b2b2; margin-top: 8px; display: flex; gap: 8px; align-items: center; }
+.wx-post-meta {
+  font-size: 12.5px; color: #b5aea1;
+  margin-top: 10px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
 .wx-pin {
-  font-weight: 400; font-style: normal;
+  font-weight: 500; font-style: normal;
   color: var(--wx-accent);
-  border: 1px solid var(--wx-accent);
-  border-radius: 3px; padding: 0 4px; font-size: 11px;
+  background: rgba(178, 58, 41, 0.07);
+  border-radius: 4px; padding: 1px 7px;
+  font-size: 11.5px;
 }
-.wx-thumb { flex: 0 0 78px; }
-.wx-thumb img {
-  width: 78px; height: 78px;
+.wx-post-thumb { grid-column: 3; width: 76px; height: 76px; border-radius: 8px; overflow: hidden; }
+.wx-post-thumb img {
+  width: 76px; height: 76px;
   object-fit: cover;
-  border-radius: 6px;
-  background: #f2f2f2;
   display: block;
+  background: #efe9df;
 }
-.wx-empty { padding: 40px 16px; text-align: center; color: #999; font-size: 14px; }
+.wx-empty { padding: 72px 16px; text-align: center; color: #b5aea1; font-size: 14px; }
 
 .wx-footer {
   text-align: center;
-  color: #b2b2b2; font-size: 12px;
-  padding: 24px 0 8px;
+  color: #b5aea1; font-size: 12.5px;
+  padding: 28px 0 10px;
+  margin-top: 14px;
+  border-top: 1px solid var(--wx-line);
 }
 .wx-footer-links { margin-left: 12px; }
-.wx-footer-links a { color: var(--wx-link); margin: 0 6px; }
+.wx-footer-links a { color: #8f887d; margin: 0 6px; transition: color 0.2s ease; }
+.wx-footer-links a:hover { color: var(--wx-accent); }
 
 /* ---------- 分页 ---------- */
-.pager { display: flex; justify-content: center; gap: 8px; padding: 18px 0 2px; flex-wrap: wrap; }
+.pager { display: flex; justify-content: center; gap: 4px; padding: 30px 0 0; flex-wrap: wrap; }
 .pager-btn {
-  font-size: 13px; color: #666;
-  background: var(--wx-card);
-  border-radius: 999px;
-  padding: 6px 14px;
-  transition: all 0.2s ease;
+  font-size: 13.5px; color: #8f887d;
+  padding: 6px 12px;
+  transition: color 0.2s ease;
 }
-.pager-btn.is-current { background: var(--wx-accent); color: #fff; }
-.pager-btn.is-disabled { opacity: 0.4; pointer-events: none; }
+.pager-btn:hover { color: var(--wx-accent); }
+.pager-btn.is-current { color: var(--wx-accent); font-weight: 600; }
+.pager-btn.is-disabled { opacity: 0.35; pointer-events: none; }
 
 /* ---------- 文章页 ---------- */
 .wx-article { max-width: 640px; margin: 0 auto; padding: 20px 16px 40px; }
@@ -282,7 +286,14 @@ img { max-width: 100%; height: auto; }
  */
 
 /* ---------- 小屏适配 ---------- */
+@media (max-width: 560px) {
+  .wx-post { grid-template-columns: 1fr auto; }
+  .wx-post-date { grid-column: 1 / -1; grid-row: 1; padding-top: 0; margin-bottom: 4px; }
+  .wx-post-main { grid-column: 1; grid-row: 2; }
+  .wx-post-thumb { grid-column: 2; grid-row: 2; }
+}
 @media (max-width: 480px) {
   .wx-related-grid { grid-template-columns: 1fr 1fr; }
-  .wx-page, .wx-article { padding-left: 12px; padding-right: 12px; }
+  .wx-page { padding-left: 16px; padding-right: 16px; }
+  .wx-article { padding-left: 12px; padding-right: 12px; }
 }

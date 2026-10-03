@@ -51,7 +51,7 @@ export async function renderHome(c: C): Promise<Response> {
   const perPage = clampInt(settings.postsPerPage, 1, 50, 10)
   const [r, tags] = await Promise.all([listPosts(c.env.DB, { status: 'published', tag, page: pageNum, limit: perPage }), hotTags(c)])
   const posts = await Promise.all(
-    r.items.map(async (p) => toHomePost(p, parseTags(p), await commentCount(c, p.id)))
+    r.items.map(async (p) => toHomePost(p, parseTags(p), await commentCount(c, p.id), readingMinutes(p.content)))
   )
   const html = theme.home({
     settings,

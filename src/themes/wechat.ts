@@ -2,6 +2,7 @@ import type { SettingsMap } from '../types'
 import {
   commentsHtml,
   esc,
+  fmtDate,
   fmtDateCN,
   likesBtn,
   pagerHtml,
@@ -17,18 +18,17 @@ function avatar(name: string): string {
   return `<span class="wx-avatar" aria-hidden="true">${esc(ch)}</span>`
 }
 
-function tabs(settings: SettingsMap, activeTag?: string, tags: string[] = []): string {
-  const t = tags
-    .slice(0, 6)
-    .map(
-      (tag) =>
-        `<a class="wx-tab${tag === activeTag ? ' is-active' : ''}" href="${tagLink(tag)}">${esc(tag)}</a>`
-    )
-    .join('')
-  return `<nav class="wx-tabs">
-  <a class="wx-tab${!activeTag ? ' is-active' : ''}" href="/">全部</a>
-  ${t}
-</nav>`
+/** 刊头下的文字导航：全部 / 热门标签 / 关于 / RSS */
+function mastheadNav(activeTag: string | undefined, tags: string[]): string {
+  const link = (href: string, label: string, active = false) =>
+    `<a class="wx-nav-link${active ? ' is-active' : ''}" href="${href}">${esc(label)}</a>`
+  const links = [
+    link('/', '全部', !activeTag),
+    ...tags.slice(0, 5).map((t) => link(tagLink(t), t, t === activeTag)),
+    link('/about', '关于'),
+    link('/rss.xml', 'RSS'),
+  ]
+  return `<nav class="wx-nav">${links.join('')}</nav>`
 }
 
 export function home(d: {
@@ -43,29 +43,39 @@ export function home(d: {
   const s = d.settings
   const items = d.posts
     .map((p) => {
-      const meta: string[] = [fmtDateCN(p.published_at)]
+      const date = fmtDate(p.published_at)
+      const meta: string[] = []
+      if (p.readingMinutes) meta.push(`${p.readingMinutes} 分钟`)
       if (p.views > 0) meta.push(`${p.views} 次阅读`)
       if (p.commentCount) meta.push(`${p.commentCount} 条留言`)
-      return `<a class="wx-item" href="/post/${esc(p.slug)}">
-  <div class="wx-item-main">
-    <h2 class="wx-item-title">${esc(p.title)}</h2>
-    <p class="wx-item-abs">${esc(p.summary)}</p>
-    <div class="wx-item-meta"><span>${meta.join(' · ')}</span>${p.pinned ? '<b class="wx-pin">置顶</b>' : ''}</div>
+      const dateHtml = date
+        ? `<time class="wx-post-date" datetime="${date}">${date.replace(/-/g, '.')}</time>`
+        : `<span class="wx-post-date">${fmtDateCN(p.published_at)}</span>`
+      const metaHtml =
+        p.pinned || meta.length
+          ? `<p class="wx-post-meta">${p.pinned ? '<b class="wx-pin">置顶</b>' : ''}${
+              meta.length ? `<span>${meta.join(' · ')}</span>` : ''
+            }</p>`
+          : ''
+      return `<a class="wx-post" href="/post/${esc(p.slug)}">
+  ${dateHtml}
+  <div class="wx-post-main">
+    <h2 class="wx-post-title">${esc(p.title)}</h2>
+    ${p.summary ? `<p class="wx-post-abs">${esc(p.summary)}</p>` : ''}
+    ${metaHtml}
   </div>
-  ${p.cover ? `<div class="wx-thumb"><img src="${esc(p.cover)}" loading="lazy" alt=""></div>` : ''}
+  ${p.cover ? `<span class="wx-post-thumb"><img src="${esc(p.cover)}" loading="lazy" alt=""></span>` : ''}
 </a>`
     })
     .join('\n')
 
   return `<div class="wx-page">
-  <header class="wx-profile">
+  <header class="wx-masthead">
     ${avatar(s.siteName)}
-    <div class="wx-profile-main">
-      <h1 class="wx-name">${esc(s.siteName)}</h1>
-      <p class="wx-desc">${esc(s.siteDescription)}</p>
-    </div>
+    <h1 class="wx-masthead-name">${esc(s.siteName)}</h1>
+    ${s.siteDescription ? `<p class="wx-masthead-desc">${esc(s.siteDescription)}</p>` : ''}
+    ${mastheadNav(d.tag, d.hotTags)}
   </header>
-  ${tabs(s, d.tag, d.hotTags)}
   <main class="wx-feed">
     ${items || '<p class="wx-empty">还没有文章，快去后台写下第一篇吧。</p>'}
   </main>

@@ -58,9 +58,10 @@ export interface HomePostView {
   likes: number
   pinned: boolean
   commentCount?: number
+  readingMinutes?: number
 }
 
-export function toHomePost(row: PostRow, tags: string[], commentCount?: number): HomePostView {
+export function toHomePost(row: PostRow, tags: string[], commentCount?: number, readingMinutes?: number): HomePostView {
   return {
     slug: row.slug,
     title: row.title,
@@ -72,6 +73,7 @@ export function toHomePost(row: PostRow, tags: string[], commentCount?: number):
     likes: row.likes,
     pinned: !!row.pinned,
     commentCount,
+    readingMinutes,
   }
 }
 
