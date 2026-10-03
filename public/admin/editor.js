@@ -1,5 +1,5 @@
 /**
- * 墨博编辑器 —— 微信公众号风格写作区
+ * 博客号编辑器 —— 微信公众号风格写作区
  *
  * 能力：
  * - 富文本工具栏（标题/加粗斜体/引用/代码/列表/分割线/链接/图片/视频）
@@ -7,7 +7,7 @@
  * - 自动保存草稿 + 发布 / 转草稿 / 预览
  * - Markdown 模式互转
  * - 排版体检：静态检查《微信公众平台编辑器插件开发规范》要点
- * - 插件系统：window.MoBlog.registerPlugin（见 docs/PLUGINS.md）
+ * - 插件系统：window.BlogHao.registerPlugin（见 docs/PLUGINS.md）
  */
 
 const editorPage = () => document.querySelector('.editor-page')
@@ -212,7 +212,7 @@ export function runChecks(html) {
   // 1.4.3 图片 data-w
   doc.body.querySelectorAll('img').forEach((img) => {
     if (!img.getAttribute('data-w'))
-      add('info', '1.4.3 data-w', '图片缺少 data-w（原始像素宽度），加载超时时缺少可靠的宽度兜底；墨博上传的图会自动补上')
+      add('info', '1.4.3 data-w', '图片缺少 data-w（原始像素宽度），加载超时时缺少可靠的宽度兜底；博客号上传的图会自动补上')
   })
 
   return issues
@@ -1039,7 +1039,7 @@ export async function mountEditor(root, postId) {
     },
     notify: (m) => toast(String(m || '')),
   }
-  window.MoBlog = {
+  window.BlogHao = {
     version: '1.0',
     registerPlugin(p) {
       if (p && p.name && typeof p.onClick === 'function') plugins.push(p)

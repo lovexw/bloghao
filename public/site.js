@@ -1,4 +1,4 @@
-/* 墨博前台交互：点赞 + 留言表单（所有主题共用，保持极小体积） */
+/* 博客号前台交互：点赞 + 留言表单（所有主题共用，保持极小体积） */
 (function () {
   'use strict'
 
@@ -22,11 +22,11 @@
     e.preventDefault()
     var slug = btn.getAttribute('data-slug')
     if (!slug || btn.dataset.busy) return
-    var liked = localStorage.getItem('moblog-liked-' + slug) === '1'
+    var liked = localStorage.getItem('bloghao-liked-' + slug) === '1'
     btn.dataset.busy = '1'
     postJSON('/api/public/like/' + encodeURIComponent(slug), { delta: liked ? -1 : 1 })
       .then(function (d) {
-        localStorage.setItem('moblog-liked-' + slug, liked ? '0' : '1')
+        localStorage.setItem('bloghao-liked-' + slug, liked ? '0' : '1')
         btn.classList.toggle('liked', !liked)
         var count = btn.querySelector('[data-count]')
         if (count && typeof d.likes === 'number') count.textContent = String(d.likes)

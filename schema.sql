@@ -1,4 +1,4 @@
--- 墨博 MoBlog 数据库结构（D1 / SQLite）
+-- 博客号 BlogHao 数据库结构（D1 / SQLite）
 -- 幂等：可以重复执行，用于首次初始化与升级
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

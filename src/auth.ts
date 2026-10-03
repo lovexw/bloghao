@@ -28,7 +28,7 @@ export function safeEqual(a: string, b: string): boolean {
   return r === 0
 }
 
-export const SESSION_COOKIE = 'moblog_session'
+export const SESSION_COOKIE = 'bloghao_session'
 const SESSION_TTL = 30 * 24 * 3600 * 1000 // 30 天
 
 export function getCookie(req: Request, name: string): string | null {

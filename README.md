@@ -1,13 +1,13 @@
 <div align="center">
 
-<img src="public/favicon.svg" width="76" alt="墨博 MoBlog">
+<img src="public/favicon.svg" width="76" alt="博客号 BlogHao">
 
-# 墨博 MoBlog
+# 博客号 BlogHao
 
-**住在 Cloudflare 上的轻写作博客 · 公众号风格 · 免费部署 · MIT 开源**
+**微信有公众号，你有博客号。** 轻松开号，认真写字 · 公众号风格 · 免费部署 · MIT 开源
 
-[官网](https://moblog-site.0471666.workers.dev) ·
-[在线示例](https://moblog.0471666.workers.dev) ·
+[官网](https://bloghao-site.0471666.workers.dev) ·
+[在线示例](https://bloghao.0471666.workers.dev) ·
 [五分钟部署](#-五分钟部署) ·
 [文档](#-文档)
 
@@ -17,16 +17,19 @@
 
 ---
 
-墨博（MoBlog）是一套**完全运行在 Cloudflare** 上的博客系统：网页由 Workers 边缘渲染，文字存进 D1，图片传进 R2 —— 服务器、运维、账单，统统不存在。写作后台对标微信公众号编辑器，截图 `⌘V` 粘贴即自动上云，发布前还能按《微信公众平台编辑器插件开发规范》给文章做一次「排版体检」。
+博客号（BlogHao）是一套**完全运行在 Cloudflare** 上的博客系统：网页由 Workers 边缘渲染，文字存进 D1，图片传进 R2 —— 服务器、运维、账单，统统不存在。写作后台对标微信公众号编辑器，截图 `⌘V` 粘贴即自动上云，发布前还能按《微信公众平台编辑器插件开发规范》给文章做一次「排版体检」。
+
+> **博客号，博客好。** 微信有公众号，你有博客号——不用申请、不用排队，注册账号的那一刻它就归你了。
 
 | 🖋️ 写作后台 | 📱 手机上的阅读端 |
 | --- | --- |
-| <img src="website/public/assets/editor.png" width="420" alt="墨博编辑器"> | <img src="website/public/assets/theme-wechat.png" width="240" alt="微信公众号主题"> |
+| <img src="website/public/assets/editor.png" width="420" alt="博客号编辑器"> | <img src="website/public/assets/theme-wechat.png" width="240" alt="微信公众号主题"> |
 
-## 为什么是墨博
+## 为什么是博客号
 
+- **微信有公众号，你有博客号**：名字就是态度——每个人都能轻松拥有一个自己的号
 - **零成本起步**：Workers / D1 / R2 免费额度对个人博客是天文数字，不用绑卡也能跑
-- **写作体验优先**：像发微博一样轻地写，像写公众号一样美地排
+- **写作体验优先**：像发动态一样轻地写，像写文章一样认真地排
 - **数据 100% 归你**：库是你自己的 D1，图是你自己的 R2，代码在你自己的 GitHub
 - **没有任何框架枷锁**：后端约 10 个 TS 文件 + 原生 JS 后台，无构建链，二次开发零门槛
 
@@ -37,7 +40,7 @@
 | ✍️ **公众号风写作后台** | 富文本工具栏 / Markdown 模式互转 / 粘贴与拖拽自动上传 / 自动保存 / 一键预览 |
 | 🩺 **排版体检** | 按微信官方规范静态检查 13 条规则（固定宽度、行高叠字、`!important`、嵌套层级、`data-w`…），支持一键修复 |
 | 🎨 **四套主题** | 微信公众号（明亮）/ 纸墨 / 极简 / 夜航，后台即点即换；主题即模块，开放注册 |
-| 🧩 **编辑器插件** | `window.MoBlog.registerPlugin({...})`，一个 JS 文件扩展编辑器，无需构建 |
+| 🧩 **编辑器插件** | `window.BlogHao.registerPlugin({...})`，一个 JS 文件扩展编辑器，无需构建 |
 | 🖼️ **R2 图床** | 图片视频私有存储，Worker 鉴权输出 + 长缓存 + ETag 304，媒体库可视化管理 |
 | 🔒 **安全默认开启** | PBKDF2 / HttpOnly 会话 / CSRF 同源校验 / HTML 白名单净化 / 评论蜜罐限流 / CSP |
 | ⚡ **快** | SSR 直出、主题 CSS 内联零额外请求、边缘节点全球分发 |
@@ -61,13 +64,13 @@
 
 ```bash
 # 1. 克隆并安装
-git clone https://github.com/lovexw/moblog.git
-cd moblog && npm install
+git clone https://github.com/lovexw/bloghao.git
+cd bloghao && npm install
 npx wrangler login
 
 # 2. 创建资源
-npx wrangler d1 create moblog-db            # 把返回的 database_id 填进 wrangler.jsonc
-npx wrangler r2 bucket create moblog-images
+npx wrangler d1 create bloghao-db            # 把返回的 database_id 填进 wrangler.jsonc
+npx wrangler r2 bucket create bloghao-images
 
 # 3. 初始化数据库（幂等，可重复执行）
 npx wrangler d1 execute DB --remote --file schema.sql
@@ -76,13 +79,13 @@ npx wrangler d1 execute DB --remote --file schema.sql
 npm run deploy
 ```
 
-打开 `https://moblog.<你的子域>.workers.dev/admin/`，**首次进入即创建管理员**，欢迎文章已就位，删掉它开始写你自己的第一篇吧。
+打开 `https://bloghao.<你的子域>.workers.dev/admin/`，**首次进入即创建管理员**，欢迎文章已就位，删掉它开始写你自己的第一篇吧。
 
 <details>
 <summary><b>推上 GitHub，开启 push 自动部署</b></summary>
 
 ```bash
-git remote add origin git@github.com:<你>/moblog.git
+git remote add origin git@github.com:<你>/bloghao.git
 git push -u origin main
 ```
 
@@ -102,7 +105,7 @@ npm run typecheck       # TypeScript 类型检查
 ## 📦 目录结构
 
 ```
-moblog/
+bloghao/
 ├── src/                # Cloudflare Worker（后端 + SSR + 主题）
 │   ├── index.ts        # 入口与路由
 │   ├── api.ts          # 全部 JSON API
@@ -133,7 +136,7 @@ moblog/
 <details>
 <summary><b>workers.dev 域名访问慢或不通？</b></summary>
 
-绑定你自己的域名：Cloudflare 面板 → Workers & Pages → moblog → Domains & Routes → Add Custom domain。绑定后把「设置 → 站点链接」改成新域名（影响 RSS / sitemap 绝对链接）。
+绑定你自己的域名：Cloudflare 面板 → Workers & Pages → bloghao → Domains & Routes → Add Custom domain。绑定后把「设置 → 站点链接」改成新域名（影响 RSS / sitemap 绝对链接）。
 </details>
 
 <details>

@@ -14,7 +14,7 @@ export interface ThemePageOptions {
 
 /** HTML 骨架：meta/OG/内联主题 CSS/站点脚本，所有主题共用 */
 export function page(o: ThemePageOptions): string {
-  const siteName = o.settings.siteName || 'MoBlog'
+  const siteName = o.settings.siteName || 'BlogHao'
   const desc = (o.description || o.settings.siteDescription || '').slice(0, 160)
   const siteUrl = (o.settings.siteUrl || '').replace(/\/+$/, '')
   const title = o.title ? `${o.title} - ${siteName}` : siteName

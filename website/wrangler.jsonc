@@ -1,8 +1,8 @@
-// 墨博官网 —— Cloudflare Workers 静态站点（无需任何构建）
+// 博客号官网 —— Cloudflare Workers 静态站点（无需任何构建）
 // 部署：cd website && wrangler deploy
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
-  "name": "moblog-site",
+  "name": "bloghao-site",
   "compatibility_date": "2025-09-01",
   "assets": {
     "directory": "./public",

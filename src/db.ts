@@ -2,11 +2,11 @@ import type { CommentRow, PostRow, SettingsMap } from './types'
 import { clampInt } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
-  siteName: '墨博 MoBlog',
-  siteDescription: '一支笔，一块云上的小院。写点东西，就当小微博。',
+  siteName: '博客号 BlogHao',
+  siteDescription: '微信有公众号，你有博客号。想写就写，一切都归你。',
   theme: 'wechat',
   siteUrl: '',
-  footerText: '由 MoBlog 驱动 · 住在 Cloudflare 上',
+  footerText: '由 博客号 驱动 · 住在 Cloudflare 上',
   allowComments: '1',
   moderateComments: '0',
   postsPerPage: '10',
@@ -152,7 +152,7 @@ export async function countUsers(db: D1Database): Promise<number> {
 
 export async function seedWelcomePost(db: D1Database, authorId: number): Promise<void> {
   const now = Date.now()
-  const content = `<p>你好呀，我是你的博客小院的第一篇文章 👋</p><p>这个博客完全住在 <strong>Cloudflare</strong> 上：网页由 Workers 渲染，文字存进 D1，图片传到 R2 图床——全世界的访问者都很快，而且每月免费额度足够你写很多年。</p><h2>写作的感觉，是最重要的</h2><p>打开 <a href="/admin/">后台</a>，你会看到一个熟悉的界面：像写公众号一样写作。标题、正文、封面、标签，都在一屏里；截图直接 <strong>Ctrl/⌘ + V</strong> 粘贴进正文，图片会自动传到你的 R2 图床。</p><blockquote>写博客最好的状态：像发一条微博一样轻，像写一篇文章一样认真。</blockquote><h3>试试这些</h3><ul><li>粘贴一张截图，体验自动上传</li><li>点右上角「体检」，检查排版是否符合微信排版规范</li><li>在「设置」里切换四套主题：微信风 / 纸墨 / 极简 / 夜航</li></ul><p>现在，删掉这篇文章，写下你自己的第一篇吧。</p>`
+  const content = `<p>你好呀，这是你博客号的第一篇文章 👋</p><p>微信有<strong>公众号</strong>，你有<strong>博客号</strong>——不用申请、不用排队，注册账号的那一刻它就归你了，而且完全住在 <strong>Cloudflare</strong> 上：网页由 Workers 渲染，文字存进 D1，图片传到 R2，全世界的访客都很快，每月免费额度足够你写很多年。</p><h2>写作，就要轻松</h2><p>打开 <a href="/admin/">后台</a>，像写公众号一样写：标题、正文、封面、标签都在一屏里；截图直接 <strong>Ctrl/⌘ + V</strong> 粘贴进正文，图片自动传到你的 R2 图床。</p><blockquote>博客号，博客好。写作最好的状态：像发动态一样轻，像写文章一样认真。</blockquote><h3>试试这些</h3><ul><li>粘贴一张截图，体验自动上传</li><li>点右上角「体检」，检查排版是否符合微信排版规范</li><li>在「设置」里换一套主题：微信公众号风 / 纸墨 / 极简 / 夜航</li></ul><p>现在，删掉这篇文章，写下属于你的第一篇吧。</p>`
   // OR IGNORE：slug 已存在（例如线上已手动播种过）时静默跳过，保证首次创建管理员永不失败
   await db
     .prepare(
@@ -160,10 +160,10 @@ export async function seedWelcomePost(db: D1Database, authorId: number): Promise
        VALUES (?, ?, ?, ?, '', ?, 'published', 0, ?, ?, ?, ?)`
     )
     .bind(
-      'hello-moblog',
-      '你好，墨博！这是你的第一篇文章',
+      'hello-bloghao',
+      '你好，博客号！这是你的第一篇文章',
       content,
-      '欢迎来到你的博客小院：写作像发微博一样轻，排版符合公众号规范，整站跑在 Cloudflare 上。',
+      '欢迎开号：微信有公众号，你有博客号。想写就写，一切都归你。',
       JSON.stringify(['开始使用']),
       authorId,
       now,

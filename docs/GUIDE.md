@@ -1,4 +1,4 @@
-# 墨博 MoBlog 使用手册
+# 博客号 BlogHao 使用手册
 
 > 面向博客作者：从第一次进后台，到每天顺手写一篇。部署相关问题见 [DEPLOY.md](DEPLOY.md)。
 
@@ -161,12 +161,12 @@ npx wrangler d1 execute DB --remote --file schema.sql   # 幂等，安全
 **备份**（建议每月一次）：
 
 ```bash
-npx wrangler d1 export moblog-db --remote --output=backup-$(date +%F).sql   # 文章/评论/设置
-npx wrangler r2 object get moblog-images/ --file=?   # 图片按需从媒体库下载
+npx wrangler d1 export bloghao-db --remote --output=backup-$(date +%F).sql   # 文章/评论/设置
+npx wrangler r2 object get bloghao-images/ --file=?   # 图片按需从媒体库下载
 ```
 
-恢复：`npx wrangler d1 execute moblog-db --remote --file=backup.sql`。
+恢复：`npx wrangler d1 execute bloghao-db --remote --file=backup.sql`。
 
 ---
 
-遇到没覆盖到的问题？去 [GitHub Issues](https://github.com/lovexw/moblog/issues) 提一个，或者在示例博客的留言区聊聊 🙂
+遇到没覆盖到的问题？去 [GitHub Issues](https://github.com/lovexw/bloghao/issues) 提一个，或者在示例博客的留言区聊聊 🙂

@@ -1,14 +1,14 @@
 # 插件开发指南
 
-墨博编辑器内置一个极简插件系统：一个插件 = 一个 JS 文件 + manifest 里的一行。无需构建、无需重新部署后台。
+博客号编辑器内置一个极简插件系统：一个插件 = 一个 JS 文件 + manifest 里的一行。无需构建、无需重新部署后台。
 
 ## 快速上手：写一个「每日一句」按钮
 
 1. 新建 `public/plugins/quote-of-day.js`：
 
 ```js
-window.MoBlog &&
-  window.MoBlog.registerPlugin({
+window.BlogHao &&
+  window.BlogHao.registerPlugin({
     name: 'quote-of-day',            // 全局唯一
     title: '插入每日一句',            // 悬停提示
     icon: '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 14c0-4 2-7 6-9l1 2c-2 1-3 3-3 5h3v6H6zm9 0c0-4 2-7 6-9l1 2c-2 1-3 3-3 5h3v6h-7z" fill="currentColor"/></svg>',
@@ -31,7 +31,7 @@ window.MoBlog &&
 
 3. 刷新编辑器页面，工具栏末尾出现新按钮。
 
-## 插件 API（`window.MoBlog`）
+## 插件 API（`window.BlogHao`）
 
 | 成员 | 说明 |
 | --- | --- |
@@ -42,13 +42,13 @@ window.MoBlog &&
 | `notify(msg)` | 弹出 toast 提示 |
 | `version` | 插件 API 版本，当前 `'1.0'` |
 
-`onClick(ctx)` 的 `ctx` 与 `window.MoBlog` 上的方法相同，直接用 `ctx.insertHTML(...)` 即可。
+`onClick(ctx)` 的 `ctx` 与 `window.BlogHao` 上的方法相同，直接用 `ctx.insertHTML(...)` 即可。
 
 ## 加载机制
 
 编辑器初始化时读取 `/plugins/manifest.json`（数组，按序加载），逐个 `import('/plugins/<文件名>')`。单个插件加载失败只会在控制台告警，不影响编辑器与其他插件。
 
-**建议**：插件自己的状态（如设置项）存 `localStorage`（加前缀 `moblog-plugin-<name>-`），不要请求外部服务——CSP 与规范都鼓励完全本地化。
+**建议**：插件自己的状态（如设置项）存 `localStorage`（加前缀 `bloghao-plugin-<name>-`），不要请求外部服务——CSP 与规范都鼓励完全本地化。
 
 ## 注意事项
 

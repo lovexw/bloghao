@@ -1,8 +1,8 @@
-// 墨博 MoBlog —— Cloudflare Workers 配置
+// 博客号 BlogHao —— Cloudflare Workers 配置
 // 部署前需要把下面 d1_databases 的 database_id 换成你自己的，详见 docs/DEPLOY.md
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "moblog",
+  "name": "bloghao",
   "main": "src/index.ts",
   "compatibility_date": "2025-09-01",
 
@@ -15,17 +15,17 @@
   // 主题 CSS 以文本形式打进 Worker，随页面内联输出（零额外请求）
   "rules": [{ "type": "Text", "globs": ["**/*.css"] }],
 
-  // D1 数据库：wrangler d1 create moblog-db 后，把返回的 database_id 填到这里
+  // D1 数据库：wrangler d1 create bloghao-db 后，把返回的 database_id 填到这里
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "moblog-db",
+      "database_name": "bloghao-db",
       "database_id": "7e6a761c-0e97-4b12-8722-a61082d9de77"
     }
   ],
 
-  // R2 存储桶（图床）：wrangler r2 bucket create moblog-images
-  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "moblog-images" }],
+  // R2 存储桶（图床）：wrangler r2 bucket create bloghao-images
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "bloghao-images" }],
 
   "observability": { "enabled": true }
 }

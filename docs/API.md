@@ -16,7 +16,7 @@
 留言。Body：
 
 ```json
-{ "slug": "hello-moblog", "nickname": "路人甲", "content": "写得真好", "link": "" }
+{ "slug": "hello-bloghao", "nickname": "路人甲", "content": "写得真好", "link": "" }
 ```
 
 - `link` 是蜜罐字段，正常客户端永远传空字符串/不传

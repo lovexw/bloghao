@@ -1,4 +1,4 @@
-# 墨博 MoBlog 完整部署教程
+# 博客号 BlogHao 完整部署教程
 
 从零开始，把你的博客部署到 Cloudflare（全程可使用免费套餐）。
 
@@ -9,7 +9,7 @@
 - 本项目代码（clone 或 fork 后下载）
 
 ```bash
-cd moblog
+cd bloghao
 npm install
 npx wrangler login   # 会打开浏览器授权，登录你的 Cloudflare 账号
 npx wrangler whoami  # 确认登录成功
@@ -18,7 +18,7 @@ npx wrangler whoami  # 确认登录成功
 ## 1. 创建 D1 数据库
 
 ```bash
-npx wrangler d1 create moblog-db
+npx wrangler d1 create bloghao-db
 ```
 
 输出大致如下：
@@ -26,7 +26,7 @@ npx wrangler d1 create moblog-db
 ```toml
 [[d1_databases]]
 binding = "DB"
-database_name = "moblog-db"
+database_name = "bloghao-db"
 database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 ```
 
@@ -36,7 +36,7 @@ database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 "d1_databases": [
   {
     "binding": "DB",
-    "database_name": "moblog-db",
+    "database_name": "bloghao-db",
     "database_id": "粘贴你的 database_id"
   }
 ]
@@ -51,13 +51,13 @@ npx wrangler d1 execute DB --remote --file schema.sql
 ## 2. 创建 R2 存储桶（图床）
 
 ```bash
-npx wrangler r2 bucket create moblog-images
+npx wrangler r2 bucket create bloghao-images
 ```
 
 > R2 免费额度：10GB 存储 / 每月 100 万次读、1000 万次写，个人博客绰绰有余。
 > 不需要给桶开公开访问——图片统一通过你的 Worker 的 `/images/xxx` 路径带缓存头输出，桶保持私有更安全。
 
-`wrangler.jsonc` 里的 `"bucket_name": "moblog-images"` 若改名请同步修改。
+`wrangler.jsonc` 里的 `"bucket_name": "bloghao-images"` 若改名请同步修改。
 
 ## 3. 首次部署
 
@@ -68,8 +68,8 @@ npm run deploy
 成功后 wrangler 会输出你的访问地址，例如：
 
 ```
-Published moblog v1.0.0
-https://moblog.<你的子域>.workers.dev
+Published bloghao v1.0.0
+https://bloghao.<你的子域>.workers.dev
 ```
 
 ## 4. 初始化管理员
@@ -99,7 +99,7 @@ https://你的域名/admin/
 
 ## 6. 绑定自定义域名（可选）
 
-方法一（面板操作，推荐）：Cloudflare Dashboard → Workers & Pages → `moblog` → Settings → Domains & Routes → **Add → Custom domain**，填入你托管在同一 Cloudflare 账号下的域名（如 `blog.example.com`），证书自动签发。
+方法一（面板操作，推荐）：Cloudflare Dashboard → Workers & Pages → `bloghao` → Settings → Domains & Routes → **Add → Custom domain**，填入你托管在同一 Cloudflare 账号下的域名（如 `blog.example.com`），证书自动签发。
 
 方法二（命令行）：在 `wrangler.jsonc` 增加后重新 `npm run deploy`：
 
@@ -114,9 +114,9 @@ https://你的域名/admin/
 ```bash
 git init
 git add .
-git commit -m "feat: 墨博 MoBlog 初始化"
+git commit -m "feat: 博客号 BlogHao 初始化"
 # GitHub 上新建空仓库后：
-git remote add origin git@github.com:<你>/moblog.git
+git remote add origin git@github.com:<你>/bloghao.git
 git branch -M main
 git push -u origin main
 ```
@@ -134,11 +134,11 @@ git push -u origin main
 | 事项 | 命令 / 操作 |
 | --- | --- |
 | 看实时日志 | `npx wrangler tail` |
-| 手动备份 D1（导出 SQL） | `npx wrangler d1 export moblog-db --remote --output=backup.sql` |
-| 恢复备份 | `npx wrangler d1 execute moblog-db --remote --file=backup.sql` |
-| 浏览数据 | Dashboard → Storage & Databases → D1 → moblog-db → Console |
+| 手动备份 D1（导出 SQL） | `npx wrangler d1 export bloghao-db --remote --output=backup.sql` |
+| 恢复备份 | `npx wrangler d1 execute bloghao-db --remote --file=backup.sql` |
+| 浏览数据 | Dashboard → Storage & Databases → D1 → bloghao-db → Console |
 | 重置管理员（清空用户重新创建） | `npx wrangler d1 execute DB --remote --command "DELETE FROM users; DELETE FROM sessions;"`，再访问 `/admin/` |
-| 查看图片占用量 | Dashboard → R2 → moblog-images，或后台「媒体」页 |
+| 查看图片占用量 | Dashboard → R2 → bloghao-images，或后台「媒体」页 |
 
 ## 9. 本地开发
 

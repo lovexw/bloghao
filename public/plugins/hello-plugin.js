@@ -1,12 +1,12 @@
 /**
  * 示例插件：文末小尾巴
- * 演示墨博编辑器插件 API —— 加载后会在工具栏出现一个按钮，
+ * 演示博客号编辑器插件 API —— 加载后会在工具栏出现一个按钮，
  * 点击即在正文末尾插入一段「— 完 —」签名区。
  *
  * 开发文档见 docs/PLUGINS.md
  */
-window.MoBlog &&
-  window.MoBlog.registerPlugin({
+window.BlogHao &&
+  window.BlogHao.registerPlugin({
     name: 'hello-sign',
     title: '插入文末小尾巴',
     icon:

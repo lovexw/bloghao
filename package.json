@@ -1,8 +1,8 @@
 {
-  "name": "moblog",
+  "name": "bloghao",
   "version": "1.0.0",
   "private": true,
-  "description": "墨博 MoBlog —— 住在 Cloudflare 上的轻写作博客系统（Workers + D1 + R2），公众号风格，优雅丝滑",
+  "description": "博客号 BlogHao —— 微信有公众号，你有博客号。完全住在 Cloudflare 上的轻写作博客系统（Workers + D1 + R2）",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

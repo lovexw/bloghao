@@ -1,4 +1,4 @@
-/* 墨博后台 SPA（原生 ES Module，无构建依赖） */
+/* 博客号后台 SPA（原生 ES Module，无构建依赖） */
 import { mountEditor } from './editor.js'
 
 const $app = document.getElementById('app')
@@ -98,7 +98,7 @@ function authView(mode) {
   $app.innerHTML = `<div class="auth-wrap"><div class="auth-card">
     <div class="auth-logo">
       <img src="/favicon.svg" alt="">
-      <h1>${isSetup ? '创建管理员' : '登录墨博后台'}</h1>
+      <h1>${isSetup ? '创建管理员' : '登录博客号后台'}</h1>
       <p>${isSetup ? '第一次使用，设置你的管理员账号' : esc(state.settings?.siteName || '')}</p>
     </div>
     <form id="auth-form">
@@ -134,7 +134,7 @@ async function shellView(active, contentHTML) {
   const pending = state.pendingComments || 0
   $app.innerHTML = `<div class="shell">
     <aside class="sidebar">
-      <div class="side-logo"><img src="/favicon.svg" alt="">墨博</div>
+      <div class="side-logo"><img src="/favicon.svg" alt="">博客号</div>
       <nav class="side-nav">
         <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/">${I.home}<span>概览</span></a>
         <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts">${I.post}<span>文章</span></a>
@@ -535,7 +535,7 @@ async function viewSettings() {
   document.getElementById('btn-save').addEventListener('click', async () => {
     const g = (id) => document.getElementById(id)
     const body = {
-      siteName: g('st-siteName').value.trim() || '墨博',
+      siteName: g('st-siteName').value.trim() || '博客号',
       siteDescription: g('st-siteDescription').value.trim(),
       siteUrl: g('st-siteUrl').value.trim(),
       footerText: g('st-footerText').value.trim(),
