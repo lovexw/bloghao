@@ -86,6 +86,16 @@ export function home(d: {
 </div>`
 }
 
+/** 文章/关于页顶部的返回导航 */
+function topnav(): string {
+  return `<nav class="wx-topnav">
+  <a class="wx-back" href="/">
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M15 4l-8 8 8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    返回首页
+  </a>
+</nav>`
+}
+
 export function post(d: {
   settings: SettingsMap
   post: {
@@ -125,6 +135,7 @@ export function post(d: {
     : ''
 
   return `<div class="wx-article">
+  ${topnav()}
   <h1 class="wx-title">${esc(p.title)}</h1>
   <div class="wx-meta">
     ${avatar(s.siteName)}
@@ -151,6 +162,7 @@ export function post(d: {
 
 export function about(d: { settings: SettingsMap; contentHtml: string }): string {
   return `<div class="wx-article">
+  ${topnav()}
   <h1 class="wx-title">关于</h1>
   <div class="wx-meta">${avatar(d.settings.siteName)}
     <div class="wx-meta-main"><span class="wx-account">${esc(d.settings.siteName)}</span></div>
