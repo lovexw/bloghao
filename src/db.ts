@@ -1,4 +1,4 @@
-import type { CommentRow, PostRow, SettingsMap } from './types'
+import type { CategoryRow, CommentRow, PostRow, SettingsMap } from './types'
 import { clampInt } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   moderateComments: '0',
   postsPerPage: '10',
   about: '<p>在这里写下关于你的故事。</p>',
+  faviconUrl: '',
 }
 
 export async function getSettings(db: D1Database): Promise<SettingsMap> {
@@ -50,6 +51,7 @@ export interface ListPostsOptions {
   status?: 'published' | 'draft' | 'all'
   q?: string
   tag?: string
+  categorySlug?: string
   page?: number
   limit?: number
 }
@@ -79,6 +81,10 @@ export async function listPosts(db: D1Database, opts: ListPostsOptions = {}): Pr
   if (opts.tag) {
     where.push("tags LIKE ? ESCAPE '\\'")
     binds.push(`%${JSON.stringify(opts.tag).slice(1, -1).replace(/[%_\\]/g, (m) => '\\' + m)}%`)
+  }
+  if (opts.categorySlug) {
+    where.push('id IN (SELECT post_id FROM post_categories WHERE category_id IN (SELECT id FROM categories WHERE slug = ?))')
+    binds.push(opts.categorySlug)
   }
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
   const orderSql =
@@ -143,6 +149,85 @@ export async function relatedPosts(db: D1Database, post: PostRow, limit = 3): Pr
     .bind(post.id, limit)
     .all<PostRow>()
   return results ?? []
+}
+
+/* ---------------- 分类 ---------------- */
+
+export async function listCategories(db: D1Database, opts: { withCount?: boolean } = {}): Promise<(CategoryRow & { post_count?: number })[]> {
+  if (opts.withCount) {
+    const { results } = await db
+      .prepare(
+        `SELECT c.*, COUNT(pc.post_id) AS post_count
+         FROM categories c LEFT JOIN post_categories pc ON pc.category_id = c.id
+         GROUP BY c.id ORDER BY c.sort ASC, c.id ASC`
+      )
+      .all<CategoryRow & { post_count: number }>()
+    return results ?? []
+  }
+  const { results } = await db.prepare('SELECT * FROM categories ORDER BY sort ASC, id ASC').all<CategoryRow>()
+  return results ?? []
+}
+
+export async function getCategoryBySlug(db: D1Database, slug: string): Promise<CategoryRow | null> {
+  return db.prepare('SELECT * FROM categories WHERE slug = ?').bind(slug).first<CategoryRow>()
+}
+
+export async function getCategoryById(db: D1Database, id: number): Promise<CategoryRow | null> {
+  return db.prepare('SELECT * FROM categories WHERE id = ?').bind(id).first<CategoryRow>()
+}
+
+export async function uniqueCategorySlug(db: D1Database, base: string, excludeId?: number): Promise<string> {
+  let slug = base
+  for (let i = 2; i < 100; i++) {
+    const row = await db.prepare('SELECT id FROM categories WHERE slug = ?').bind(slug).first<{ id: number }>()
+    if (!row || row.id === excludeId) return slug
+    slug = `${base}-${i}`
+  }
+  return `${base}-${Date.now().toString(36)}`
+}
+
+export async function createCategory(db: D1Database, name: string, slug: string, sort = 0): Promise<CategoryRow> {
+  const res = await db
+    .prepare('INSERT INTO categories (name, slug, sort, created_at) VALUES (?, ?, ?, ?)')
+    .bind(name, slug, sort, Date.now())
+    .run()
+  const row = await getCategoryById(db, Number(res.meta.last_row_id))
+  if (!row) throw new Error('分类创建失败')
+  return row
+}
+
+export async function setPostCategory(db: D1Database, postId: number, categoryId: number | null): Promise<void> {
+  if (categoryId == null) {
+    await db.prepare('DELETE FROM post_categories WHERE post_id = ?').bind(postId).run()
+    return
+  }
+  await db
+    .prepare('INSERT INTO post_categories (post_id, category_id) VALUES (?, ?) ON CONFLICT(post_id) DO UPDATE SET category_id = excluded.category_id')
+    .bind(postId, categoryId)
+    .run()
+}
+
+export async function getPostCategoryId(db: D1Database, postId: number): Promise<number | null> {
+  const row = await db
+    .prepare('SELECT category_id FROM post_categories WHERE post_id = ?')
+    .bind(postId)
+    .first<{ category_id: number }>()
+  return row?.category_id ?? null
+}
+
+/** 批量取一组文章的分类名（后台列表展示用）：{postId: name} */
+export async function categoryNameMap(db: D1Database, postIds: number[]): Promise<Map<number, string>> {
+  if (!postIds.length) return new Map()
+  const ph = postIds.map(() => '?').join(',')
+  const { results } = await db
+    .prepare(
+      `SELECT pc.post_id, c.name FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id IN (${ph})`
+    )
+    .bind(...postIds)
+    .all<{ post_id: number; name: string }>()
+  const m = new Map<number, string>()
+  for (const r of results ?? []) m.set(r.post_id, r.name)
+  return m
 }
 
 export async function countUsers(db: D1Database): Promise<number> {

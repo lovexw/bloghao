@@ -79,6 +79,7 @@ function confirmBox(text) {
 const I = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
   post: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 4h9l4 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5M9 13h7M9 17h5"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a1 1 0 0 1 1-1h5l2 2.5h9a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l11-11-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg>',
   comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
@@ -138,6 +139,7 @@ async function shellView(active, contentHTML) {
       <nav class="side-nav">
         <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/">${I.home}<span>概览</span></a>
         <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts">${I.post}<span>文章</span></a>
+        <a class="side-item${active === 'categories' ? ' is-active' : ''}" href="#/categories">${I.folder}<span>分类</span></a>
         <a class="side-item${active === 'editor' ? ' is-active' : ''}" href="#/editor/new">${I.edit}<span>写作</span></a>
         <a class="side-item${active === 'comments' ? ' is-active' : ''}" href="#/comments">${I.comment}<span>评论</span>${pending ? `<span class="side-badge">${pending}</span>` : ''}</a>
         <a class="side-item${active === 'media' ? ' is-active' : ''}" href="#/media">${I.image}<span>媒体</span></a>
@@ -230,6 +232,7 @@ async function viewPosts() {
         <div class="post-meta">
           <span>${p.slug}</span><span>·</span><span>${p.views} 阅读</span><span>·</span><span>${p.likes} 赞</span>
           <span>·</span><span>${fmtDateTime(p.published_at || p.updated_at)}</span>
+          ${p.categoryName ? `<span>·</span><span>${esc(p.categoryName)}</span>` : ''}
           ${p.tagList && p.tagList.length ? `<span>·</span><span>${p.tagList.map(esc).join(' / ')}</span>` : ''}
         </div>
       </div>
@@ -297,6 +300,88 @@ async function viewPosts() {
       await api(`/admin/posts/${id}`, { method: 'DELETE' })
       toast('已删除')
       viewPosts()
+    })
+  })
+}
+
+/* ---------------- 分类管理 ---------------- */
+async function viewCategories() {
+  let d
+  try {
+    d = await api('/admin/categories')
+  } catch (e) {
+    return handleApiErr(e)
+  }
+  const rows = d.categories
+    .map(
+      (c) => `<div class="cat-row" data-id="${c.id}">
+      <div class="cat-main">
+        <span class="cat-name">${esc(c.name)}</span>
+        <span class="cat-slug">/category/${esc(c.slug)} · ${c.post_count ?? 0} 篇</span>
+      </div>
+      <div class="post-ops">
+        <button class="btn btn-ghost btn-sm" data-act="edit">编辑</button>
+        <button class="btn btn-ghost btn-sm btn-danger" data-act="del">删除</button>
+      </div>
+    </div>`
+    )
+    .join('')
+
+  await shellView(
+    'categories',
+    `<div class="page-head"><div><div class="page-title">分类</div><div class="page-sub">文章的大归类，与随手的标签互补</div></div></div>
+    <div class="toolbar">
+      <input class="input" id="cat-name" placeholder="新分类名称，如：生活随笔" maxlength="20">
+      <button class="btn btn-primary" id="cat-add">添加分类</button>
+    </div>
+    <div class="panel">${rows || '<div class="empty-box">还没有分类，添加一个吧</div>'}</div>`
+  )
+
+  document.getElementById('cat-add').addEventListener('click', async () => {
+    const el = document.getElementById('cat-name')
+    const name = el.value.trim()
+    if (!name) return toast('先填个分类名', true)
+    try {
+      await api('/admin/categories', { method: 'POST', body: { name } })
+      toast('分类已创建')
+      viewCategories()
+    } catch (e) {
+      toast(e.message, true)
+    }
+  })
+
+  $app.querySelectorAll('.cat-row').forEach((row) => {
+    const id = Number(row.dataset.id)
+    const cat = d.categories.find((c) => c.id === id)
+    row.querySelector('[data-act=edit]').addEventListener('click', () => {
+      const m = modal(`<div class="modal-head"><span>编辑分类</span><button class="modal-close" data-close>×</button></div>
+        <div class="modal-body">
+          <label class="auth-field"><label>名称</label><input class="input" id="cat-edit-name" value="${esc(cat.name)}" maxlength="20"></label>
+          <label class="auth-field" style="margin-top:10px;"><label>链接标识（字母 / 数字 / 中文 / 短横线）</label><input class="input" id="cat-edit-slug" value="${esc(cat.slug)}"></label>
+        </div>
+        <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="cat-edit-save">保存</button></div>`)
+      m.mask.querySelector('#cat-edit-save').addEventListener('click', async () => {
+        try {
+          await api(`/admin/categories/${id}`, {
+            method: 'PUT',
+            body: {
+              name: m.mask.querySelector('#cat-edit-name').value.trim(),
+              slug: m.mask.querySelector('#cat-edit-slug').value.trim(),
+            },
+          })
+          toast('已保存')
+          m.close()
+          viewCategories()
+        } catch (e) {
+          toast(e.message, true)
+        }
+      })
+    })
+    row.querySelector('[data-act=del]').addEventListener('click', async () => {
+      if (!(await confirmBox(`删除分类「${cat.name}」？其下文章会变为未分类，文章本身不受影响。`))) return
+      await api(`/admin/categories/${id}`, { method: 'DELETE' })
+      toast('已删除')
+      viewCategories()
     })
   })
 }
@@ -486,6 +571,15 @@ async function viewSettings() {
         </div>
         <div class="form-item"><label>站点描述</label><input class="input" id="st-siteDescription" value="${esc(s.siteDescription)}" maxlength="120"></div>
         <div class="form-item"><label>页脚文字</label><input class="input" id="st-footerText" value="${esc(s.footerText)}" maxlength="120"></div>
+        <div class="form-item">
+          <label>网站图标（浏览器标签页小图，PNG / ICO / WebP，存 R2 图床）</label>
+          <div class="fav-row">
+            <span id="fav-preview-slot">${s.faviconUrl ? `<img class="fav-preview" src="${esc(s.faviconUrl)}" alt="站点图标">` : '<span class="fav-empty">未设置，使用默认图标</span>'}</span>
+            <button class="btn btn-sm" id="btn-fav-upload" type="button">上传图标</button>
+            <button class="btn btn-sm btn-ghost" id="btn-fav-clear" type="button">恢复默认</button>
+          </div>
+          <input type="hidden" id="st-faviconUrl" value="${esc(s.faviconUrl || '')}">
+        </div>
       </div>
     </div>
 
@@ -533,6 +627,35 @@ async function viewSettings() {
     })
   )
 
+  function renderFavSlot(url) {
+    document.getElementById('fav-preview-slot').innerHTML = url
+      ? `<img class="fav-preview" src="${esc(url)}" alt="站点图标">`
+      : '<span class="fav-empty">未设置，使用默认图标</span>'
+  }
+
+  document.getElementById('btn-fav-upload').addEventListener('click', () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/png,image/jpeg,image/webp,image/x-icon,image/vnd.microsoft.icon,.ico,.png'
+    input.onchange = async () => {
+      if (!input.files[0]) return
+      try {
+        const d = await uploadFile(input.files[0])
+        document.getElementById('st-faviconUrl').value = d.url
+        renderFavSlot(d.url)
+        toast('图标已上传，记得点「保存全部」生效')
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+    input.click()
+  })
+  document.getElementById('btn-fav-clear').addEventListener('click', () => {
+    document.getElementById('st-faviconUrl').value = ''
+    renderFavSlot('')
+    toast('已恢复默认，记得点「保存全部」生效')
+  })
+
   document.getElementById('btn-save').addEventListener('click', async () => {
     const g = (id) => document.getElementById(id)
     const body = {
@@ -540,6 +663,7 @@ async function viewSettings() {
       siteDescription: g('st-siteDescription').value.trim(),
       siteUrl: g('st-siteUrl').value.trim(),
       footerText: g('st-footerText').value.trim(),
+      faviconUrl: g('st-faviconUrl').value.trim(),
       theme: $app.querySelector('.theme-card.is-active')?.dataset.theme || 'wechat',
       allowComments: g('st-allowComments').checked ? '1' : '0',
       moderateComments: g('st-moderateComments').checked ? '1' : '0',
@@ -614,6 +738,7 @@ async function navigate() {
   try {
     if (name === 'home') await viewHome()
     else if (name === 'posts') await viewPosts()
+    else if (name === 'categories') await viewCategories()
     else if (name === 'comments') await viewComments()
     else if (name === 'media') await viewMedia()
     else if (name === 'settings') await viewSettings()

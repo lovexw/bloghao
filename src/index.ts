@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { api } from './api'
 import { getSettings, listPosts } from './db'
-import { renderAbout, renderHome, renderNotFound, renderPost } from './pages'
+import { renderAbout, renderCategory, renderHome, renderNotFound, renderPost, renderSearch } from './pages'
 import { buildRss, buildSitemap } from './rss'
 import type { Env, SessionUser } from './types'
 
@@ -12,8 +12,19 @@ app.route('/api', api)
 /* ---------------- 公开页面（SSR + 主题渲染） ---------------- */
 app.get('/', renderHome)
 app.get('/tag/:tag', renderHome)
+app.get('/category/:slug', renderCategory)
 app.get('/post/:slug', renderPost)
 app.get('/about', renderAbout)
+app.get('/search', renderSearch)
+
+// 随机来一篇：从已发布文章里随机挑一篇跳过去
+app.get('/random', async (c) => {
+  const row = await c.env.DB.prepare("SELECT slug FROM posts WHERE status = 'published' ORDER BY RANDOM() LIMIT 1").first<{
+    slug: string
+  }>()
+  if (!row) return renderNotFound(c)
+  return c.redirect(`/post/${encodeURIComponent(row.slug)}`)
+})
 
 app.get('/rss.xml', async (c) => {
   const settings = await getSettings(c.env.DB)

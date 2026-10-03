@@ -1,5 +1,16 @@
 import type { SettingsMap } from '../types'
-import { commentsHtml, esc, fmtDate, likesBtn, pagerHtml, tagLink, type HomePostView } from '../render'
+import {
+  categoryLink,
+  commentsHtml,
+  esc,
+  fmtDate,
+  likesBtn,
+  pagerHtml,
+  siteNav,
+  tagLink,
+  type CategoryLink,
+  type HomePostView,
+} from '../render'
 import css from './paper.css'
 
 const id = 'paper'
@@ -17,6 +28,10 @@ export function home(d: {
   total: number
   tag?: string
   hotTags: string[]
+  categories: CategoryLink[]
+  navActive?: string
+  notice?: string
+  emptyText?: string
 }): string {
   const s = d.settings
   const items = d.posts
@@ -42,14 +57,16 @@ export function home(d: {
     .join('')
 
   return `<div class="pp-page">
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, active: d.navActive })}
   <header class="pp-masthead">
     ${seal(s.siteName)}
     <h1 class="pp-site-name">${esc(s.siteName)}</h1>
     <p class="pp-site-desc">${esc(s.siteDescription)}</p>
   </header>
   ${tags ? `<nav class="pp-nav">${tags}</nav>` : ''}
+  ${d.notice ? `<div class="pp-notice">${d.notice}</div>` : ''}
   <main class="pp-list">
-    ${items || '<p class="pp-empty">纸上还无字，正是落笔时。</p>'}
+    ${items || `<p class="pp-empty">${d.emptyText || '纸上还无字，正是落笔时。'}</p>`}
   </main>
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="pp-footer">
@@ -72,6 +89,8 @@ export function post(d: {
     likes: number
     readingMinutes: number
   }
+  category: CategoryLink | null
+  categories: CategoryLink[]
   comments: { html: string; count: number }
   related: HomePostView[]
 }): string {
@@ -82,7 +101,7 @@ export function post(d: {
         .join('')}</section>`
     : ''
   return `<div class="pp-page">
-  <header class="pp-crumbs"><a href="/">← 回到首页</a></header>
+  ${siteNav({ cls: 'pp-snav', categories: d.categories })}
   <article class="pp-article">
     <h1 class="pp-title">${esc(p.title)}</h1>
     <div class="pp-meta"><time>${fmtDate(p.published_at)}</time><span>·</span><span>${p.readingMinutes} 分钟读完</span><span>·</span><span>${p.views} 次阅读</span></div>
@@ -93,6 +112,7 @@ export function post(d: {
     </div>
     <div class="pp-actions">
       ${likesBtn(p.slug, p.likes)}
+      ${d.category ? `<a class="pp-tag pp-cat" href="${categoryLink(d.category)}">${esc(d.category.name)}</a>` : ''}
       ${p.tags.map((t) => `<a class="pp-tag" href="${tagLink(t)}">${esc(t)}</a>`).join('')}
     </div>
     ${related}
@@ -102,9 +122,9 @@ export function post(d: {
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string }): string {
+export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[] }): string {
   return `<div class="pp-page">
-  <header class="pp-crumbs"><a href="/">← 回到首页</a></header>
+  ${siteNav({ cls: 'pp-snav', categories: d.categories })}
   <article class="pp-article">
     <h1 class="pp-title">关于</h1>
     <div class="pp-body rich">${d.contentHtml}</div>

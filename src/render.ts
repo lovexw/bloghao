@@ -31,7 +31,7 @@ export function page(o: ThemePageOptions): string {
 <meta property="og:type" content="${ogType}">
 ${siteUrl ? `<meta property="og:url" content="${esc(siteUrl + o.path)}">` : ''}
 ${o.ogImage ? `<meta property="og:image" content="${esc(absUrl(siteUrl, o.ogImage))}">` : ''}
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+${o.settings.faviconUrl ? `<link rel="icon" href="${esc(absUrl(siteUrl, o.settings.faviconUrl))}">` : `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`}
 ${siteUrl ? `<link rel="alternate" type="application/rss+xml" title="${esc(siteName)}" href="${esc(siteUrl)}/rss.xml">` : ''}
 <style>${o.css}</style>
 </head>
@@ -59,6 +59,49 @@ export interface HomePostView {
   pinned: boolean
   commentCount?: number
   readingMinutes?: number
+}
+
+/** 前台导航/文章页用的分类轻量视图 */
+export interface CategoryLink {
+  name: string
+  slug: string
+}
+
+export function categoryLink(c: CategoryLink): string {
+  return `/category/${encodeURIComponent(c.slug)}`
+}
+
+/**
+ * 全站顶部导航：首页 + 分类 + 搜索 + 随机。
+ * cls 传主题前缀（如 wx-snav），结构统一、样式交由主题 CSS 塑形。
+ */
+export function siteNav(o: { cls: string; categories: CategoryLink[]; active?: string }): string {
+  const item = (href: string, label: string, active = false) =>
+    `<a class="${o.cls}-link${active ? ' is-active' : ''}" href="${href}">${esc(label)}</a>`
+  const links = [
+    item('/', '首页', o.active === 'home'),
+    ...o.categories.map((cat) => item(categoryLink(cat), cat.name, o.active === cat.slug)),
+    item('/search', '搜索', o.active === 'search'),
+    item('/random', '随机', false),
+  ]
+  return `<nav class="${o.cls}" aria-label="站点导航">${links.join('')}</nav>`
+}
+
+/**
+ * 文章页去重：封面图常取自正文首图，渲染正文时把与封面相同的第一张图删掉
+ * （连同因此变空的 <p>），列表页缩略图不受影响。
+ */
+export function stripCoverDuplicate(contentHtml: string, cover: string): string {
+  if (!cover) return contentHtml
+  const img = contentHtml.match(/<img\b[^>]*>/i)
+  if (!img) return contentHtml
+  const src = img[0].match(/\bsrc\s*=\s*"([^"]*)"/i)
+  if (!src) return contentHtml
+  const norm = (u: string) => u.replace(/&amp;/g, '&').trim()
+  if (norm(src[1]) !== norm(cover)) return contentHtml
+  const imgRe = img[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const withoutP = contentHtml.replace(new RegExp(`<p>\\s*${imgRe}\\s*</p>`), '')
+  return withoutP !== contentHtml ? withoutP : contentHtml.replace(img[0], '')
 }
 
 export function toHomePost(row: PostRow, tags: string[], commentCount?: number, readingMinutes?: number): HomePostView {
@@ -96,12 +139,18 @@ export function pagerHtml(c: PagerContext): string {
   for (let p = start; p <= end; p++) {
     nums += link(p, String(p), `pager-num${p === c.page ? ' is-current' : ''}`)
   }
+  // 页码跳转：纯 HTML GET 表单（CSP 禁内联脚本），tag 参数从 base 还原
+  const tagInBase = c.base.match(/^\/\?tag=([^&]*)&$/)
+  const hidden = tagInBase
+    ? `<input type="hidden" name="tag" value="${esc(decodeURIComponent(tagInBase[1]))}">`
+    : ''
+  const jump = `<form class="pager-jump" action="/" method="get">${hidden}<span class="pager-jump-text">跳至</span><input class="pager-input" type="number" name="page" min="1" max="${c.totalPages}" value="${c.page}" aria-label="页码">页<span class="pager-jump-text">/ 共 ${c.totalPages} 页</span><button class="pager-go" type="submit">跳转</button></form>`
   return `<nav class="pager">${link(c.page - 1, '← 上一页', 'pager-prev', c.page <= 1)}${nums}${link(
     c.page + 1,
     '下一页 →',
     'pager-next',
     c.page >= c.totalPages
-  )}</nav>`
+  )}</nav>${jump}`
 }
 
 /** 留言区（评论列表 + 表单），语义化 class 交给主题 CSS 塑形 */

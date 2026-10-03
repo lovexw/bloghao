@@ -16,6 +16,13 @@ export interface ThemeModule {
     total: number
     tag?: string
     hotTags: string[]
+    /** 顶部导航数据与高亮：'home' | 分类 slug | 'search' | '' */
+    categories: import('../render').CategoryLink[]
+    navActive?: string
+    /** 列表上方的通知区（搜索框/分类说明），由 pages 层构建好的 HTML */
+    notice?: string
+    /** 空列表文案（搜索/分类页有定制文案） */
+    emptyText?: string
   }): string
   post(d: {
     settings: Record<string, string>
@@ -31,10 +38,12 @@ export interface ThemeModule {
       likes: number
       readingMinutes: number
     }
+    category: import('../render').CategoryLink | null
+    categories: import('../render').CategoryLink[]
     comments: { html: string; count: number }
     related: import('../render').HomePostView[]
   }): string
-  about(d: { settings: Record<string, string>; contentHtml: string }): string
+  about(d: { settings: Record<string, string>; contentHtml: string; categories: import('../render').CategoryLink[] }): string
 }
 
 /**

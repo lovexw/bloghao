@@ -12,15 +12,22 @@ import {
 } from './auth'
 import {
   countUsers,
+  createCategory,
+  categoryNameMap,
   DEFAULT_SETTINGS,
+  getCategoryById,
   getPostById,
   getPostBySlug,
+  getPostCategoryId,
   getSettings,
   listApprovedComments,
+  listCategories,
   listPosts,
   parseTags,
   saveSettings,
   seedWelcomePost,
+  setPostCategory,
+  uniqueCategorySlug,
   uniqueSlug,
 } from './db'
 import { mdToHtml } from './markdown'
@@ -39,6 +46,9 @@ const IMAGE_MIMES: Record<string, string> = {
   'image/png': 'png',
   'image/webp': 'webp',
   'image/gif': 'gif',
+  // favicon 用；不放行 SVG——同源直接打开 SVG 可执行脚本，有存储 XSS 风险
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
 }
 const VIDEO_MIMES: Record<string, string> = {
   'video/mp4': 'mp4',
@@ -181,6 +191,9 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
         .slice(0, 8)
     : []
   const cover = String(b.cover ?? '').slice(0, 500)
+  const rawCategoryId = b.categoryId
+  const categoryId =
+    rawCategoryId == null || rawCategoryId === '' ? null : Number.isFinite(Number(rawCategoryId)) ? Number(rawCategoryId) : null
   return {
     title,
     content,
@@ -190,6 +203,7 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
     status,
     pinned: b.pinned ? 1 : 0,
     slug: String(b.slug ?? '').trim().slice(0, 80),
+    categoryId,
   }
 }
 
@@ -202,8 +216,14 @@ api.get('/admin/posts', async (c) => {
     page: clampInt(c.req.query('page'), 1, 100000, 1),
     limit: clampInt(c.req.query('limit'), 1, 100, 20),
   })
+  const catNames = await categoryNameMap(c.env.DB, r.items.map((p) => p.id))
   return c.json({
-    items: r.items.map((p) => ({ ...p, content: undefined, tagList: parseTags(p) })),
+    items: r.items.map((p) => ({
+      ...p,
+      content: undefined,
+      tagList: parseTags(p),
+      categoryName: catNames.get(p.id) || '',
+    })),
     total: r.total,
     page: r.page,
     totalPages: r.totalPages,
@@ -238,13 +258,19 @@ api.post('/admin/posts', async (c) => {
     )
     .run()
   const row = await getPostById(c.env.DB, Number(res.meta.last_row_id))
-  return c.json({ ok: true, post: row ? { ...row, tagList: parseTags(row) } : null })
+  if (p.categoryId != null && row) {
+    const cat = await getCategoryById(c.env.DB, p.categoryId)
+    if (cat) await setPostCategory(c.env.DB, row.id, cat.id)
+  }
+  const categoryId = row ? await getPostCategoryId(c.env.DB, row.id) : null
+  return c.json({ ok: true, post: row ? { ...row, tagList: parseTags(row), categoryId } : null })
 })
 
 api.get('/admin/posts/:id', async (c) => {
   const row = await getPostById(c.env.DB, Number(c.req.param('id')))
   if (!row) return jsonError('文章不存在', 404)
-  return c.json({ post: { ...row, tagList: parseTags(row) } })
+  const categoryId = await getPostCategoryId(c.env.DB, row.id)
+  return c.json({ post: { ...row, tagList: parseTags(row), categoryId } })
 })
 
 api.put('/admin/posts/:id', async (c) => {
@@ -276,7 +302,14 @@ api.put('/admin/posts/:id', async (c) => {
     )
     .run()
   const row = await getPostById(c.env.DB, id)
-  return c.json({ ok: true, post: row ? { ...row, tagList: parseTags(row) } : null })
+  if (p.categoryId != null) {
+    const cat = await getCategoryById(c.env.DB, p.categoryId)
+    if (cat) await setPostCategory(c.env.DB, id, cat.id)
+  } else {
+    await setPostCategory(c.env.DB, id, null)
+  }
+  const categoryId = await getPostCategoryId(c.env.DB, id)
+  return c.json({ ok: true, post: row ? { ...row, tagList: parseTags(row), categoryId } : null })
 })
 
 api.post('/admin/posts/:id/pin', async (c) => {
@@ -293,6 +326,63 @@ api.delete('/admin/posts/:id', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM posts WHERE id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM comments WHERE post_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM post_categories WHERE post_id = ?').bind(id),
+  ])
+  return c.json({ ok: true })
+})
+
+/* ---------------- 分类管理 ---------------- */
+
+/** 校验并规整分类的 slug：留空则用名称本身（中文可作 slug，URL 会编码） */
+function normalizeCategorySlug(input: string, name: string): string {
+  const s = (input || name).trim().slice(0, 80)
+  if (!s || /[\/\\#?%\s]/.test(s)) return ''
+  return s
+}
+
+api.get('/admin/categories', async (c) => {
+  const categories = await listCategories(c.env.DB, { withCount: true })
+  return c.json({ categories })
+})
+
+api.post('/admin/categories', async (c) => {
+  const body = await c.req.json<{ name?: string; slug?: string; sort?: number }>().catch(() => null)
+  const name = String(body?.name ?? '').trim().slice(0, 20)
+  if (!name) return jsonError('分类名称不能为空')
+  const slug = normalizeCategorySlug(String(body?.slug ?? ''), name)
+  if (!slug) return jsonError('分类标识只能用字母、数字、中文和短横线')
+  const dup = await c.env.DB.prepare('SELECT id FROM categories WHERE name = ? OR slug = ?').bind(name, slug).first<{ id: number }>()
+  if (dup) return jsonError('同名或同标识的分类已存在')
+  const sort = clampInt(body?.sort, 0, 9999, 0)
+  const cat = await createCategory(c.env.DB, name, slug, sort)
+  return c.json({ ok: true, category: cat })
+})
+
+api.put('/admin/categories/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const existing = await getCategoryById(c.env.DB, id)
+  if (!existing) return jsonError('分类不存在', 404)
+  const body = await c.req.json<{ name?: string; slug?: string; sort?: number }>().catch(() => null)
+  const name = String(body?.name ?? existing.name).trim().slice(0, 20)
+  if (!name) return jsonError('分类名称不能为空')
+  const slug = normalizeCategorySlug(String(body?.slug ?? existing.slug), name)
+  if (!slug) return jsonError('分类标识只能用字母、数字、中文和短横线')
+  const dup = await c.env.DB
+    .prepare('SELECT id FROM categories WHERE (name = ? OR slug = ?) AND id != ?')
+    .bind(name, slug, id)
+    .first<{ id: number }>()
+  if (dup) return jsonError('同名或同标识的分类已存在')
+  const sort = clampInt(body?.sort, 0, 9999, existing.sort)
+  await c.env.DB.prepare('UPDATE categories SET name = ?, slug = ?, sort = ? WHERE id = ?').bind(name, slug, sort, id).run()
+  return c.json({ ok: true, category: await getCategoryById(c.env.DB, id) })
+})
+
+api.delete('/admin/categories/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  // 分类删除后文章变为未分类，文章本身不受影响
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM post_categories WHERE category_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM categories WHERE id = ?').bind(id),
   ])
   return c.json({ ok: true })
 })
@@ -411,6 +501,12 @@ api.put('/admin/settings', async (c) => {
     }
     if (key === 'about') {
       patch[key] = sanitizeHtml(v.slice(0, 100_000))
+      continue
+    }
+    if (key === 'faviconUrl') {
+      // 只接受站内 /images/ 地址或 http(s) 外链，防止 javascript: 之类注入
+      const u = v.trim().slice(0, 500)
+      patch[key] = u.startsWith('/images/') || /^https?:\/\//i.test(u) ? u : ''
       continue
     }
     if (key === 'allowComments' || key === 'moderateComments') {

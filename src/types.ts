@@ -63,4 +63,12 @@ export interface UploadRow {
   created_at: number
 }
 
+export interface CategoryRow {
+  id: number
+  name: string
+  slug: string
+  sort: number
+  created_at: number
+}
+
 export type SettingsMap = Record<string, string>

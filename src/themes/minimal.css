@@ -30,8 +30,9 @@ img { max-width: 100%; height: auto; }
   flex-wrap: wrap; gap: 10px;
 }
 .mn-logo { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
-.mn-nav { display: flex; gap: 18px; }
-.mn-nav-link { font-size: 13px; color: var(--mn-sub); transition: color 0.15s ease; }
+.mn-nav { display: flex; gap: 18px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.mn-nav::-webkit-scrollbar { display: none; }
+.mn-nav-link { font-size: 13px; color: var(--mn-sub); transition: color 0.15s ease; white-space: nowrap; }
 .mn-nav-link:hover { color: var(--mn-ink); }
 .mn-nav-link.is-active { color: var(--mn-ink); text-decoration: underline; text-underline-offset: 5px; }
 
@@ -158,3 +159,38 @@ img { max-width: 100%; height: auto; }
   .mn-title { font-size: 26px; }
   .mn-item-title { font-size: 18px; }
 }
+
+/* ---------- 顶部站点导航（首页/分类/搜索/随机） ---------- */
+.mn-snav {
+  display: flex; align-items: center; gap: 18px;
+  padding: 10px 0 8px; border-bottom: 1px solid var(--mn-line);
+  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.mn-snav::-webkit-scrollbar { display: none; }
+.mn-snav-link { font-size: 13px; color: var(--mn-sub); white-space: nowrap; transition: color 0.15s ease; }
+.mn-snav-link:hover, .mn-snav-link.is-active { color: var(--mn-ink); }
+.mn-notice { margin: 0 0 20px; padding: 14px 0 0; }
+.search-form { display: flex; gap: 8px; }
+.search-input {
+  flex: 1; min-width: 0; font-size: 16px; padding: 9px 14px;
+  border: 1px solid var(--mn-line); border-radius: 2px;
+  background: var(--mn-bg); color: var(--mn-ink); outline: none;
+}
+.search-input:focus { border-color: var(--mn-ink); }
+.search-btn {
+  font-size: 13px; padding: 0 18px; border: 1px solid var(--mn-ink); border-radius: 0;
+  background: var(--mn-bg); color: var(--mn-ink); cursor: pointer;
+}
+.search-btn:hover { background: var(--mn-ink); color: #fff; }
+.search-meta { font-size: 13px; color: var(--mn-sub); padding: 8px 0 0; }
+.pager-jump { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 0 0; font-size: 13px; color: var(--mn-sub); flex-wrap: wrap; }
+.pager-input {
+  width: 60px; font-size: 16px; text-align: center; padding: 6px 4px;
+  border: 1px solid var(--mn-line); border-radius: 2px; background: var(--mn-bg); color: var(--mn-ink);
+}
+.pager-go {
+  font-size: 13px; padding: 6px 14px; border: 1px solid var(--mn-line); background: var(--mn-bg);
+  color: var(--mn-ink); cursor: pointer;
+}
+.pager-go:hover { border-color: var(--mn-ink); }
+.mn-footer span a { margin-left: 14px; }

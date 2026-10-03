@@ -1,11 +1,21 @@
 import type { Context } from 'hono'
 import { getSessionUser } from './auth'
-import { getPostBySlug, getSettings, listApprovedComments, listPosts, parseTags, relatedPosts } from './db'
-import { commentsHtml, page, pagerHtml, toHomePost } from './render'
+import {
+  getCategoryBySlug,
+  getPostBySlug,
+  getPostCategoryId,
+  getSettings,
+  listApprovedComments,
+  listCategories,
+  listPosts,
+  parseTags,
+  relatedPosts,
+} from './db'
+import { commentsHtml, page, pagerHtml, toHomePost, stripCoverDuplicate, type CategoryLink } from './render'
 import { sanitizeHtml } from './sanitize'
 import { getTheme, THEMES } from './themes/registry'
 import type { Env, PostRow, SessionUser, SettingsMap } from './types'
-import { clampInt, excerpt, readingMinutes } from './utils'
+import { clampInt, esc, excerpt, readingMinutes } from './utils'
 
 type C = Context<{ Bindings: Env; Variables: { user: SessionUser | null } }>
 
@@ -41,35 +51,112 @@ async function commentCount(c: C, postId: number): Promise<number> {
   return r?.n ?? 0
 }
 
+/** 顶部导航用的分类列表（每个公开页面都要带） */
+async function navCategories(c: C): Promise<CategoryLink[]> {
+  const rows = await listCategories(c.env.DB)
+  return rows.map((r) => ({ name: r.name, slug: r.slug }))
+}
+
 export async function renderHome(c: C): Promise<Response> {
+  return renderList(c, { mode: 'home' })
+}
+
+/** 分类归档页（/category/:slug），列表结构与首页一致 */
+export async function renderCategory(c: C): Promise<Response> {
+  return renderList(c, { mode: 'category' })
+}
+
+/** 站内搜索页（/search?q=），结果复用首页列表模板 */
+export async function renderSearch(c: C): Promise<Response> {
+  return renderList(c, { mode: 'search' })
+}
+
+async function renderList(
+  c: C,
+  opts: { mode: 'home' | 'category' | 'search' }
+): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
   const url = new URL(c.req.url)
   const tag = c.req.param('tag') || url.searchParams.get('tag') || undefined
+  const q = (url.searchParams.get('q') || '').trim().slice(0, 60)
+  const categorySlug = opts.mode === 'category' ? c.req.param('slug') || '' : ''
   const pageNum = clampInt(url.searchParams.get('page'), 1, 100000, 1)
   const perPage = clampInt(settings.postsPerPage, 1, 50, 10)
-  const [r, tags] = await Promise.all([listPosts(c.env.DB, { status: 'published', tag, page: pageNum, limit: perPage }), hotTags(c)])
+
+  // 搜索模式不分页，直接取前 50 条
+  const [r, tags, categories, category] = await Promise.all([
+    listPosts(c.env.DB, {
+      status: 'published',
+      tag: opts.mode === 'home' ? tag : undefined,
+      q: opts.mode === 'search' ? q || undefined : undefined,
+      categorySlug: categorySlug || undefined,
+      page: opts.mode === 'search' ? 1 : pageNum,
+      limit: opts.mode === 'search' ? 50 : perPage,
+    }),
+    hotTags(c),
+    navCategories(c),
+    categorySlug ? getCategoryBySlug(c.env.DB, categorySlug) : Promise.resolve(null),
+  ])
+  if (opts.mode === 'category' && !category) return renderNotFound(c)
+  // 页码跳转可能输入越界，回到最后一页重新取一次
+  if (opts.mode !== 'search' && r.page > r.totalPages && r.total > 0) {
+    const fixed = await listPosts(c.env.DB, {
+      status: 'published',
+      tag: opts.mode === 'home' ? tag : undefined,
+      categorySlug: categorySlug || undefined,
+      page: r.totalPages,
+      limit: perPage,
+    })
+    Object.assign(r, fixed)
+  }
+
   const posts = await Promise.all(
     r.items.map(async (p) => toHomePost(p, parseTags(p), await commentCount(c, p.id), readingMinutes(p.content)))
   )
+
+  let notice = ''
+  let emptyText = ''
+  let title = ''
+  if (opts.mode === 'search') {
+    notice = `<form class="search-form" action="/search" method="get" role="search"><input class="search-input" type="search" name="q" value="${esc(q)}" placeholder="搜索文章标题或内容…" maxlength="60"><button class="search-btn" type="submit">搜索</button></form>${
+      q
+        ? `<p class="search-meta">找到 ${r.total} 篇与「${esc(q)}」相关的文章</p>`
+        : '<p class="search-meta">输入关键词，回车或点「搜索」</p>'
+    }`
+    emptyText = q ? `没有找到与「${esc(q)}」相关的文章，换个关键词试试。` : ''
+    title = q ? `搜索：${q}` : '搜索'
+  } else if (opts.mode === 'category' && category) {
+    notice = `<p class="search-meta">分类「${esc(category.name)}」下共 ${r.total} 篇文章</p>`
+    emptyText = '这个分类下还没有文章。'
+    title = `分类：${category.name}`
+  } else if (tag) {
+    title = `${tag} 主题的文章`
+  }
+
   const html = theme.home({
     settings,
     posts,
-    page: r.page,
-    totalPages: r.totalPages,
+    page: opts.mode === 'search' ? 1 : r.page,
+    totalPages: opts.mode === 'search' ? 1 : r.totalPages,
     total: r.total,
-    tag,
+    tag: opts.mode === 'home' ? tag : undefined,
     hotTags: tags,
+    categories,
+    navActive:
+      opts.mode === 'home' ? (tag ? '' : 'home') : opts.mode === 'category' ? categorySlug : 'search',
+    notice,
+    emptyText,
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
     page({
       settings,
       css: theme.css,
-      title: tag ? `${tag} 主题的文章` : '',
+      title,
       description: settings.siteDescription,
-      path: '/',
+      path: opts.mode === 'home' ? '/' : url.pathname,
       body: html,
     })
   )
@@ -90,10 +177,13 @@ export async function renderPost(c: C): Promise<Response> {
     if (!isPreview || !user) return renderNotFound(c)
   }
 
-  const [comments, related] = await Promise.all([
+  const [comments, related, categories, categoryId] = await Promise.all([
     listApprovedComments(c.env.DB, row.id),
     relatedPosts(c.env.DB, row),
+    navCategories(c),
+    getPostCategoryId(c.env.DB, row.id),
   ])
+  const categoryRow = categoryId ? await c.env.DB.prepare('SELECT name, slug FROM categories WHERE id = ?').bind(categoryId).first<{ name: string; slug: string }>() : null
 
   if (row.status === 'published') {
     c.executionCtx.waitUntil(
@@ -113,7 +203,8 @@ export async function renderPost(c: C): Promise<Response> {
     post: {
       slug: row.slug,
       title: row.title,
-      contentHtml: sanitizeHtml(row.content),
+      // 封面图与正文首图重复时渲染正文去掉首图，避免一图两现
+      contentHtml: stripCoverDuplicate(sanitizeHtml(row.content), row.cover),
       summary: row.summary,
       cover: row.cover,
       tags: parseTags(row),
@@ -122,6 +213,8 @@ export async function renderPost(c: C): Promise<Response> {
       likes: row.likes,
       readingMinutes: readingMinutes(row.content),
     },
+    category: categoryRow ? { name: categoryRow.name, slug: categoryRow.slug } : null,
+    categories,
     comments: { html: commentsBlock, count: comments.length },
     related: related.map((p) => toHomePost(p, parseTags(p))),
   })
@@ -144,9 +237,11 @@ export async function renderAbout(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
+  const categories = await navCategories(c)
   const html = theme.about({
     settings,
     contentHtml: sanitizeHtml(settings.about || '<p>作者很懒，什么都没写。</p>'),
+    categories,
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(

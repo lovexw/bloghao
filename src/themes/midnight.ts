@@ -1,5 +1,16 @@
 import type { SettingsMap } from '../types'
-import { commentsHtml, esc, fmtDate, likesBtn, pagerHtml, tagLink, type HomePostView } from '../render'
+import {
+  categoryLink,
+  commentsHtml,
+  esc,
+  fmtDate,
+  likesBtn,
+  pagerHtml,
+  siteNav,
+  tagLink,
+  type CategoryLink,
+  type HomePostView,
+} from '../render'
 import css from './midnight.css'
 
 const id = 'midnight'
@@ -12,6 +23,10 @@ export function home(d: {
   total: number
   tag?: string
   hotTags: string[]
+  categories: CategoryLink[]
+  navActive?: string
+  notice?: string
+  emptyText?: string
 }): string {
   const s = d.settings
   const items = d.posts
@@ -31,6 +46,7 @@ export function home(d: {
     .map((t) => `<a class="md-nav-link${t === d.tag ? ' is-active' : ''}" href="${tagLink(t)}">${esc(t)}</a>`)
     .join('')
   return `<div class="md-wrap">
+  ${siteNav({ cls: 'md-snav', categories: d.categories, active: d.navActive })}
   <header class="md-header">
     <a class="md-logo" href="/"><span class="md-logo-dot"></span>${esc(s.siteName)}</a>
     <nav class="md-nav">${nav}<a class="md-nav-link" href="/about">关于</a></nav>
@@ -39,8 +55,9 @@ export function home(d: {
     <h1>${esc(s.siteName)}</h1>
     <p>${esc(s.siteDescription)}</p>
   </section>
+  ${d.notice ? `<div class="md-notice">${d.notice}</div>` : ''}
   <main class="md-list">
-    ${items || '<p class="md-empty">夜航日志还是空的。</p>'}
+    ${items || `<p class="md-empty">${d.emptyText || '夜航日志还是空的。'}</p>`}
   </main>
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="md-footer">
@@ -64,6 +81,8 @@ export function post(d: {
     likes: number
     readingMinutes: number
   }
+  category: CategoryLink | null
+  categories: CategoryLink[]
   comments: { html: string; count: number }
   related: HomePostView[]
 }): string {
@@ -74,6 +93,7 @@ export function post(d: {
         .join('')}</aside>`
     : ''
   return `<div class="md-wrap">
+  ${siteNav({ cls: 'md-snav', categories: d.categories })}
   <header class="md-header">
     <a class="md-logo" href="/"><span class="md-logo-dot"></span>${esc(d.settings.siteName)}</a>
   </header>
@@ -84,7 +104,7 @@ export function post(d: {
     <div class="rich">${p.contentHtml}</div>
     <div class="md-foot">
       ${likesBtn(p.slug, p.likes)}
-      <div class="md-tags">${p.tags.map((t) => `<a class="md-chip" href="${tagLink(t)}">${esc(t)}</a>`).join('')}</div>
+      <div class="md-tags">${d.category ? `<a class="md-chip" href="${categoryLink(d.category)}">${esc(d.category.name)}</a>` : ''}${p.tags.map((t) => `<a class="md-chip" href="${tagLink(t)}">${esc(t)}</a>`).join('')}</div>
     </div>
     ${related}
     ${d.comments.html}
@@ -93,8 +113,9 @@ export function post(d: {
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string }): string {
+export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[] }): string {
   return `<div class="md-wrap">
+  ${siteNav({ cls: 'md-snav', categories: d.categories })}
   <header class="md-header"><a class="md-logo" href="/"><span class="md-logo-dot"></span>${esc(d.settings.siteName)}</a></header>
   <article class="md-article">
     <h1 class="md-title">关于</h1>

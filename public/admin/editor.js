@@ -292,13 +292,14 @@ export async function mountEditor(root, postId) {
     summary: '',
     cover: '',
     tags: [],
+    categoryId: null,
     status: 'draft',
     pinned: false,
     published_at: null,
   }
   if (postId) {
     const d = await api(`/admin/posts/${postId}`)
-    Object.assign(post, d.post, { tags: d.post.tagList || [] })
+    Object.assign(post, d.post, { tags: d.post.tagList || [], categoryId: d.post.categoryId ?? null })
   }
 
   let mdMode = false
@@ -377,6 +378,12 @@ export async function mountEditor(root, postId) {
         <input class="tag-input" id="ed-tag-input" placeholder="回车添加，最多 8 个" list="tag-suggestions">
         <datalist id="tag-suggestions"></datalist>
       </div>
+
+      <div class="drawer-title">分类</div>
+      <select class="input" id="ed-category">
+        <option value="">未分类</option>
+      </select>
+      <div style="font-size:12px;color:var(--sub);margin-top:6px;">在后台「分类」里维护</div>
 
       <div class="drawer-title">链接 Slug</div>
       <input class="input" id="ed-slug" value="${esc(post.slug)}" placeholder="留空则根据标题自动生成">
@@ -516,12 +523,14 @@ export async function mountEditor(root, postId) {
   }
 
   function collect(extra = {}) {
+    const catVal = document.getElementById('ed-category').value
     return {
       title: titleEl.value.trim(),
       content: editor.innerHTML,
       summary: document.getElementById('ed-summary').value.trim(),
       cover: post.cover,
       tags: post.tags,
+      categoryId: catVal ? Number(catVal) : null,
       pinned: document.getElementById('ed-pinned').checked,
       slug: document.getElementById('ed-slug').value.trim(),
       status: post.status,
@@ -1033,6 +1042,17 @@ export async function mountEditor(root, postId) {
       document.getElementById('tag-suggestions').innerHTML = d.tags.map((t) => `<option value="${esc(t.name)}">`).join('')
     })
     .catch(() => {})
+
+  /* ---------- 分类下拉 ---------- */
+  const catSelect = document.getElementById('ed-category')
+  api('/admin/categories')
+    .then((d) => {
+      catSelect.innerHTML =
+        '<option value="">未分类</option>' +
+        d.categories.map((c) => `<option value="${c.id}"${c.id === post.categoryId ? ' selected' : ''}>${esc(c.name)}</option>`).join('')
+    })
+    .catch(() => {})
+  catSelect.addEventListener('change', markDirty)
 
   /* ---------- 插件 ctx & 加载 ---------- */
   const pluginCtx = {

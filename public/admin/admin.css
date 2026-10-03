@@ -457,3 +457,19 @@ input, textarea, select { font: inherit; color: inherit; }
 
   .ed-bottombar { padding: 7px 14px calc(7px + env(safe-area-inset-bottom)); gap: 12px; }
 }
+
+/* ---------- 分类管理 / 站点图标 ---------- */
+.cat-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 16px; border-bottom: 1px solid var(--line);
+}
+.cat-row:last-child { border-bottom: none; }
+.cat-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cat-name { font-weight: 600; font-size: 14px; }
+.cat-slug { font-size: 12px; color: var(--sub); word-break: break-all; }
+.fav-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fav-preview {
+  width: 32px; height: 32px; border-radius: 8px; object-fit: contain;
+  background: #f6f2ec; border: 1px solid var(--line);
+}
+.fav-empty { font-size: 13px; color: var(--sub); }

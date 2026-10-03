@@ -1,5 +1,16 @@
 import type { SettingsMap } from '../types'
-import { commentsHtml, esc, fmtDate, likesBtn, pagerHtml, tagLink, type HomePostView } from '../render'
+import {
+  categoryLink,
+  commentsHtml,
+  esc,
+  fmtDate,
+  likesBtn,
+  pagerHtml,
+  siteNav,
+  tagLink,
+  type CategoryLink,
+  type HomePostView,
+} from '../render'
 import css from './minimal.css'
 
 const id = 'minimal'
@@ -12,6 +23,10 @@ export function home(d: {
   total: number
   tag?: string
   hotTags: string[]
+  categories: CategoryLink[]
+  navActive?: string
+  notice?: string
+  emptyText?: string
 }): string {
   const s = d.settings
   const items = d.posts
@@ -30,6 +45,7 @@ export function home(d: {
     .map((t) => `<a class="mn-nav-link${t === d.tag ? ' is-active' : ''}" href="${tagLink(t)}">${esc(t)}</a>`)
     .join('')
   return `<div class="mn-wrap">
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, active: d.navActive })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${esc(s.siteName)}</a>
     <nav class="mn-nav">
@@ -38,8 +54,9 @@ export function home(d: {
     </nav>
   </header>
   <p class="mn-intro">${esc(s.siteDescription)}</p>
+  ${d.notice ? `<div class="mn-notice">${d.notice}</div>` : ''}
   <main class="mn-list">
-    ${items || '<p class="mn-empty">Nothing here yet. Start writing.</p>'}
+    ${items || `<p class="mn-empty">${d.emptyText || 'Nothing here yet. Start writing.'}</p>`}
   </main>
   ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
   <footer class="mn-footer">
@@ -63,6 +80,8 @@ export function post(d: {
     likes: number
     readingMinutes: number
   }
+  category: CategoryLink | null
+  categories: CategoryLink[]
   comments: { html: string; count: number }
   related: HomePostView[]
 }): string {
@@ -73,6 +92,7 @@ export function post(d: {
         .join('')}</aside>`
     : ''
   return `<div class="mn-wrap">
+  ${siteNav({ cls: 'mn-snav', categories: d.categories })}
   <header class="mn-header">
     <a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a>
   </header>
@@ -83,7 +103,7 @@ export function post(d: {
     <div class="rich">${p.contentHtml}</div>
     <div class="mn-foot">
       ${likesBtn(p.slug, p.likes)}
-      <div class="mn-tags">${p.tags.map((t) => `<a href="${tagLink(t)}">${esc(t)}</a>`).join('')}</div>
+      <div class="mn-tags">${d.category ? `<a href="${categoryLink(d.category)}">${esc(d.category.name)}</a>` : ''}${p.tags.map((t) => `<a href="${tagLink(t)}">${esc(t)}</a>`).join('')}</div>
     </div>
     ${related}
     ${d.comments.html}
@@ -92,8 +112,9 @@ export function post(d: {
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string }): string {
+export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[] }): string {
   return `<div class="mn-wrap">
+  ${siteNav({ cls: 'mn-snav', categories: d.categories })}
   <header class="mn-header"><a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a></header>
   <article class="mn-article">
     <h1 class="mn-title">关于</h1>
