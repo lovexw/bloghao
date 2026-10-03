@@ -142,6 +142,7 @@ async function shellView(active, contentHTML) {
         <a class="side-item${active === 'comments' ? ' is-active' : ''}" href="#/comments">${I.comment}<span>评论</span>${pending ? `<span class="side-badge">${pending}</span>` : ''}</a>
         <a class="side-item${active === 'media' ? ' is-active' : ''}" href="#/media">${I.image}<span>媒体</span></a>
         <a class="side-item${active === 'settings' ? ' is-active' : ''}" href="#/settings">${I.gear}<span>设置</span></a>
+        <a class="side-item" href="/" target="_blank" rel="noopener">${I.home}<span>查看主页</span></a>
       </nav>
       <div class="side-user">
         <span class="side-user-avatar">${esc((state.user.display_name || state.user.username).charAt(0).toUpperCase())}</span>

@@ -89,7 +89,7 @@ export function post(d: {
     ${related}
     ${d.comments.html}
   </article>
-  <footer class="md-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/rss.xml">RSS</a></span></footer>
+  <footer class="md-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/admin">管理</a><a href="/rss.xml">RSS</a></span></footer>
 </div>`
 }
 

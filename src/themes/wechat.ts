@@ -138,9 +138,9 @@ export function post(d: {
   ${topnav()}
   <h1 class="wx-title">${esc(p.title)}</h1>
   <div class="wx-meta">
-    ${avatar(s.siteName)}
+    <a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(s.siteName)}</a>
     <div class="wx-meta-main">
-      <span class="wx-account">${esc(s.siteName)}</span>
+      <a class="wx-account" href="/">${esc(s.siteName)}</a>
       <span class="wx-date">${fmtDateCN(p.published_at)} · ${p.readingMinutes} 分钟</span>
     </div>
   </div>
@@ -156,7 +156,7 @@ export function post(d: {
   </div>
   ${related}
   ${d.comments.html}
-  <footer class="wx-footer">${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/about">关于</a></span></footer>
+  <footer class="wx-footer">${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/about">关于</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 
@@ -164,8 +164,8 @@ export function about(d: { settings: SettingsMap; contentHtml: string }): string
   return `<div class="wx-article">
   ${topnav()}
   <h1 class="wx-title">关于</h1>
-  <div class="wx-meta">${avatar(d.settings.siteName)}
-    <div class="wx-meta-main"><span class="wx-account">${esc(d.settings.siteName)}</span></div>
+  <div class="wx-meta"><a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(d.settings.siteName)}</a>
+    <div class="wx-meta-main"><a class="wx-account" href="/">${esc(d.settings.siteName)}</a></div>
   </div>
   <article class="rich">${d.contentHtml}</article>
   <footer class="wx-footer">${esc(d.settings.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a></span></footer>
