@@ -86,7 +86,7 @@ const I = {
 }
 
 const THEME_SWATCH = {
-  wechat: { bg: '#ededed', bar: '#07c160', card: '#ffffff', card2: '#e8f7ef', card3: '#f2f2f2' },
+  wechat: { bg: '#ededed', bar: '#b23a29', card: '#ffffff', card2: '#e8f7ef', card3: '#f2f2f2' },
   paper: { bg: '#f7f4ee', bar: '#a03c2e', card: '#fffdf8', card2: '#efe9db', card3: '#f1ede2' },
   minimal: { bg: '#ffffff', bar: '#111111', card: '#f5f5f5', card2: '#efefef', card3: '#f7f7f7' },
   midnight: { bg: '#0f1115', bar: '#58a6ff', card: '#161a22', card2: '#1d232e', card3: '#181d26' },
@@ -457,7 +457,7 @@ async function viewSettings() {
   const s = state.settings
   const themeCards = themes.themes
     .map((t) => {
-      const c = THEME_SWATCH[t.id] || { bg: '#eee', bar: '#07c160', card: '#fff', card2: '#eee', card3: '#eee' }
+      const c = THEME_SWATCH[t.id] || { bg: '#eee', bar: '#b23a29', card: '#fff', card2: '#eee', card3: '#eee' }
       return `<div class="theme-card${s.theme === t.id ? ' is-active' : ''}" data-theme="${t.id}">
       <div class="theme-preview" style="background:${c.bg};">
         <div class="tp-bar" style="background:${c.bar};"></div>

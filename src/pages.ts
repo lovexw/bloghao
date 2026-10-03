@@ -170,7 +170,7 @@ export async function renderNotFound(c: C): Promise<Response> {
       body: `<div style="max-width:480px;margin:18vh auto 0;padding:0 24px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;">
   <div style="font-size:64px;font-weight:700;letter-spacing:.05em;">404</div>
   <p style="color:#999;margin:12px 0 28px;">这一页飘走了，回首页看看吧。</p>
-  <a href="/" style="display:inline-block;padding:10px 28px;border-radius:999px;background:#07c160;color:#fff;text-decoration:none;font-size:14px;">回首页</a>
+  <a href="/" style="display:inline-block;padding:10px 28px;border-radius:999px;background:#b23a29;color:#fff;text-decoration:none;font-size:14px;">回首页</a>
 </div>`,
     }),
     404
