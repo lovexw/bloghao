@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       # 未配置 secrets 时优雅跳过（黄字警告），配置方法见 docs/DEPLOY.md 第 7 节
       - name: Check Cloudflare secrets
