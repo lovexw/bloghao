@@ -1009,6 +1009,9 @@ export async function mountEditor(root, postId) {
     markDirty()
   }
   tagInput.addEventListener('keydown', (e) => {
+    // 输入法组词中的回车/逗号是确认拼音，不是确认标签；忽略，否则标签被提前加入，
+    // 输入法提交后文本又落回输入框，看起来「重复出现」
+    if (e.isComposing || e.keyCode === 229) return
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault()
       addTag(tagInput.value)

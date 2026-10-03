@@ -18,15 +18,14 @@ function avatar(name: string): string {
   return `<span class="wx-avatar" aria-hidden="true">${esc(ch)}</span>`
 }
 
-/** 刊头下的文字导航：全部 / 热门标签 / 关于 / RSS */
+/** 刊头下的文字导航：全部 / 热门标签（关于、RSS 在页脚，不重复展示） */
 function mastheadNav(activeTag: string | undefined, tags: string[]): string {
+  if (!activeTag && !tags.length) return ''
   const link = (href: string, label: string, active = false) =>
     `<a class="wx-nav-link${active ? ' is-active' : ''}" href="${href}">${esc(label)}</a>`
   const links = [
     link('/', '全部', !activeTag),
     ...tags.slice(0, 5).map((t) => link(tagLink(t), t, t === activeTag)),
-    link('/about', '关于'),
-    link('/rss.xml', 'RSS'),
   ]
   return `<nav class="wx-nav">${links.join('')}</nav>`
 }
