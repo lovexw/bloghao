@@ -56,6 +56,12 @@ window.BlogHao &&
 - 遵循[微信排版规范](wechat-typography-spec.md)：别插入固定宽度节点、别用 `!important`。
 - 插件只影响编辑器；想改公开页展示逻辑请走[主题](THEMES.md)。
 
+## 内置插件：公众号采集（wechat-collect）
+
+编辑器工具栏「采集公众号文章」：粘贴 `mp.weixin.qq.com` 的文章链接，服务端抓取正文、把配图与封面转存进 R2 图床，并生成一篇**保留原发布时间**的草稿，随后自动跳转到编辑器——核对无误后点「发布」即可。
+
+服务端实现见 `src/collect.ts`（`POST /api/admin/collect/wechat`，需登录，采集频率有限制）；公众号内嵌视频暂不支持。
+
 ## 路线图
 
 后续计划（欢迎 PR）：

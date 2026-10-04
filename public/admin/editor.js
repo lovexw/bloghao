@@ -68,6 +68,7 @@ const IC = {
 /* ---------------- 插件系统 ---------------- */
 const plugins = []
 let pluginSlotEl = null
+let saveSelectionHook = null // mountEditor 注入；renderPluginButtons 在模块作用域，拿不到内部的 saveSelection
 
 function renderPluginButtons(ctx) {
   if (!pluginSlotEl) return
@@ -80,7 +81,7 @@ function renderPluginButtons(ctx) {
     b.innerHTML = p.icon || '插件'
     b.addEventListener('click', (e) => {
       e.preventDefault()
-      saveSelection()
+      if (saveSelectionHook) saveSelectionHook()
       try {
         p.onClick(ctx)
       } catch (err) {
@@ -414,6 +415,7 @@ export async function mountEditor(root, postId) {
   const saveState = document.getElementById('ed-save-state')
   const pill = document.getElementById('ed-pill')
   pluginSlotEl = document.getElementById('ed-plugin-slot')
+  saveSelectionHook = saveSelection
 
   editor.innerHTML = post.content || ''
 
