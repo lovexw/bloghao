@@ -9,6 +9,7 @@ import {
   siteNav,
   tagLink,
   weiboCards,
+  weiboHomeEntry,
   weiboPager,
   type CategoryLink,
   type HomePostView,
@@ -47,6 +48,7 @@ export function home(d: {
   navActive?: string
   notice?: string
   emptyText?: string
+  weibo?: { items: WeiboItemView[]; total: number } | null
 }): string {
   const s = d.settings
   const items = d.posts
@@ -77,6 +79,7 @@ export function home(d: {
     ${searchForm(d.q)}
   </section>
   ${d.notice ? `<div class="md-notice">${d.notice}</div>` : ''}
+  ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
   <main class="md-list">
     ${items || `<p class="md-empty">${d.emptyText || '夜航日志还是空的。'}</p>`}
   </main>

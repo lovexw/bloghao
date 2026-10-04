@@ -214,6 +214,36 @@ export function weiboCards(o: {
     .join('\n')
 }
 
+/** 首页微博入口卡：最新几条随手记摘要 + 总条数，整卡指向 /weibo（无已发布微博时不渲染） */
+export function weiboHomeEntry(o: { items: WeiboItemView[]; total: number }): string {
+  if (!o.items.length) return ''
+  const items = o.items
+    .map((w) => {
+      const text = (w.content || '').replace(/\s+/g, ' ').trim()
+      const short = text ? (text.length > 64 ? text.slice(0, 64) + '…' : text) : `发了 ${w.images.length} 张图`
+      const thumb = w.images[0]
+        ? `<span class="wb-home-thumb"><img src="${esc(w.images[0])}" loading="lazy" alt=""></span>`
+        : ''
+      return `<a class="wb-home-item" href="/weibo#wb-${w.id}">
+  <div class="wb-home-main">
+    <p class="wb-home-text">${esc(short)}</p>
+    <time class="wb-home-time" datetime="${new Date(w.created_at).toISOString()}">${weiboTime(w.created_at)}</time>
+  </div>
+  ${thumb}
+</a>`
+    })
+    .join('\n')
+  return `<section class="wb-home" aria-label="微博随手记">
+  <a class="wb-home-head" href="/weibo">
+    <svg class="wb-home-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    <span class="wb-home-title">微博 · 随手记</span>
+    <span class="wb-home-count">共 ${o.total} 条</span>
+    <span class="wb-home-more">全部 →</span>
+  </a>
+  ${items}
+</section>`
+}
+
 /** 微博页翻页：上一页 / 下一页（页数少，无需页码跳转） */
 export function weiboPager(page: number, totalPages: number): string {
   if (totalPages <= 1) return ''

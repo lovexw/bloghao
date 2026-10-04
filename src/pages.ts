@@ -99,7 +99,7 @@ async function renderList(
   const perPage = clampInt(settings.postsPerPage, 1, 50, 10)
 
   // 搜索模式不分页，直接取前 50 条
-  const [r, tags, categories, category] = await Promise.all([
+  const [r, tags, categories, category, wb] = await Promise.all([
     listPosts(c.env.DB, {
       status: 'published',
       tag: opts.mode === 'home' ? tag : undefined,
@@ -111,6 +111,10 @@ async function renderList(
     hotTags(c),
     navCategories(c),
     categorySlug ? getCategoryBySlug(c.env.DB, categorySlug) : Promise.resolve(null),
+    // 首页微博入口卡：最新两条随手记
+    opts.mode === 'home'
+      ? listWeibo(c.env.DB, { status: 'published', page: 1, limit: 2 })
+      : Promise.resolve(null),
   ])
   if (opts.mode === 'category' && !category) return renderNotFound(c)
   // 页码跳转可能输入越界，回到最后一页重新取一次
@@ -128,6 +132,20 @@ async function renderList(
   const posts = await Promise.all(
     r.items.map(async (p) => toHomePost(p, parseTags(p), await commentCount(c, p.id), readingMinutes(p.content)))
   )
+
+  const weibo = wb
+    ? {
+        total: wb.total,
+        items: wb.items.map((w) => ({
+          id: w.id,
+          content: w.content,
+          images: weiboImageList(w),
+          created_at: w.published_at ?? w.created_at,
+          likes: w.likes,
+          commentCount: 0,
+        })),
+      }
+    : null
 
   let notice = ''
   let emptyText = ''
@@ -157,6 +175,7 @@ async function renderList(
     q: opts.mode === 'search' ? q : undefined,
     hotTags: tags,
     categories,
+    weibo,
     navActive:
       opts.mode === 'home' ? (tag ? '' : 'home') : opts.mode === 'category' ? categorySlug : 'search',
     notice,

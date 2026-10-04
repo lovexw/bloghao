@@ -25,6 +25,8 @@ export interface ThemeModule {
     notice?: string
     /** 空列表文案（搜索/分类页有定制文案） */
     emptyText?: string
+    /** 首页微博入口卡数据（仅首页列表传入；没有已发布微博时为 null） */
+    weibo?: { items: import('../render').WeiboItemView[]; total: number } | null
   }): string
   weibo(d: {
     settings: Record<string, string>

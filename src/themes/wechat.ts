@@ -10,6 +10,7 @@ import {
   siteNav,
   tagLink,
   weiboCards,
+  weiboHomeEntry,
   weiboPager,
   type CategoryLink,
   type HomePostView,
@@ -62,6 +63,7 @@ export function home(d: {
   navActive?: string
   notice?: string
   emptyText?: string
+  weibo?: { items: WeiboItemView[]; total: number } | null
 }): string {
   const s = d.settings
   const items = d.posts
@@ -102,6 +104,7 @@ export function home(d: {
     ${mastheadNav(d.tag, d.hotTags)}
   </header>
   ${d.notice ? `<div class="wx-notice">${d.notice}</div>` : ''}
+  ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
   <main class="wx-feed">
     ${items || `<p class="wx-empty">${d.emptyText || '还没有文章，快去后台写下第一篇吧。'}</p>`}
   </main>

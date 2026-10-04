@@ -284,6 +284,35 @@ img { max-width: 100%; height: auto; }
 .wb-cmt-submit { background: var(--mn-ink); color: #fff; border: none; font-size: 13px; padding: 6px 18px; cursor: pointer; }
 .wb-cmt-submit:disabled { opacity: 0.6; }
 
+/* 首页微博入口卡：列表上方一组细线分隔的随手记 */
+.wb-home { margin: 0 0 40px; }
+.wb-home-head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--mn-line);
+}
+.wb-home-ico { width: 15px; height: 15px; color: var(--mn-ink); flex: 0 0 auto; align-self: center; }
+.wb-home-title { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mn-ink); }
+.wb-home-count { font-size: 12px; color: var(--mn-sub); }
+.wb-home-more { margin-left: auto; font-size: 12px; color: var(--mn-sub); white-space: nowrap; transition: color 0.15s ease; }
+.wb-home-head:hover .wb-home-more { color: var(--mn-ink); }
+.wb-home-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--mn-line);
+  transition: padding-left 0.2s ease;
+}
+.wb-home-item:hover { padding-left: 6px; }
+.wb-home-main { flex: 1; min-width: 0; }
+.wb-home-text {
+  font-size: 14px; line-height: 1.7; color: var(--mn-sub);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.wb-home-item:hover .wb-home-text { color: var(--mn-ink); }
+.wb-home-time { display: block; margin-top: 4px; font-size: 12px; color: var(--mn-sub); }
+.wb-home-thumb { flex: 0 0 56px; width: 56px; height: 56px; overflow: hidden; }
+.wb-home-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
 @media (max-width: 480px) {
   .wb-card { padding: 20px 0; }
   .wb-imgs { gap: 4px; }
