@@ -1,10 +1,13 @@
 import type { SettingsMap } from '../types'
+import type { PostSort } from '../db'
 import {
   categoryLink,
   esc,
   fmtDate,
   friendLinkApply,
   friendLinkCards,
+  homeListBase,
+  homeSortBar,
   likesBtn,
   pagerHtml,
   siteNav,
@@ -32,7 +35,7 @@ function seal(s: SettingsMap): string {
   return `<span class="pp-seal" aria-hidden="true">${esc(ch)}</span>`
 }
 
-/** 搜索框：报头与标签之间 */
+/** 搜索框：微博卡与文章列表之间 */
 function searchForm(q: string | undefined): string {
   return `<form class="pp-search" action="/search" method="get" role="search">
   <input class="pp-search-input" type="search" name="q" value="${esc(q || '')}" placeholder="检索站内文章…" maxlength="60" aria-label="搜索文章">
@@ -48,6 +51,9 @@ export function home(d: {
   total: number
   tag?: string
   q?: string
+  sort?: PostSort
+  seed?: number
+  categorySlug?: string
   tags: TagCount[]
   categories: CategoryLink[]
   navActive?: string
@@ -80,13 +86,18 @@ export function home(d: {
     <h1 class="pp-site-name">${esc(s.siteName)}</h1>
     <p class="pp-site-desc">${esc(s.siteDescription)}</p>
   </header>
-  ${searchForm(d.q)}
   ${d.notice ? `<div class="pp-notice">${d.notice}</div>` : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
+  ${searchForm(d.q)}
+  ${homeSortBar({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q })}
   <main class="pp-list">
     ${items || `<p class="pp-empty">${d.emptyText || '纸上还无字，正是落笔时。'}</p>`}
   </main>
-  ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
+  ${pagerHtml({
+    page: d.page,
+    totalPages: d.totalPages,
+    base: homeListBase({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q }),
+  })}
   <footer class="pp-footer">
     ${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>

@@ -46,12 +46,12 @@ img { max-width: 100%; height: auto; }
 .md-nav-link:hover { color: var(--md-accent); }
 .md-nav-link.is-active { color: var(--md-accent); }
 
-.md-hero { padding: 34px 0 40px; border-bottom: 1px solid var(--md-line); }
+.md-hero { padding: 34px 0 30px; border-bottom: 1px solid var(--md-line); }
 .md-hero h1 { font-size: 30px; letter-spacing: 0.01em; }
 .md-hero p { color: var(--md-sub); margin-top: 10px; font-size: 15px; max-width: 40em; }
 
-/* ---------- 搜索（hero 内，正文列表上方） ---------- */
-.md-search { position: relative; max-width: 420px; margin-top: 24px; }
+/* ---------- 搜索（微博卡与正文列表之间） ---------- */
+.md-search { position: relative; max-width: 420px; margin: 22px 0 0; }
 .md-search-ico {
   position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
   width: 15px; height: 15px;
@@ -75,6 +75,18 @@ img { max-width: 100%; height: auto; }
   transition: opacity 0.2s ease;
 }
 .md-search-btn:hover { opacity: 0.88; }
+
+/* ---------- 列表排序筛选（搜索框下方） ---------- */
+.fs-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0 0; }
+.fs-label { font-size: 12px; color: var(--md-sub); font-family: var(--md-mono); letter-spacing: 0.12em; }
+.fs-chip {
+  font-size: 12.5px; line-height: 1.2; font-family: var(--md-mono);
+  padding: 5px 13px; border-radius: 999px;
+  border: 1px solid var(--md-line); color: var(--md-sub); background: var(--md-card);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.fs-chip:hover { color: var(--md-accent); border-color: var(--md-accent); }
+.fs-chip.is-active { color: #0f1115; background: var(--md-accent); border-color: var(--md-accent); }
 
 .md-list { padding: 24px 0 0; display: grid; gap: 14px; }
 .md-card {
@@ -219,11 +231,19 @@ img { max-width: 100%; height: auto; }
 
 /* ---------- 顶部站点导航（首页/微博/分类话题/随机） ---------- */
 .md-snav {
-  display: flex; align-items: center; gap: 18px;
-  padding: 10px 0 8px; border-bottom: 1px solid var(--md-line);
+  display: flex; align-items: center; gap: 22px;
+  padding: 14px 0 12px; border-bottom: 1px solid var(--md-line);
 }
-.md-snav-link { font-size: 13px; color: var(--md-sub); font-family: var(--md-mono); white-space: nowrap; transition: color 0.2s ease; }
-.md-snav-link:hover, .md-snav-link.is-active { color: var(--md-accent); }
+.md-snav-link {
+  font-size: 14.5px; font-weight: 500; color: var(--md-sub); font-family: var(--md-mono);
+  white-space: nowrap; transition: color 0.2s ease;
+}
+.md-snav-link:hover { color: var(--md-ink); }
+.md-snav-link.is-active { color: var(--md-accent); font-weight: 600; }
+@media (max-width: 480px) {
+  .md-snav { gap: 14px; }
+  .md-snav-link { font-size: 13.5px; }
+}
 
 /* 「分类话题」折叠菜单：details/summary 原生折叠，site.js 只负责点外部收起 */
 .md-snav-dd { position: relative; }

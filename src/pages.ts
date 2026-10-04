@@ -15,11 +15,15 @@ import {
   relatedPosts,
   weiboCommentCountMap,
   weiboImageList,
+  type PostSort,
 } from './db'
 import {
   commentsHtml,
   friendLinkApply,
   friendLinkCards,
+  HOME_SORTS,
+  homeListBase,
+  homeSortBar,
   page,
   pagerHtml,
   toHomePost,
@@ -101,6 +105,12 @@ async function renderList(
   const categorySlug = opts.mode === 'category' ? c.req.param('slug') || '' : ''
   const pageNum = clampInt(url.searchParams.get('page'), 1, 100000, 1)
   const perPage = clampInt(settings.postsPerPage, 1, 50, 10)
+  // 列表排序：最新（默认，置顶优先）/ 最多阅读 / 最多点赞 / 最多留言 / 随机
+  const sortParam = (url.searchParams.get('sort') || '').trim()
+  const sort: PostSort = HOME_SORTS.some((s) => s.key === sortParam) ? (sortParam as PostSort) : 'latest'
+  // 随机排序用 seed 稳住一组顺序：URL 没带就现生成一个，翻页链接会带上它
+  const seed =
+    sort === 'random' ? clampInt(url.searchParams.get('seed'), 1, 999999999, 0) || 1 + Math.floor(Math.random() * 999999998) : 0
 
   // 搜索模式不分页，直接取前 50 条
   const [r, tags, categories, category, wb] = await Promise.all([    listPosts(c.env.DB, {
@@ -110,6 +120,8 @@ async function renderList(
       categorySlug: categorySlug || undefined,
       page: opts.mode === 'search' ? 1 : pageNum,
       limit: opts.mode === 'search' ? 50 : perPage,
+      sort,
+      seed,
     }),
     navTags(c),
     navCategories(c),
@@ -128,6 +140,8 @@ async function renderList(
       categorySlug: categorySlug || undefined,
       page: r.totalPages,
       limit: perPage,
+      sort,
+      seed,
     })
     Object.assign(r, fixed)
   }
@@ -176,6 +190,9 @@ async function renderList(
     total: r.total,
     tag: opts.mode === 'home' ? tag : undefined,
     q: opts.mode === 'search' ? q : undefined,
+    sort,
+    seed,
+    categorySlug: categorySlug || undefined,
     tags,
     categories,
     weibo,

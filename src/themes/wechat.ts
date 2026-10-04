@@ -1,4 +1,5 @@
 import type { SettingsMap } from '../types'
+import type { PostSort } from '../db'
 import {
   categoryLink,
   esc,
@@ -6,6 +7,8 @@ import {
   fmtDateCN,
   friendLinkApply,
   friendLinkCards,
+  homeListBase,
+  homeSortBar,
   likesBtn,
   pagerHtml,
   siteNav,
@@ -33,7 +36,7 @@ function avatar(s: SettingsMap): string {
   return `<span class="wx-avatar" aria-hidden="true">${esc(ch)}</span>`
 }
 
-/** 刊头搜索框：位于标语与文章列表之间（分类、话题收进顶部导航的折叠菜单） */
+/** 刊头搜索框：微博卡与文章列表之间（分类、话题收进顶部导航的折叠菜单） */
 function searchForm(q: string | undefined): string {
   return `<form class="wx-search" action="/search" method="get" role="search">
   <svg class="wx-search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
@@ -50,6 +53,9 @@ export function home(d: {
   total: number
   tag?: string
   q?: string
+  sort?: PostSort
+  seed?: number
+  categorySlug?: string
   tags: TagCount[]
   categories: CategoryLink[]
   navActive?: string
@@ -92,14 +98,19 @@ export function home(d: {
     ${avatar(s)}
     <h1 class="wx-masthead-name">${esc(s.siteName)}</h1>
     ${s.siteDescription ? `<p class="wx-masthead-desc">${esc(s.siteDescription)}</p>` : ''}
-    ${searchForm(d.q)}
   </header>
   ${d.notice ? `<div class="wx-notice">${d.notice}</div>` : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
+  ${searchForm(d.q)}
+  ${homeSortBar({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q })}
   <main class="wx-feed">
     ${items || `<p class="wx-empty">${d.emptyText || '还没有文章，快去后台写下第一篇吧。'}</p>`}
   </main>
-  ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
+  ${pagerHtml({
+    page: d.page,
+    totalPages: d.totalPages,
+    base: homeListBase({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q }),
+  })}
   <footer class="wx-footer">
     ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>

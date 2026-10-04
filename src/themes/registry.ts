@@ -17,6 +17,12 @@ export interface ThemeModule {
     tag?: string
     /** 搜索页当前关键词（刊头搜索框回填用） */
     q?: string
+    /** 列表当前排序（首页/分类/搜索共用排序条；随机时翻页需带 seed） */
+    sort?: import('../db').PostSort
+    /** 随机排序的种子：服务端生成后回传，翻页链接携带以稳住同一组顺序 */
+    seed?: number
+    /** 当前分类页的 slug（分类页排序条/翻页回链用） */
+    categorySlug?: string
     /** 顶部导航「分类话题」菜单的标签（带使用计数，已按热度排序） */
     tags: import('../render').TagCount[]
     /** 顶部导航数据与高亮：'home' | 'weibo' | 分类 slug | 'tag:标签名' | 'search' */

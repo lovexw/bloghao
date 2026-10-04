@@ -1,10 +1,13 @@
 import type { SettingsMap } from '../types'
+import type { PostSort } from '../db'
 import {
   categoryLink,
   esc,
   fmtDate,
   friendLinkApply,
   friendLinkCards,
+  homeListBase,
+  homeSortBar,
   likesBtn,
   pagerHtml,
   siteNav,
@@ -28,7 +31,7 @@ function avatar(s: SettingsMap): string {
   return s.avatarUrl ? `<img class="mn-avatar" src="${esc(s.avatarUrl)}" alt="${esc(s.siteName)}">` : ''
 }
 
-/** 搜索框：引言与列表之间 */
+/** 搜索框：微博卡与列表之间 */
 function searchForm(q: string | undefined): string {
   return `<form class="mn-search" action="/search" method="get" role="search">
   <input class="mn-search-input" type="search" name="q" value="${esc(q || '')}" placeholder="Search…" maxlength="60" aria-label="搜索文章">
@@ -44,6 +47,9 @@ export function home(d: {
   total: number
   tag?: string
   q?: string
+  sort?: PostSort
+  seed?: number
+  categorySlug?: string
   tags: TagCount[]
   categories: CategoryLink[]
   navActive?: string
@@ -72,13 +78,18 @@ export function home(d: {
     </nav>
   </header>
   <p class="mn-intro">${esc(s.siteDescription)}</p>
-  ${searchForm(d.q)}
   ${d.notice ? `<div class="mn-notice">${d.notice}</div>` : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
+  ${searchForm(d.q)}
+  ${homeSortBar({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q })}
   <main class="mn-list">
     ${items || `<p class="mn-empty">${d.emptyText || 'Nothing here yet. Start writing.'}</p>`}
   </main>
-  ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
+  ${pagerHtml({
+    page: d.page,
+    totalPages: d.totalPages,
+    base: homeListBase({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q }),
+  })}
   <footer class="mn-footer">
     <span>${esc(s.footerText || '')}</span>
     <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>

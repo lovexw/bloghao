@@ -48,6 +48,8 @@ export function parseTags(row: Pick<PostRow, 'tags'>): string[] {
   }
 }
 
+export type PostSort = 'latest' | 'views' | 'likes' | 'comments' | 'random'
+
 export interface ListPostsOptions {
   status?: 'published' | 'draft' | 'all'
   q?: string
@@ -55,6 +57,9 @@ export interface ListPostsOptions {
   categorySlug?: string
   page?: number
   limit?: number
+  /** 前台列表排序：latest 置顶优先最新在前；random 需配 seed 保证翻页不重洗 */
+  sort?: PostSort
+  seed?: number
 }
 
 export interface ListPostsResult {
@@ -88,10 +93,20 @@ export async function listPosts(db: D1Database, opts: ListPostsOptions = {}): Pr
     binds.push(opts.categorySlug)
   }
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
+  const recency = 'COALESCE(published_at, created_at) DESC'
+  // 随机排序用 (id+seed) 乘法散列：同一 seed 下全站顺序固定，翻页不重洗；换 seed 即换一组
   const orderSql =
     opts.status === 'draft'
       ? 'ORDER BY updated_at DESC'
-      : 'ORDER BY pinned DESC, COALESCE(published_at, created_at) DESC'
+      : opts.sort === 'views'
+        ? `ORDER BY views DESC, ${recency}`
+        : opts.sort === 'likes'
+          ? `ORDER BY likes DESC, ${recency}`
+          : opts.sort === 'comments'
+            ? `ORDER BY (SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id AND cm.status = 'approved') DESC, ${recency}`
+            : opts.sort === 'random'
+              ? `ORDER BY ((posts.id + ${clampInt(opts.seed, 1, 999999999, 1)}) * 2654435761) % 4294967296 ASC, posts.id ASC`
+              : `ORDER BY pinned DESC, ${recency}`
 
   const [itemsRes, countRes] = await Promise.all([
     db

@@ -328,11 +328,19 @@ img { max-width: 100%; height: auto; }
 
 /* ---------- 顶部站点导航（首页/微博/分类话题/随机） ---------- */
 .pp-snav {
-  display: flex; align-items: center; gap: 18px;
-  padding: 12px 2px 10px; border-bottom: 1px solid var(--pp-line);
+  display: flex; align-items: center; gap: 22px;
+  padding: 15px 2px 13px; border-bottom: 1px solid var(--pp-line);
 }
-.pp-snav-link { font-size: 13px; color: var(--pp-sub); white-space: nowrap; letter-spacing: 0.05em; transition: color 0.2s ease; }
-.pp-snav-link:hover, .pp-snav-link.is-active { color: var(--pp-accent); }
+.pp-snav-link {
+  font-size: 14.5px; font-weight: 500; color: var(--pp-sub); white-space: nowrap;
+  letter-spacing: 0.05em; transition: color 0.2s ease;
+}
+.pp-snav-link:hover { color: var(--pp-ink); }
+.pp-snav-link.is-active { color: var(--pp-accent); font-weight: 600; }
+@media (max-width: 480px) {
+  .pp-snav { gap: 14px; }
+  .pp-snav-link { font-size: 13.5px; }
+}
 
 /* 「分类话题」折叠菜单：details/summary 原生折叠，site.js 只负责点外部收起 */
 .pp-snav-dd { position: relative; }
@@ -367,7 +375,7 @@ img { max-width: 100%; height: auto; }
 .pp-snav-chip.is-active { color: #f7f4ee; background: var(--pp-accent); border-color: var(--pp-accent); }
 .pp-notice { padding: 18px 0 0; }
 
-/* ---------- 报头检索 ---------- */
+/* ---------- 报头检索（微博卡与文章列表之间） ---------- */
 .pp-search {
   display: flex; gap: 8px; max-width: 400px;
   margin: 20px auto 0; padding: 0 0 16px;
@@ -389,6 +397,21 @@ img { max-width: 100%; height: auto; }
   transition: opacity 0.2s ease;
 }
 .pp-search-btn:hover { opacity: 0.88; }
+
+/* ---------- 列表排序筛选（检索下方） ---------- */
+.fs-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 8px; margin: 16px auto 0; max-width: 460px;
+}
+.fs-label { font-size: 12px; color: #b3ad9f; letter-spacing: 0.14em; }
+.fs-chip {
+  font-size: 12.5px; line-height: 1.2; padding: 5px 13px; border-radius: 999px;
+  border: 1px solid var(--pp-line); color: var(--pp-sub); background: var(--pp-card);
+  letter-spacing: 0.04em;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.fs-chip:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
+.fs-chip.is-active { color: #f7f4ee; background: var(--pp-accent); border-color: var(--pp-accent); }
 .search-meta { font-size: 13px; color: var(--pp-sub); padding: 8px 2px 0; letter-spacing: 0.05em; }
 .pager-jump { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 0 0; font-size: 13px; color: var(--pp-sub); flex-wrap: wrap; }
 .pager-input {

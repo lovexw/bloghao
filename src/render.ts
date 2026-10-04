@@ -1,4 +1,5 @@
 import type { CommentRow, PostRow, SettingsMap } from './types'
+import type { PostSort } from './db'
 import { esc, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime } from './utils'
 
 export interface ThemePageOptions {
@@ -391,12 +392,12 @@ export function pagerHtml(c: PagerContext): string {
   for (let p = start; p <= end; p++) {
     nums += link(p, String(p), `pager-num${p === c.page ? ' is-current' : ''}`)
   }
-  // 页码跳转：纯 HTML GET 表单（CSP 禁内联脚本），tag 参数从 base 还原
-  const tagInBase = c.base.match(/^\/\?tag=([^&]*)&$/)
-  const hidden = tagInBase
-    ? `<input type="hidden" name="tag" value="${esc(decodeURIComponent(tagInBase[1]))}">`
-    : ''
-  const jump = `<form class="pager-jump" action="/" method="get">${hidden}<span class="pager-jump-text">跳至</span><input class="pager-input" type="number" name="page" min="1" max="${c.totalPages}" value="${c.page}" aria-label="页码">页<span class="pager-jump-text">/ 共 ${c.totalPages} 页</span><button class="pager-go" type="submit">跳转</button></form>`
+  // 页码跳转：纯 HTML GET 表单（CSP 禁内联脚本），base 里的参数（tag/sort/seed…）原样带回
+  const baseQs = c.base.replace(/^[^?]*\?/, '').replace(/&+$/, '')
+  const hidden = [...new URLSearchParams(baseQs).entries()]
+    .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
+    .join('')
+  const jump = `<form class="pager-jump" action="${esc(c.base.split('?')[0] || '/')}" method="get">${hidden}<span class="pager-jump-text">跳至</span><input class="pager-input" type="number" name="page" min="1" max="${c.totalPages}" value="${c.page}" aria-label="页码">页<span class="pager-jump-text">/ 共 ${c.totalPages} 页</span><button class="pager-go" type="submit">跳转</button></form>`
   return `<nav class="pager">${link(c.page - 1, '← 上一页', 'pager-prev', c.page <= 1)}${nums}${link(
     c.page + 1,
     '下一页 →',
@@ -488,6 +489,69 @@ export function likesBtn(slug: string, likes: number): string {
 
 export function tagLink(name: string): string {
   return `/tag/${encodeURIComponent(name)}`
+}
+
+/* ---------------- 首页列表排序筛选（共享构建器） ----------------
+ * 结构全主题共用（语义化 .fs-* class），视觉由主题 CSS 塑形。
+ * 随机排序：点「随机」不带 seed，服务端每次生成新 seed 洗一组；
+ * 翻页链接带 seed，保证同一组随机顺序不重洗。
+ */
+
+/** 列表页排序可选项与文案 */
+export const HOME_SORTS: { key: PostSort; label: string }[] = [
+  { key: 'latest', label: '最新' },
+  { key: 'views', label: '最多阅读' },
+  { key: 'likes', label: '最多点赞' },
+  { key: 'comments', label: '最多留言' },
+  { key: 'random', label: '随机' },
+]
+
+export interface ListPageContext {
+  sort?: PostSort
+  seed?: number
+  tag?: string
+  categorySlug?: string
+  q?: string
+}
+
+/** 排序条/翻页共用的列表地址：分类页、搜索页留在原路径，首页/标签页用 /?tag= */
+export function listPageUrl(o: ListPageContext): string {
+  const params = new URLSearchParams()
+  if (o.tag) params.set('tag', o.tag)
+  if (o.q) params.set('q', o.q)
+  if (o.sort && o.sort !== 'latest') params.set('sort', o.sort)
+  if (o.sort === 'random' && o.seed) params.set('seed', String(o.seed))
+  const qs = params.toString()
+  if (o.categorySlug) return `/category/${encodeURIComponent(o.categorySlug)}${qs ? `?${qs}` : ''}`
+  if (o.q) return `/search${qs ? `?${qs}` : ''}`
+  return '/' + (qs ? `?${qs}` : '')
+}
+
+/** 排序筛选条：一排 chips，当前排序高亮；点「随机」永远洗新一组 */
+export function homeSortBar(o: ListPageContext): string {
+  const chips = HOME_SORTS.map(
+    (s) =>
+      `<a class="fs-chip${s.key === (o.sort || 'latest') ? ' is-active' : ''}" href="${esc(
+        listPageUrl({ ...o, sort: s.key, seed: undefined })
+      )}">${s.label}</a>`
+  ).join('')
+  return `<nav class="fs-bar" aria-label="文章排序"><span class="fs-label">排序</span>${chips}</nav>`
+}
+
+/** 翻页链接前缀（形如 "/?tag=x&sort=random&seed=5&"），随机时带 seed 稳住顺序 */
+export function homeListBase(o: ListPageContext): string {
+  const params = new URLSearchParams()
+  if (o.tag) params.set('tag', o.tag)
+  if (o.q) params.set('q', o.q)
+  if (o.sort && o.sort !== 'latest') params.set('sort', o.sort)
+  if (o.sort === 'random' && o.seed) params.set('seed', String(o.seed))
+  const qs = params.toString()
+  const head = o.categorySlug
+    ? `/category/${encodeURIComponent(o.categorySlug)}?`
+    : o.q
+      ? '/search?'
+      : '/?'
+  return head + (qs ? qs + '&' : '')
 }
 
 export function fmtViews(n: number): string {

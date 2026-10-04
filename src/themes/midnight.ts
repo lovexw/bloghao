@@ -1,10 +1,13 @@
 import type { SettingsMap } from '../types'
+import type { PostSort } from '../db'
 import {
   categoryLink,
   esc,
   fmtDate,
   friendLinkApply,
   friendLinkCards,
+  homeListBase,
+  homeSortBar,
   likesBtn,
   pagerHtml,
   siteNav,
@@ -30,7 +33,7 @@ function logoMark(s: SettingsMap): string {
     : '<span class="md-logo-dot"></span>'
 }
 
-/** 搜索框：hero 之内、正文列表之上 */
+/** 搜索框：微博卡与正文列表之上 */
 function searchForm(q: string | undefined): string {
   return `<form class="md-search" action="/search" method="get" role="search">
   <svg class="md-search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
@@ -47,6 +50,9 @@ export function home(d: {
   total: number
   tag?: string
   q?: string
+  sort?: PostSort
+  seed?: number
+  categorySlug?: string
   tags: TagCount[]
   categories: CategoryLink[]
   navActive?: string
@@ -76,14 +82,19 @@ export function home(d: {
   <section class="md-hero">
     <h1>${esc(s.siteName)}</h1>
     <p>${esc(s.siteDescription)}</p>
-    ${searchForm(d.q)}
   </section>
   ${d.notice ? `<div class="md-notice">${d.notice}</div>` : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
+  ${searchForm(d.q)}
+  ${homeSortBar({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q })}
   <main class="md-list">
     ${items || `<p class="md-empty">${d.emptyText || '夜航日志还是空的。'}</p>`}
   </main>
-  ${pagerHtml({ page: d.page, totalPages: d.totalPages, base: d.tag ? `/?tag=${encodeURIComponent(d.tag)}&` : '/?' })}
+  ${pagerHtml({
+    page: d.page,
+    totalPages: d.totalPages,
+    base: homeListBase({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q }),
+  })}
   <footer class="md-footer">
     <span>${esc(s.footerText || '')}</span>
     <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
