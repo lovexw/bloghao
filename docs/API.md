@@ -180,7 +180,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### 设置 / 账号 / 工具
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, theme, allowComments, moderateComments, postsPerPage, about`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl` 只接受站内 `/images/` 与 `http(s)` 外链 |
+| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, theme, allowComments, moderateComments, notifyNewComment, rssFullText, backupEnabled, postsPerPage, about`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl` 只接受站内 `/images/` 与 `http(s)` 外链 |
 | PUT | `/api/admin/password` | Body `{oldPassword, newPassword}`（8-64 位） |
 | POST | `/api/admin/tools/md` | Body `{md}` → `{html}`，Markdown 渲染 |
 | POST | `/api/admin/tools/sanitize` | Body `{html}` → `{html}`，白名单净化（粘贴用） |
@@ -196,7 +196,12 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | POST | `/api/admin/external/token` | 生成并保存新的开放 API Token（旧的立即失效），返回 `{ok, token}` |
 | POST | `/api/admin/external/telegram/webhook` | 校验 Bot Token（getMe）→ 首次自动生成 Webhook 密钥 → 调 Telegram setWebhook；返回 `{ok, bot:"@name", webhookUrl}`。需先通过设置接口保存 `telegramBotToken` |
 
-外部发布相关设置键（可经 `PUT /api/admin/settings` 写入）：`externalToken`（开放 API 密钥，空 = 接口关闭，建议用上面的专用端点生成）、`telegramBotToken`、`telegramAllowFrom`（逗号分隔的 Chat ID 白名单）、`telegramWebhookSecret`（Webhook 密钥，建议由专用端点自动生成）。
+外部发布相关设置键（可经 `PUT /api/admin/settings` 写入）：`externalToken`（开放 API 密钥，空 = 接口关闭，建议用上面的专用端点生成）、`telegramBotToken`、`telegramAllowFrom`（逗号分隔的 Chat ID 白名单）、`telegramWebhookSecret`（Webhook 密钥，建议由专用端点自动生成）、`notifyNewComment`（`1`/`0`，新留言推送到 Telegram，目标为白名单第一个 Chat ID）。
+
+### 备份
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/admin/backup` | 手动触发一次全量备份（与每晚 Cron 同一逻辑）：全部业务表导成 JSON 存进 R2 `backups/` 目录，返回 `{ok, key, bytes}`（开关关闭时 `skipped:true`）。结果同时写入设置 `lastBackupAt` / `lastBackupKey` / `lastBackupBytes`。Cron 由 wrangler.jsonc `triggers.crons` 配置（北京时间 00:30），失败时经 Telegram 提醒站长 |
 
 ### GET /api/meta/themes
 已注册主题列表 `{themes:[{id,name,description}]}`。

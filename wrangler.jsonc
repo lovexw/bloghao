@@ -27,5 +27,8 @@
   // R2 存储桶（图床）：xwblog-images
   "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "xwblog-images" }],
 
+  // 定时任务：每晚自动备份 D1 → R2 backups/ 目录（30 16 * * * UTC = 北京时间 00:30）
+  "triggers": { "crons": ["30 16 * * *"] },
+
   "observability": { "enabled": true }
 }

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { runBackup } from './backup'
 import {
   clearSessionCookie,
   clientIp,
@@ -41,7 +42,7 @@ import {
 } from './db'
 import { mdToHtml } from './markdown'
 import { collectRoutes } from './collect'
-import { adminExternalRoutes, externalRoutes, telegramRoutes } from './external'
+import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes } from './external'
 import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
 import { THEMES } from './themes/registry'
@@ -915,10 +916,23 @@ api.put('/admin/settings', async (c) => {
       patch[key] = v === '1' || v === 'true' ? '1' : '0'
       continue
     }
+    if (key === 'notifyNewComment' || key === 'rssFullText' || key === 'backupEnabled') {
+      patch[key] = v === '1' || v === 'true' ? '1' : '0'
+      continue
+    }
     patch[key] = v.slice(0, 500)
   }
   await saveSettings(c.env.DB, patch)
   return c.json({ ok: true, settings: await getSettings(c.env.DB) })
+})
+
+/* ---------------- 订阅与备份 ---------------- */
+
+/** 手动触发一次全量备份（与每晚 Cron 同一逻辑），返回文件 Key 与体积 */
+api.post('/admin/backup', async (c) => {
+  const r = await runBackup(c.env)
+  if (!r.skipped && !r.ok) return jsonError('备份失败：' + (r.error || '未知错误'), 500)
+  return c.json({ ok: r.ok, skipped: !!r.skipped, key: r.key, bytes: r.bytes, error: r.error })
 })
 
 /* ---------------- 密码 ---------------- */
@@ -1033,6 +1047,18 @@ api.post('/public/comments', async (c) => {
       Date.now()
     )
     .run()
+  // 新留言推送到 Telegram（异步，不阻塞回复；开关在后台「设置 → 外部发布」）
+  c.executionCtx.waitUntil(
+    notifyAdminComment(c.env, {
+      kind: 'post',
+      context: post.title,
+      nickname,
+      content,
+      pending,
+      siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
+      path: `/post/${encodeURIComponent(post.slug)}#comments`,
+    })
+  )
   return c.json({ ok: true, pending })
 })
 
@@ -1082,6 +1108,17 @@ api.post('/public/guestbook', async (c) => {
   )
     .bind(nickname, content, pending ? 'pending' : 'approved', ip, Date.now())
     .run()
+  // 留言板新留言同样推送（异步，不阻塞回复）
+  c.executionCtx.waitUntil(
+    notifyAdminComment(c.env, {
+      kind: 'guestbook',
+      nickname,
+      content,
+      pending,
+      siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
+      path: '/guestbook',
+    })
+  )
   return c.json({ ok: true, pending })
 })
 
@@ -1163,6 +1200,18 @@ api.post('/public/weibo/:id/comments', async (c) => {
   )
     .bind(id, nickname, content, pending ? 'pending' : 'approved', ip, Date.now())
     .run()
+  // 微博新评论推送（异步，不阻塞回复）
+  c.executionCtx.waitUntil(
+    notifyAdminComment(c.env, {
+      kind: 'weibo',
+      context: excerpt(wb.content, 40),
+      nickname,
+      content,
+      pending,
+      siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
+      path: `/weibo#wb-${id}`,
+    })
+  )
   return c.json({ ok: true, pending })
 })
 

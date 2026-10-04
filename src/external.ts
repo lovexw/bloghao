@@ -15,7 +15,7 @@ import { Hono } from 'hono'
 import { randomToken, rateLimit, safeEqual } from './auth'
 import { getSettings, getWeiboById, saveSettings, WEIBO_MAX_IMAGES } from './db'
 import type { Env, SessionUser, SettingsMap, WeiboRow } from './types'
-import { extractWeiboTopics } from './utils'
+import { excerpt, extractWeiboTopics } from './utils'
 
 const WEIBO_MAX_CHARS = 5000
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024 // 与手动上传一致
@@ -242,6 +242,69 @@ async function tgApi<T>(botToken: string, method: string, payload?: Record<strin
 
 async function tgSend(botToken: string, chatId: string, text: string) {
   await tgApi(botToken, 'sendMessage', { chat_id: chatId, text, disable_web_page_preview: true })
+}
+
+/* ---------------- 站内事件推送（新留言 / 备份失败等） ----------------
+ * 复用发布机器人的 Bot Token，推送到白名单第一个 Chat ID（即站长本人会话）；
+ * 未配置 Token / 白名单或开关关闭时静默跳过，绝不阻塞主流程（调用方请用 waitUntil 包裹）。
+ */
+
+/** 白名单第一个 Chat ID：推送目标（站长自己授权发布的那个会话） */
+function notifyChatId(settings: SettingsMap): string {
+  return (settings.telegramAllowFrom || '')
+    .split(/[,\s，、]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)[0] ?? ''
+}
+
+/** 给站长推一条纯文本消息（站点级事件，不受留言推送开关限制）；任何失败都吞掉，只返回是否送达 */
+export async function notifyAdminText(env: Env, text: string): Promise<boolean> {
+  try {
+    const settings = await getSettings(env.DB)
+    const botToken = (settings.telegramBotToken || '').trim()
+    if (!botToken) return false
+    const chatId = notifyChatId(settings)
+    if (!chatId) return false
+    const res = await tgApi(botToken, 'sendMessage', { chat_id: chatId, text, disable_web_page_preview: true })
+    return !!res?.ok
+  } catch {
+    return false
+  }
+}
+
+export interface CommentNotice {
+  /** 来源：文章留言 / 微博评论 / 留言板 */
+  kind: 'post' | 'weibo' | 'guestbook'
+  /** 文章标题或微博正文摘要（weibo/guestbook 可省） */
+  context?: string
+  nickname: string
+  content: string
+  /** 先审后展开启时新留言为 pending */
+  pending: boolean
+  /** 站点对外地址（settings.siteUrl 优先，否则当前请求 origin） */
+  siteBase: string
+  /** 跳转路径：文章 /post/:slug#comments、微博 /weibo#wb-:id、留言板 /guestbook */
+  path: string
+}
+
+/** 新留言/评论推送到 Telegram，文案带来源、昵称、内容摘要与直达链接 */
+export async function notifyAdminComment(env: Env, n: CommentNotice): Promise<void> {
+  try {
+    const settings = await getSettings(env.DB)
+    if (settings.notifyNewComment === '0') return
+    const content = excerpt(n.content, 160)
+    const head =
+      n.kind === 'post'
+        ? `💬《${n.context || '文章'}》有新留言`
+        : n.kind === 'weibo'
+          ? `💬 微博「${excerpt(n.context || '', 32)}」有新评论`
+          : '💬 留言板有新留言'
+    const flag = n.pending ? '⏳ 待审核 · ' : ''
+    const link = n.siteBase ? `\n\n👉 ${n.siteBase}${n.path}` : ''
+    await notifyAdminText(env, `${head}\n${flag}来自 ${n.nickname}\n\n${content}${link}`)
+  } catch {
+    /* 通知失败不影响留言本身 */
+  }
 }
 
 function helpText(chatId: string): string {

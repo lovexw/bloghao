@@ -10,6 +10,7 @@ import {
   listCategories,
   listFriendLinks,
   listGuestbookComments,
+  listOnThisDay,
   listPosts,
   listWeibo,
   listWeiboTopics,
@@ -27,6 +28,7 @@ import {
   HOME_SORTS,
   homeListBase,
   homeSortBar,
+  onThisDayCard,
   page,
   pagerHtml,
   toHomePost,
@@ -116,7 +118,7 @@ async function renderList(
     sort === 'random' ? clampInt(url.searchParams.get('seed'), 1, 999999999, 0) || 1 + Math.floor(Math.random() * 999999998) : 0
 
   // 搜索模式不分页，直接取前 50 条
-  const [r, tags, categories, category, wb] = await Promise.all([    listPosts(c.env.DB, {
+  const [r, tags, categories, category, wb, otd] = await Promise.all([    listPosts(c.env.DB, {
       status: 'published',
       tag: opts.mode === 'home' ? tag : undefined,
       q: opts.mode === 'search' ? q || undefined : undefined,
@@ -133,6 +135,8 @@ async function renderList(
     opts.mode === 'home'
       ? listWeibo(c.env.DB, { status: 'published', page: 1, limit: 2 })
       : Promise.resolve(null),
+    // 历史上的今天：仅首页第一页且未带筛选时查（有内部按天缓存）
+    opts.mode === 'home' && pageNum === 1 && !tag && !q ? listOnThisDay(c.env.DB) : Promise.resolve(null),
   ])
   if (opts.mode === 'category' && !category) return renderNotFound(c)
   // 页码跳转可能输入越界，回到最后一页重新取一次
@@ -209,6 +213,7 @@ async function renderList(
           : 'search',
     notice,
     emptyText,
+    onThisDay: otd,
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(

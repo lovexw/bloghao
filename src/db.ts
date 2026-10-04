@@ -1,5 +1,5 @@
 import type { CategoryRow, CommentRow, FriendLinkRow, PostRow, SettingsMap, WeiboRow } from './types'
-import { clampInt, jsonItemLikePattern, WEIBO_MAX_TOPICS } from './utils'
+import { clampInt, excerpt, jsonItemLikePattern, WEIBO_MAX_TOPICS } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
   siteName: '博客号 BlogHao',
@@ -18,6 +18,12 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   telegramBotToken: '',
   telegramAllowFrom: '',
   telegramWebhookSecret: '',
+  // 有新留言/评论时推送到 Telegram（目标为白名单第一个 Chat ID）
+  notifyNewComment: '1',
+  // RSS 输出全文（关闭则只输出摘要）
+  rssFullText: '1',
+  // 每晚凌晨自动备份 D1 到 R2 的 backups/ 目录
+  backupEnabled: '1',
 }
 
 export async function getSettings(db: D1Database): Promise<SettingsMap> {
@@ -170,6 +176,76 @@ export async function listAllPublishedArchives(db: D1Database): Promise<{ slug: 
     .all<{ slug: string; title: string; ts: number }>()
   return results ?? []
 }
+
+/* ---------------- 历史上的今天（首页时光机卡） ---------------- */
+
+export interface OnThisDayItem {
+  kind: 'post' | 'weibo'
+  /** 跳转地址：/post/:slug 或 /weibo#wb-:id */
+  href: string
+  /** 展示文本：文章标题 / 微博正文摘要 */
+  text: string
+  /** 往年今日的整年时间戳 */
+  ts: number
+  /** 距今几年（1 = 去年） */
+  yearsAgo: number
+}
+
+interface OnThisDayRow {
+  key: string
+  title: string
+  content: string
+  images: string
+  ts: number
+}
+
+/** 把毫秒时间戳按 Worker 的 UTC 口径取月-日，与站内日期展示（JS Date）同口径 */
+const ON_THIS_DAY_MD = "strftime('%m-%d', COALESCE(published_at, created_at) / 1000, 'unixepoch')"
+const ON_THIS_DAY_Y = "CAST(strftime('%Y', COALESCE(published_at, created_at) / 1000, 'unixepoch') AS INTEGER)"
+
+/**
+ * 往年今日已发布的内容：文章 + 微博合并，时间倒序取前几条。
+ * 只匹配更早的年份（今年的今天不算），没有命中返回空数组。
+ * 结果按天做进程内缓存：首页每次渲染不必重复全表扫（数据变了最多延迟 10 分钟）。
+ */
+export async function listOnThisDay(db: D1Database, limit = 4): Promise<OnThisDayItem[]> {
+  const dayKey = new Date().toISOString().slice(0, 10)
+  if (otdCache && otdCache.day === dayKey && Date.now() - otdCache.at < 10 * 60_000) return otdCache.items
+  const [postsRes, weiboRes] = await db.batch([
+    db
+      .prepare(
+        `SELECT slug AS key, title, '' AS content, '' AS images, COALESCE(published_at, created_at) AS ts
+         FROM posts
+         WHERE status = 'published' AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now') AS INTEGER)
+         ORDER BY ts DESC LIMIT ?`
+      )
+      .bind(limit * 2),
+    db
+      .prepare(
+        `SELECT id AS key, '' AS title, content, images, COALESCE(published_at, created_at) AS ts
+         FROM weibo
+         WHERE status = 'published' AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now') AS INTEGER)
+         ORDER BY ts DESC LIMIT ?`
+      )
+      .bind(limit * 2),
+  ])
+  const thisYear = new Date().getUTCFullYear()
+  const items: OnThisDayItem[] = []
+  for (const r of (postsRes.results ?? []) as unknown as OnThisDayRow[]) {
+    items.push({ kind: 'post', href: `/post/${r.key}`, text: r.title, ts: r.ts, yearsAgo: thisYear - new Date(r.ts).getUTCFullYear() })
+  }
+  for (const r of (weiboRes.results ?? []) as unknown as OnThisDayRow[]) {
+    const imgs = weiboImageList(r)
+    const text = r.content.trim() || (imgs.length ? `发了 ${imgs.length} 张图` : '')
+    if (!text) continue
+    items.push({ kind: 'weibo', href: `/weibo#wb-${r.key}`, text: excerpt(text, 64), ts: r.ts, yearsAgo: thisYear - new Date(r.ts).getUTCFullYear() })
+  }
+  const top = items.sort((a, b) => b.ts - a.ts).slice(0, limit)
+  otdCache = { day: dayKey, at: Date.now(), items: top }
+  return top
+}
+let otdCache: { day: string; at: number; items: OnThisDayItem[] } | null = null
+
 
 export async function relatedPosts(db: D1Database, post: PostRow, limit = 3): Promise<PostRow[]> {
   const tags = parseTags(post)

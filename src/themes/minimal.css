@@ -511,3 +511,25 @@ main .gb-section { margin-top: 0; border-top: none; padding-top: 4px; }
   .ar-link { gap: 12px; }
   .ar-title { font-size: 15px; }
 }
+
+/* ---------- On this day（首页时光机卡） ---------- */
+.otd-card { margin: 40px 0 0; border-top: 1px solid var(--mn-line); padding-top: 24px; }
+.otd-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.otd-ico { width: 14px; height: 14px; color: var(--mn-ink); align-self: center; flex: 0 0 auto; }
+.otd-title { font-size: 13px; color: var(--mn-sub); font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; }
+.otd-sub { font-size: 12px; color: var(--mn-sub); }
+.otd-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--mn-line);
+  transition: padding-left 0.2s ease;
+}
+.otd-item:last-child { border-bottom: none; }
+.otd-year { flex: 0 0 auto; font-size: 13px; font-weight: 700; color: var(--mn-ink); font-variant-numeric: tabular-nums; }
+.otd-year i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--mn-sub); margin-left: 4px; }
+.otd-text { flex: 1 1 auto; min-width: 0; font-size: 15px; font-weight: 600; color: var(--mn-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.otd-kind { flex: 0 0 auto; font-size: 11px; color: var(--mn-sub); text-transform: uppercase; letter-spacing: 0.08em; }
+.otd-item:hover { padding-left: 6px; }
+@media (max-width: 480px) {
+  .otd-sub { display: none; }
+}

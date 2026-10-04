@@ -42,7 +42,7 @@
 | [/search?q=](https://blog.xiaowuleyi.com/search) | **搜索页**：标题与正文关键词搜索，展示前 50 条 |
 | [/about](https://blog.xiaowuleyi.com/about) | **关于我**：独立的作者介绍页，内容在后台「设置 → 关于我」维护 |
 | [/random](https://blog.xiaowuleyi.com/random) | **随机阅读**：随机跳到一篇已发布文章 |
-| [/rss.xml](https://blog.xiaowuleyi.com/rss.xml) · [/sitemap.xml](https://blog.xiaowuleyi.com/sitemap.xml) | RSS 订阅与站点地图（自动生成） |
+| [/rss.xml](https://blog.xiaowuleyi.com/rss.xml) · [/sitemap.xml](https://blog.xiaowuleyi.com/sitemap.xml) | RSS 全文订阅与站点地图（自动生成） |
 | [/admin/](https://blog.xiaowuleyi.com/admin/) | **管理后台**（下文的主角） |
 
 ## 2. 第一次进入后台
@@ -262,6 +262,8 @@ curl -X POST https://blog.xiaowuleyi.com/api/external/weibo \
 
 **防垃圾三件套已内置**：蜜罐字段（机器人会填，直接静默丢弃）、同 IP 限流（10 分钟 5 条）、内容长度限制（昵称 ≤ 24 字、内容 ≤ 1000 字）。友链申请另有独立限流。
 
+**新留言 Telegram 推送**：在「设置 → 外部发布」打开「新留言推送到 Telegram」（默认开）。文章、微博或留言板一来新留言，你的发布机器人会立刻把来源、昵称、内容摘要和直达链接推到 Telegram（发给白名单第一个 Chat ID，即你自己）。需要先按 8.1 配好 Bot Token 与 Webhook；开启先审后展时，消息里会标「⏳ 待审核」。你自己以作者身份发言不推送。
+
 ## 11. 友情链接
 
 前台 `/links` 页展示所有已收录的友链，并在页尾提供**申请收录**表单——访客填站名和网址即可提交，进入待审核队列（同 IP 10 分钟限 3 次，网址去重，蜜罐防机器人）。
@@ -308,7 +310,8 @@ curl -X POST https://blog.xiaowuleyi.com/api/external/weibo \
 | **开启留言** | 关掉后文章页、微博卡片与留言板的评论表单一起隐藏，已有评论仍展示 |
 | **留言先审后展** | 开启后新留言进「待审核」，你通过后才展示（你自己以作者身份发言的不受影响） |
 | **每页文章数** | 首页 / 分类列表分页大小（1-50） |
-| **外部发布** | Telegram 机器人与开放 API 的配置（Token 生成、Bot Token、Chat ID 白名单、一键设置 Webhook），详见 8.1 / 8.2 节 |
+| **外部发布** | Telegram 机器人与开放 API 的配置（Token 生成、Bot Token、Chat ID 白名单、一键设置 Webhook），详见 8.1 / 8.2 节；「新留言推送到 Telegram」开关也在这里 |
+| **订阅与备份** | 「RSS 输出全文」开启时订阅器不点开就能读完（关闭则只输出摘要）；「每晚自动备份」每天北京时间 00:30 把数据库快照存进 R2 的 `backups/` 目录（滚动保留 30 份），点「立即备份」马上来一份，旁边显示上次备份时间与体积 |
 | **关于我** | 显示在 `/about`（顶部导航「关于我」页），支持富文本，写你的故事 |
 | **修改密码** | 页面底部「账号」区，旧密码 + 新密码（8-64 位） |
 
@@ -342,14 +345,16 @@ git pull && npm install && npm run deploy
 npx wrangler d1 execute DB --remote --file schema.sql   # 幂等，安全
 ```
 
-**备份**（建议每月一次）：
+**自动备份（已内置，无需配置）**：Worker 自带 Cron Trigger，每天**北京时间 00:30** 把数据库（文章 / 微博 / 评论 / 友链 / 设置等全部业务表）导成 JSON 存进 R2 图床的 `backups/` 目录，按日期命名（`xwblog-YYYY-MM-DD.json`），滚动保留最近 30 份。后台「设置 → 订阅与备份」可以关掉它、查看上次备份时间与体积、或点「立即备份」马上来一份；备份失败时若配了 Telegram 机器人会收到提醒。
+
+**手动备份**（每月一次或大版本前）：
 
 ```bash
 npx wrangler d1 export xwblog-db --remote --output=backup-$(date +%F).sql   # 文章/微博/评论/友链/设置
 npx wrangler r2 object get xwblog-images/ --file=?   # 图片按需从媒体库下载
 ```
 
-恢复：`npx wrangler d1 execute xwblog-db --remote --file=backup.sql`。
+恢复：`npx wrangler d1 execute xwblog-db --remote --file=backup.sql`。自动备份的 JSON 想恢复时，把其中 `tables` 里的数据导回 D1 即可（每张表一条 `INSERT`，或需要时写个小脚本）。
 
 ---
 

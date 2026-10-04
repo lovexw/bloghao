@@ -416,6 +416,43 @@ export function weiboHomeEntry(o: { items: WeiboItemView[]; total: number }): st
 </section>`
 }
 
+/* ---------------- 历史上的今天（首页时光机卡，共享构建器） ----------------
+ * 结构全主题共用（语义化 .otd-* class），视觉由主题 CSS 塑形；没有命中时不渲染。
+ */
+export interface OnThisDayItemView {
+  kind: 'post' | 'weibo'
+  href: string
+  text: string
+  ts: number
+  yearsAgo: number
+}
+
+/** 年份标签：1 = 去年，2+ = N 年前 */
+function otdYearLabel(yearsAgo: number): string {
+  return yearsAgo <= 1 ? '去年' : `${yearsAgo} 年前`
+}
+
+export function onThisDayCard(items: OnThisDayItemView[] | null | undefined): string {
+  if (!items?.length) return ''
+  const rows = items
+    .map(
+      (it) => `<a class="otd-item" href="${esc(it.href)}">
+  <span class="otd-year">${new Date(it.ts).getUTCFullYear()}<i>${otdYearLabel(it.yearsAgo)}</i></span>
+  <span class="otd-text">${esc(it.text)}</span>
+  <span class="otd-kind">${it.kind === 'post' ? '文章' : '微博'}</span>
+</a>`
+    )
+    .join('\n')
+  return `<section class="otd-card" aria-label="历史上的今天">
+  <header class="otd-head">
+    <svg class="otd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+    <span class="otd-title">历史上的今天</span>
+    <span class="otd-sub">时间经过的地方，总会留下点什么</span>
+  </header>
+  ${rows}
+</section>`
+}
+
 /** 前台微博页发布框：管理员登录时由主题渲染在时间线顶部（访客不可见），交互在 site.js，与后台发布器同款能力 */
 export function weiboComposer(o: { adminName: string }): string {
   return `<form class="wb-composer" data-wb-composer>

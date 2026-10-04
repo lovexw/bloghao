@@ -582,3 +582,34 @@ img { max-width: 100%; height: auto; }
   .ar-link { gap: 12px; padding: 12px 0; }
   .ar-title { font-size: 15px; }
 }
+
+/* ---------- 历史上的今天（首页时光机卡） ---------- */
+.otd-card {
+  margin: 22px 0 4px;
+  background: var(--pp-card);
+  border: 1px solid var(--pp-line);
+  border-radius: 4px;
+  padding: 2px 18px;
+}
+.otd-head {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 13px 0 11px;
+  border-bottom: 1px solid var(--pp-line);
+}
+.otd-ico { width: 16px; height: 16px; color: var(--pp-accent); align-self: center; flex: 0 0 auto; }
+.otd-title { font-size: 15px; font-weight: 700; letter-spacing: 0.14em; color: var(--pp-ink); }
+.otd-sub { font-size: 12px; color: var(--pp-sub); letter-spacing: 0.06em; }
+.otd-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--pp-line);
+}
+.otd-item:last-child { border-bottom: none; }
+.otd-year { flex: 0 0 auto; font-size: 14px; font-weight: 700; color: var(--pp-accent); font-variant-numeric: tabular-nums; }
+.otd-year i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--pp-sub); margin-left: 5px; }
+.otd-text { flex: 1 1 auto; min-width: 0; font-size: 14.5px; color: var(--pp-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.2s ease; }
+.otd-kind { flex: 0 0 auto; font-size: 11px; color: var(--pp-accent); border: 1px solid currentColor; border-radius: 2px; padding: 1px 7px; opacity: 0.8; letter-spacing: 0.1em; }
+.otd-item:hover .otd-text { color: var(--pp-accent); }
+@media (max-width: 480px) {
+  .otd-sub { display: none; }
+}

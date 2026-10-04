@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { scheduledBackup } from './backup'
 import { api } from './api'
 import { ensureSchema, getSettings, listPosts } from './db'
 import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
@@ -99,4 +100,8 @@ app.onError((err, c) => {
   return c.text('服务开小差了，请稍后再试。', 500)
 })
 
-export default app
+// fetch：站点与 API；scheduled：Cron Trigger 每晚备份（见 wrangler.jsonc triggers.crons）
+export default {
+  fetch: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx),
+  scheduled: scheduledBackup,
+}

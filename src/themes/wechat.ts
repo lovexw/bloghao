@@ -11,6 +11,7 @@ import {
   homeListBase,
   homeSortBar,
   likesBtn,
+  onThisDayCard,
   pagerHtml,
   siteNav,
   tagLink,
@@ -23,6 +24,7 @@ import {
   type CategoryLink,
   type FriendLinkView,
   type HomePostView,
+  type OnThisDayItemView,
   type TagCount,
   type WeiboItemView,
 } from '../render'
@@ -65,6 +67,7 @@ export function home(d: {
   notice?: string
   emptyText?: string
   weibo?: { items: WeiboItemView[]; total: number } | null
+  onThisDay?: OnThisDayItemView[] | null
 }): string {
   const s = d.settings
   const items = d.posts
@@ -104,6 +107,7 @@ export function home(d: {
   </header>
   ${d.notice ? `<div class="wx-notice">${d.notice}</div>` : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
+  ${onThisDayCard(d.onThisDay)}
   ${searchForm(d.q)}
   ${homeSortBar({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q })}
   <main class="wx-feed">

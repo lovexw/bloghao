@@ -34,6 +34,8 @@ export interface ThemeModule {
     emptyText?: string
     /** 首页微博入口卡数据（仅首页列表传入；没有已发布微博时为 null） */
     weibo?: { items: import('../render').WeiboItemView[]; total: number } | null
+    /** 历史上的今天（仅首页第一页且未筛选时传入）：往年今日的文章与微博，空数组/缺省不渲染 */
+    onThisDay?: import('../render').OnThisDayItemView[] | null
   }): string
   weibo(d: {
     settings: Record<string, string>

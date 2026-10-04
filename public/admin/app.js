@@ -1207,11 +1207,32 @@ async function viewSettings() {
           <label>允许发布的 Chat ID（逗号分隔；给机器人发 /start 可查看自己的 ID）</label>
           <input class="input" id="st-telegramAllowFrom" placeholder="如 123456789" value="${esc(s.telegramAllowFrom || '')}">
         </div>
+        <div class="switch-row">
+          <div><div class="switch-label">新留言推送到 Telegram</div><div class="switch-sub">文章 / 微博 / 留言板有新留言时推送到白名单第一个 Chat ID（需先填 Bot Token 并设置 Webhook）</div></div>
+          <label class="switch"><input type="checkbox" id="st-notifyNewComment" ${s.notifyNewComment === '1' ? 'checked' : ''}><span class="track"></span></label>
+        </div>
         <div class="fav-row">
           <button class="btn" id="btn-tg-webhook" type="button">保存并一键设置 Webhook</button>
           <span class="sec-desc" id="tg-webhook-status"></span>
         </div>
         <div class="sec-desc" style="margin-top:6px;">设置好后在 Telegram 给机器人发文字 / 图片即可发微博；相册多图自动合并成一条；消息开头写 /draft 存草稿</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:20px;">
+      <div class="form-section"><h3>订阅与备份</h3><div class="sec-desc">把内容完整地交给订阅者，把数据完整地交回自己</div>
+        <div class="switch-row">
+          <div><div class="switch-label">RSS 输出全文</div><div class="switch-sub">开启后订阅器（Follow / NetNewsWire 等）不点开就能读完；关闭则只输出摘要</div></div>
+          <label class="switch"><input type="checkbox" id="st-rssFullText" ${s.rssFullText === '1' ? 'checked' : ''}><span class="track"></span></label>
+        </div>
+        <div class="switch-row">
+          <div><div class="switch-label">每晚自动备份</div><div class="switch-sub">每天北京时间 00:30 把数据库全量快照存进 R2 图床的 backups/ 目录，滚动保留最近 30 份</div></div>
+          <label class="switch"><input type="checkbox" id="st-backupEnabled" ${s.backupEnabled === '1' ? 'checked' : ''}><span class="track"></span></label>
+        </div>
+        <div class="fav-row">
+          <button class="btn" id="btn-backup-now" type="button">立即备份</button>
+          <span class="sec-desc" id="backup-status">${s.lastBackupAt ? `上次备份：${esc(fmtDateTime(Number(s.lastBackupAt)))}${s.lastBackupBytes ? ' · ' + fmtSize(Number(s.lastBackupBytes)) : ''}` : '从未备份过，点右侧按钮试一次'}</span>
+        </div>
       </div>
     </div>
 
@@ -1312,6 +1333,9 @@ async function viewSettings() {
       postsPerPage: g('st-postsPerPage').value || '10',
       telegramBotToken: g('st-telegramBotToken').value.trim(),
       telegramAllowFrom: g('st-telegramAllowFrom').value.trim(),
+      notifyNewComment: g('st-notifyNewComment').checked ? '1' : '0',
+      rssFullText: g('st-rssFullText').checked ? '1' : '0',
+      backupEnabled: g('st-backupEnabled').checked ? '1' : '0',
       about: g('st-about').value,
     }
     try {
@@ -1373,6 +1397,27 @@ async function viewSettings() {
     }
     btn.disabled = false
     btn.textContent = '保存并一键设置 Webhook'
+  })
+
+  document.getElementById('btn-backup-now').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-backup-now')
+    const statusEl = document.getElementById('backup-status')
+    btn.disabled = true
+    btn.textContent = '备份中…'
+    try {
+      const d = await api('/admin/backup', { method: 'POST' })
+      if (d.skipped) {
+        statusEl.textContent = '自动备份开关已关闭，先打开再备份'
+        toast('自动备份开关已关闭', true)
+      } else {
+        statusEl.textContent = `上次备份：${fmtDateTime(Date.now())} · ${fmtSize(d.bytes || 0)}`
+        toast('备份完成，已存进 R2 的 backups/ 目录 ✅')
+      }
+    } catch (e) {
+      toast(e.message, true)
+    }
+    btn.disabled = false
+    btn.textContent = '立即备份'
   })
 }
 
