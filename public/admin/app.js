@@ -362,6 +362,7 @@ async function viewWeibo() {
     `<div class="page-head"><div><div class="page-title">微博</div><div class="page-sub">随手记：短文字 + 图片，不用起标题</div></div></div>
     <div class="panel wb-composer">
       <textarea class="textarea wb-input" id="wb-content" maxlength="${WB_MAX_CHARS}" placeholder="有什么新鲜事？">${esc(wbEditing?.content || '')}</textarea>
+      <div class="wb-hint">支持 ⌘/Ctrl+V 粘贴截图、把图片拖进来，或点下方「加图」</div>
       <div class="wb-imgs" id="wb-imgs"></div>
       <div class="wb-composer-foot">
         <button class="btn btn-ghost btn-sm" id="wb-add-img" type="button">${I.image} 加图（${images.length}/${WB_MAX_IMAGES}）</button>
@@ -379,6 +380,7 @@ async function viewWeibo() {
   const contentEl = document.getElementById('wb-content')
   const addImgBtn = document.getElementById('wb-add-img')
   const countEl = document.getElementById('wb-count')
+  const composer = $app.querySelector('.wb-composer')
 
   function renderImgs() {
     const box = document.getElementById('wb-imgs')
@@ -396,30 +398,63 @@ async function viewWeibo() {
     addImgBtn.innerHTML = `${I.image} 加图（${images.length}/${WB_MAX_IMAGES}）`
   }
 
+  /** 加图统一入口：文件选择 / 粘贴 / 拖拽共用，自动过滤非图片并尊重 9 图上限 */
+  async function addImageFiles(fileList) {
+    const all = [...(fileList || [])]
+    const imgs = all.filter((f) => /^image\//.test(f.type))
+    if (!imgs.length) {
+      if (all.length) toast('只支持 JPG / PNG / WebP / GIF 图片', true)
+      return
+    }
+    const room = WB_MAX_IMAGES - images.length
+    if (room <= 0) return toast(`最多 ${WB_MAX_IMAGES} 张图`, true)
+    if (imgs.length > room) toast(`最多 ${WB_MAX_IMAGES} 张图，多出的 ${imgs.length - room} 张已忽略`, true)
+    const label = addImgBtn.textContent
+    for (const f of imgs.slice(0, room)) {
+      try {
+        addImgBtn.textContent = `上传中 ${f.name.slice(0, 12)}…`
+        const r = await uploadFile(f, null)
+        images.push(r.url)
+        renderImgs()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+    addImgBtn.textContent = label
+    renderImgs()
+  }
+
   function pickImages() {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/jpeg,image/png,image/webp,image/gif'
     input.multiple = true
-    input.onchange = async () => {
-      const list = [...input.files].slice(0, WB_MAX_IMAGES - images.length)
-      if (!list.length) return toast(`最多 ${WB_MAX_IMAGES} 张图`, true)
-      const label = addImgBtn.textContent
-      for (const f of list) {
-        try {
-          addImgBtn.textContent = `上传中 ${f.name.slice(0, 12)}…`
-          const r = await uploadFile(f, null)
-          images.push(r.url)
-          renderImgs()
-        } catch (e) {
-          toast(e.message, true)
-        }
-      }
-      addImgBtn.textContent = label
-      renderImgs()
-    }
+    input.onchange = () => addImageFiles(input.files)
     input.click()
   }
+
+  // 粘贴图片：光标在发布器内 ⌘/Ctrl+V 即上传（纯文本粘贴不受影响）
+  composer.addEventListener('paste', async (e) => {
+    const files = [...(e.clipboardData?.files || [])]
+    if (!files.length) return
+    e.preventDefault()
+    await addImageFiles(files)
+  })
+
+  // 拖拽图片到发布器（拖文本进输入框仍是默认行为）
+  composer.addEventListener('dragover', (e) => {
+    if (![...(e.dataTransfer?.types || [])].includes('Files')) return
+    e.preventDefault()
+    composer.classList.add('is-dragover')
+  })
+  composer.addEventListener('dragleave', () => composer.classList.remove('is-dragover'))
+  composer.addEventListener('drop', async (e) => {
+    const files = [...(e.dataTransfer?.files || [])]
+    if (!files.length) return
+    e.preventDefault()
+    composer.classList.remove('is-dragover')
+    await addImageFiles(files)
+  })
 
   async function saveWeibo(status) {
     const content = contentEl.value.trim()
