@@ -91,7 +91,8 @@ export async function listPosts(db: D1Database, opts: ListPostsOptions = {}): Pr
     binds.push(opts.status)
   }
   if (opts.q) {
-    where.push('(title LIKE ? OR summary LIKE ? OR content LIKE ?)')
+    // \% 和 \_ 是字面转义，必须声明 ESCAPE '\' 才生效，否则搜「100%」这类词恒为空
+    where.push("(title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')")
     const like = `%${opts.q.replace(/[%_]/g, (m) => '\\' + m)}%`
     binds.push(like, like, like)
   }
@@ -199,9 +200,9 @@ interface OnThisDayRow {
   ts: number
 }
 
-/** 把毫秒时间戳按 Worker 的 UTC 口径取月-日，与站内日期展示（JS Date）同口径 */
-const ON_THIS_DAY_MD = "strftime('%m-%d', COALESCE(published_at, created_at) / 1000, 'unixepoch')"
-const ON_THIS_DAY_Y = "CAST(strftime('%Y', COALESCE(published_at, created_at) / 1000, 'unixepoch') AS INTEGER)"
+/** 把毫秒时间戳按北京时间的口径取月-日/年（+8h 与前台展示一致，0-8 点发布不跨天） */
+const ON_THIS_DAY_MD = "strftime('%m-%d', COALESCE(published_at, created_at) / 1000 + 28800, 'unixepoch')"
+const ON_THIS_DAY_Y = "CAST(strftime('%Y', COALESCE(published_at, created_at) / 1000 + 28800, 'unixepoch') AS INTEGER)"
 
 /**
  * 往年今日已发布的内容：文章 + 微博合并，时间倒序取前几条。
@@ -209,7 +210,8 @@ const ON_THIS_DAY_Y = "CAST(strftime('%Y', COALESCE(published_at, created_at) / 
  * 结果按天做进程内缓存：首页每次渲染不必重复全表扫（数据变了最多延迟 10 分钟）。
  */
 export async function listOnThisDay(db: D1Database, limit = 4): Promise<OnThisDayItem[]> {
-  const dayKey = new Date().toISOString().slice(0, 10)
+  // 缓存 key 也按北京时间的日期翻日
+  const dayKey = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
   if (otdCache && otdCache.day === dayKey && Date.now() - otdCache.at < 10 * 60_000) return otdCache.items
   const [postsRes, weiboRes] = await db.batch([
     db
@@ -229,16 +231,16 @@ export async function listOnThisDay(db: D1Database, limit = 4): Promise<OnThisDa
       )
       .bind(limit * 2),
   ])
-  const thisYear = new Date().getUTCFullYear()
+  const thisYear = new Date(Date.now() + 8 * 3600_000).getUTCFullYear()
   const items: OnThisDayItem[] = []
   for (const r of (postsRes.results ?? []) as unknown as OnThisDayRow[]) {
-    items.push({ kind: 'post', href: `/post/${r.key}`, text: r.title, ts: r.ts, yearsAgo: thisYear - new Date(r.ts).getUTCFullYear() })
+    items.push({ kind: 'post', href: `/post/${r.key}`, text: r.title, ts: r.ts, yearsAgo: thisYear - new Date(r.ts + 8 * 3600_000).getUTCFullYear() })
   }
   for (const r of (weiboRes.results ?? []) as unknown as OnThisDayRow[]) {
     const imgs = weiboImageList(r)
     const text = r.content.trim() || (imgs.length ? `发了 ${imgs.length} 张图` : '')
     if (!text) continue
-    items.push({ kind: 'weibo', href: `/weibo#wb-${r.key}`, text: excerpt(text, 64), ts: r.ts, yearsAgo: thisYear - new Date(r.ts).getUTCFullYear() })
+    items.push({ kind: 'weibo', href: `/weibo#wb-${r.key}`, text: excerpt(text, 64), ts: r.ts, yearsAgo: thisYear - new Date(r.ts + 8 * 3600_000).getUTCFullYear() })
   }
   const top = items.sort((a, b) => b.ts - a.ts).slice(0, limit)
   otdCache = { day: dayKey, at: Date.now(), items: top }
@@ -250,12 +252,13 @@ let otdCache: { day: string; at: number; items: OnThisDayItem[] } | null = null
 export async function relatedPosts(db: D1Database, post: PostRow, limit = 3): Promise<PostRow[]> {
   const tags = parseTags(post)
   if (tags.length) {
-    const likeBinds = tags.map(() => "tags LIKE ? ESCAPE '\\'").join(' OR ')
+    // 与 listPosts 的标签过滤同口径：带 JSON 引号精确匹配 + ESCAPE，防「猫」命中「波斯猫」/通配符注入
+    const likeBinds = tags.map(() => "tags LIKE ? ESCAPE '\\'")
     const { results } = await db
       .prepare(
         `SELECT * FROM posts WHERE id != ? AND status = 'published' AND (${likeBinds}) ORDER BY views DESC LIMIT ?`
       )
-      .bind(post.id, ...tags.map((t) => `%${JSON.stringify(t).slice(1, -1)}%`), limit)
+      .bind(post.id, ...tags.map((t) => jsonItemLikePattern(t)), limit)
       .all<PostRow>()
     if ((results?.length ?? 0) > 0) return results ?? []
   }

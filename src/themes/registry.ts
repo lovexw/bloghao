@@ -145,5 +145,6 @@ export const THEMES: Record<string, ThemeModule> = {
 }
 
 export function getTheme(id: string): ThemeModule {
-  return THEMES[id] ?? THEMES.wechat
+  // hasOwnProperty 防原型链属性（constructor 等）被当成主题 id
+  return Object.prototype.hasOwnProperty.call(THEMES, id) ? THEMES[id] : THEMES.wechat
 }

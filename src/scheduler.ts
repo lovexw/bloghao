@@ -33,14 +33,20 @@ export async function runScheduledPublish(env: Env): Promise<ScheduleResult> {
     )
       .bind(Date.now())
       .all<DuePost>()
+    // 00:30 备份 cron 与发布 cron 同刻并发触发：UPDATE 带 status='scheduled' 原子护栏，
+    // 只有 meta.changes=1 的（真正由本次发布的）才计数进通知，输家不虚报、不重复推
+    const publishedIds = new Set<number>()
     for (const p of results ?? []) {
       try {
-        await env.DB.prepare(
+        const res = await env.DB.prepare(
           "UPDATE posts SET status = 'published', published_at = ?, updated_at = ? WHERE id = ? AND status = 'scheduled'"
         )
           .bind(p.publish_at, Date.now(), p.id)
           .run()
-        result.published++
+        if ((res.meta.changes ?? 0) === 1) {
+          result.published++
+          publishedIds.add(p.id)
+        }
       } catch (e) {
         result.errors.push(`${p.title}: ${e instanceof Error ? e.message : String(e)}`)
       }
@@ -53,7 +59,7 @@ export async function runScheduledPublish(env: Env): Promise<ScheduleResult> {
       if (result.published > 0) {
         lines.push(`⏰ 定时发布完成，共 ${result.published} 篇：`)
         for (const p of results ?? []) {
-          if (result.errors.some((e) => e.startsWith(p.title))) continue
+          if (!publishedIds.has(p.id)) continue
           lines.push(`· ${p.title}${siteUrl ? `\n  ${siteUrl}/post/${p.slug}` : ''}`)
         }
       }

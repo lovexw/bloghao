@@ -267,7 +267,7 @@ export function weibo(d: {
   <main class="md-list wb-list">
     ${cards || `<p class="md-empty wb-empty">${d.adminName ? '夜航微博还是空的，在上面发第一条信号。' : '夜航微博还是空的。'}</p>`}
   </main>
-  ${weiboPager(d.page, d.totalPages)}
+  ${weiboPager(d.page, d.totalPages, d.topic)}
   <footer class="md-footer">
     <span>${esc(s.footerText || '')}</span>
     <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>

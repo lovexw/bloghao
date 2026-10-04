@@ -80,6 +80,11 @@ export async function destroySession(db: D1Database, req: Request): Promise<void
   if (token) await db.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run()
 }
 
+/** 清理已过期会话（随每晚备份 cron 跑一次即可），防止 sessions 表无限增长 */
+export async function purgeExpiredSessions(db: D1Database): Promise<void> {
+  await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(Date.now()).run()
+}
+
 /**
  * 简单内存限流（按隔离实例生效，尽力而为）。
  * key => 每窗口最多 limit 次。

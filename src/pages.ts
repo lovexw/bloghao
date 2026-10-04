@@ -1,5 +1,5 @@
 import type { Context } from 'hono'
-import { getSessionUser } from './auth'
+import { clientIp, getSessionUser } from './auth'
 import {
   getCategoryBySlug,
   getPostBySlug,
@@ -53,6 +53,21 @@ function baseHeaders(c: C) {
   c.header('X-Content-Type-Options', 'nosniff')
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
   c.header('X-Frame-Options', 'SAMEORIGIN')
+}
+
+// 浏览量去重：同一 IP 对同一篇文章 1 小时内只计 1 次（进程内缓存，尽力而为），
+// 否则每次刷新/爬虫抓取都会 +1
+const viewSeen = new Map<string, number>()
+function shouldCountView(ip: string, postId: number): boolean {
+  const now = Date.now()
+  const key = `${ip}:${postId}`
+  const last = viewSeen.get(key)
+  if (last && now - last < 3600_000) return false
+  viewSeen.set(key, now)
+  if (viewSeen.size > 5000) {
+    for (const [k, t] of viewSeen) if (now - t > 3600_000) viewSeen.delete(k)
+  }
+  return true
 }
 
 /** 顶部导航「分类话题」菜单用：已发布文章的标签（按使用次数排序，计数展示） */
@@ -175,9 +190,11 @@ async function renderList(
   let emptyText = ''
   let title = ''
   if (opts.mode === 'search') {
-    // 搜索框已移到刊头标签上方，这里只展示结果信息
+    // 搜索框已移到刊头标签上方，这里只展示结果信息；结果封顶 50 条，超限要说清楚
     notice = q
-      ? `<p class="search-meta">找到 ${r.total} 篇与「${esc(q)}」相关的文章</p>`
+      ? r.total > 50
+        ? `<p class="search-meta">找到 ${r.total} 篇与「${esc(q)}」相关的文章，仅显示前 50 条，试试更具体的关键词</p>`
+        : `<p class="search-meta">找到 ${r.total} 篇与「${esc(q)}」相关的文章</p>`
       : '<p class="search-meta">输入关键词，回车或点「搜索」</p>'
     emptyText = q ? `没有找到与「${esc(q)}」相关的文章，换个关键词试试。` : ''
     title = q ? `搜索：${q}` : '搜索'
@@ -223,6 +240,8 @@ async function renderList(
       title,
       description: settings.siteDescription,
       path: opts.mode === 'home' ? '/' : url.pathname,
+      origin: url.origin,
+      noindex: opts.mode === 'search',
       body: html,
     })
   )
@@ -253,7 +272,7 @@ export async function renderPost(c: C): Promise<Response> {
   ])
   const categoryRow = categoryId ? await c.env.DB.prepare('SELECT name, slug FROM categories WHERE id = ?').bind(categoryId).first<{ name: string; slug: string }>() : null
 
-  if (row.status === 'published') {
+  if (row.status === 'published' && shouldCountView(clientIp(c.req.raw), row.id)) {
     c.executionCtx.waitUntil(
       c.env.DB.prepare('UPDATE posts SET views = views + 1 WHERE id = ?').bind(row.id).run()
     )
@@ -302,6 +321,8 @@ export async function renderPost(c: C): Promise<Response> {
       description: row.summary || excerpt(row.content, 120),
       ogImage,
       path: `/post/${row.slug}`,
+      origin: url.origin,
+      noindex: isPreview,
       body: html,
       preview: isPreview,
     })
@@ -329,6 +350,7 @@ export async function renderAbout(c: C): Promise<Response> {
       title: '关于我',
       description: `关于 ${settings.siteName} 与这里的故事`,
       path: '/about',
+      origin: new URL(c.req.url).origin,
       body: html,
     })
   )
@@ -355,6 +377,7 @@ export async function renderArchive(c: C): Promise<Response> {
       title: '文章归档',
       description: `${settings.siteName}的全部文章归档，共 ${rows.length} 篇，按年份回顾每一个阶段的写作`,
       path: '/archives',
+      origin: new URL(c.req.url).origin,
       body: html,
     })
   )
@@ -398,6 +421,7 @@ export async function renderGuestbook(c: C): Promise<Response> {
       title: '留言板',
       description: `${settings.siteName}的留言板，想对作者说点什么，就在这里写下来`,
       path: '/guestbook',
+      origin: new URL(c.req.url).origin,
       body: html,
     })
   )
@@ -461,7 +485,15 @@ export async function renderWeibo(c: C): Promise<Response> {
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({ settings, css: theme.css, title: '微博', description: `${settings.siteName}的随手记`, path: '/weibo', body: html })
+    page({
+      settings,
+      css: theme.css,
+      title: '微博',
+      description: `${settings.siteName}的随手记`,
+      path: '/weibo',
+      origin: url.origin,
+      body: html,
+    })
   )
 }
 
@@ -490,6 +522,7 @@ export async function renderLinks(c: C): Promise<Response> {
       title: '友情链接',
       description: `${settings.siteName}的朋友站点，也欢迎申请收录`,
       path: '/links',
+      origin: new URL(c.req.url).origin,
       body: html,
     })
   )
@@ -498,7 +531,8 @@ export async function renderLinks(c: C): Promise<Response> {
 export async function renderNotFound(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
-  const t = THEMES[settings.theme]
+  // hasOwnProperty 防原型链属性（constructor 等）被当成主题 id
+  const t = Object.prototype.hasOwnProperty.call(THEMES, settings.theme) ? THEMES[settings.theme] : undefined
   const themeCss = t ? t.css : getTheme('wechat').css
   c.header('Cache-Control', 'no-cache')
   return c.html(
@@ -508,6 +542,8 @@ export async function renderNotFound(c: C): Promise<Response> {
       title: '404',
       description: '页面不存在',
       path: '/404',
+      origin: new URL(c.req.url).origin,
+      noindex: true,
       body: `<div style="max-width:480px;margin:18vh auto 0;padding:0 24px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;">
   <div style="font-size:64px;font-weight:700;letter-spacing:.05em;">404</div>
   <p style="color:#999;margin:12px 0 28px;">这一页飘走了，回首页看看吧。</p>

@@ -251,7 +251,7 @@ export function weibo(d: {
   <main class="wb-list">
     ${cards || `<p class="wb-empty">${d.adminName ? '纸上还无微博，就在上面落第一笔。' : '纸上还无微博，正是落笔时。'}</p>`}
   </main>
-  ${weiboPager(d.page, d.totalPages)}
+  ${weiboPager(d.page, d.totalPages, d.topic)}
   <footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
 </div>`
 }

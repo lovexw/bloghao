@@ -31,25 +31,33 @@ export function excerpt(html: string, n = 80): string {
   return t.length > n ? t.slice(0, n) + '…' : t
 }
 
+/* ---------------- 时间显示 ----------------
+ * SSR 统一按北京时间（UTC+8）渲染：Workers 的时区是 UTC，
+ * 直接 new Date(ts).getHours() 会把 0-8 点发布的内容显示成前一天。
+ * 客户端（site.js）用同样的偏移口径，保证同屏时间一致。 */
+export function cstDate(ts: number): Date {
+  return new Date(ts + 8 * 3600_000)
+}
+
 export function fmtDate(ts: number | null | undefined): string {
   if (!ts) return ''
-  const d = new Date(ts)
+  const d = cstDate(ts)
   const p = (x: number) => String(x).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`
 }
 
 export function fmtDateTime(ts: number | null | undefined): string {
   if (!ts) return ''
-  const d = new Date(ts)
+  const d = cstDate(ts)
   const p = (x: number) => String(x).padStart(2, '0')
-  return `${fmtDate(ts)} ${p(d.getHours())}:${p(d.getMinutes())}`
+  return `${fmtDate(ts)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
 }
 
 /** 中文日期，公众号风格：2026年10月3日 */
 export function fmtDateCN(ts: number | null | undefined): string {
   if (!ts) return ''
-  const d = new Date(ts)
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+  const d = cstDate(ts)
+  return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
 }
 
 export function readingMinutes(html: string): number {

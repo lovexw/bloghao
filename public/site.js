@@ -72,16 +72,18 @@
   }
 
   // 与后端 weiboTime 保持一致：今年「10月3日 14:20」，往年带年份
+  // 统一按北京时间（UTC+8）口径：+8h 后用 getUTC* 取墙上时间，
+  // 与服务端 SSR 渲染同源，避免 0-8 点内容跨天、同屏两套时区
   function fmtTime(ts) {
-    var d = new Date(Number(ts))
+    var d = new Date(Number(ts) + 8 * 3600e3)
     if (isNaN(d.getTime())) return ''
     function p(x) {
       return ('0' + x).slice(-2)
     }
-    var hm = p(d.getHours()) + ':' + p(d.getMinutes())
-    var now = new Date()
-    if (d.getFullYear() === now.getFullYear()) return d.getMonth() + 1 + '月' + d.getDate() + '日 ' + hm
-    return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日'
+    var hm = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes())
+    var now = new Date(Date.now() + 8 * 3600e3)
+    if (d.getUTCFullYear() === now.getUTCFullYear()) return d.getUTCMonth() + 1 + '月' + d.getUTCDate() + '日 ' + hm
+    return d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日'
   }
 
   /* ---------------- 顶部导航「分类话题」折叠菜单：点外部 / Esc 收起 ---------------- */

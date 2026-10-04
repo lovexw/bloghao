@@ -1,6 +1,6 @@
 import type { CommentRow, PostRow, SettingsMap } from './types'
 import type { PostSort } from './db'
-import { esc, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime } from './utils'
+import { cstDate, esc, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime } from './utils'
 
 export interface ThemePageOptions {
   settings: SettingsMap
@@ -11,13 +11,17 @@ export interface ThemePageOptions {
   path: string
   body: string
   preview?: boolean
+  /** 请求源（new URL(c.req.url).origin）：canonical / og:url 绝对化的兜底，未配置 siteUrl 时也能产出绝对地址 */
+  origin?: string
+  /** 工具型页面（搜索、草稿预览）：要求搜索引擎不收录 */
+  noindex?: boolean
 }
 
 /** HTML 骨架：meta/OG/内联主题 CSS/站点脚本，所有主题共用 */
 export function page(o: ThemePageOptions): string {
   const siteName = o.settings.siteName || 'BlogHao'
   const desc = (o.description || o.settings.siteDescription || '').slice(0, 160)
-  const siteUrl = (o.settings.siteUrl || '').replace(/\/+$/, '')
+  const base = ((o.settings.siteUrl || o.origin || '') as string).replace(/\/+$/, '')
   const title = o.title ? `${o.title} - ${siteName}` : siteName
   const ogType = o.path.startsWith('/post/') ? 'article' : 'website'
   return `<!DOCTYPE html>
@@ -27,13 +31,15 @@ export function page(o: ThemePageOptions): string {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
+${o.noindex ? '<meta name="robots" content="noindex">' : ''}
+${base ? `<link rel="canonical" href="${esc(base + o.path)}">` : ''}
 <meta property="og:title" content="${esc(o.title || siteName)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:type" content="${ogType}">
-${siteUrl ? `<meta property="og:url" content="${esc(siteUrl + o.path)}">` : ''}
-${o.ogImage ? `<meta property="og:image" content="${esc(absUrl(siteUrl, o.ogImage))}">` : ''}
-${o.settings.faviconUrl ? `<link rel="icon" href="${esc(absUrl(siteUrl, o.settings.faviconUrl))}">` : `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`}
-${siteUrl ? `<link rel="alternate" type="application/rss+xml" title="${esc(siteName)}" href="${esc(siteUrl)}/rss.xml">` : ''}
+${base ? `<meta property="og:url" content="${esc(base + o.path)}">` : ''}
+${o.ogImage ? `<meta property="og:image" content="${esc(absUrl(base, o.ogImage))}">` : ''}
+${o.settings.faviconUrl ? `<link rel="icon" href="${esc(absUrl(base, o.settings.faviconUrl))}">` : `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`}
+${base ? `<link rel="alternate" type="application/rss+xml" title="${esc(siteName)}" href="${esc(base)}/rss.xml">` : ''}
 <style>${o.css}</style>
 </head>
 <body${o.preview ? ' data-preview="1"' : ''}>
@@ -143,7 +149,8 @@ export interface ArchiveYearGroup {
 export function archiveGroups(posts: ArchiveItemView[]): ArchiveYearGroup[] {
   const map = new Map<number, ArchiveItemView[]>()
   for (const p of posts) {
-    const year = new Date(p.ts).getFullYear()
+    // 与 fmtDate 同口径：按北京时间的年份分组，避免 0-8 点发布的文章归错年
+    const year = cstDate(p.ts).getUTCFullYear()
     const list = map.get(year) || []
     list.push(p)
     map.set(year, list)
@@ -273,15 +280,15 @@ export interface WeiboItemView {
   pinned?: boolean
 }
 
-/** 微博时间：今年「10月3日 14:20」，往年带年份 */
+/** 微博时间：今年「10月3日 14:20」，往年带年份（北京时间口径，与 utils 时间函数一致） */
 export function weiboTime(ts: number): string {
-  const d = new Date(ts)
+  const d = cstDate(ts)
+  const now = cstDate(Date.now())
   const p = (x: number) => String(x).padStart(2, '0')
-  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`
-  const now = new Date()
-  return d.getFullYear() === now.getFullYear()
-    ? `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`
-    : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+  const hm = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
+  return d.getUTCFullYear() === now.getUTCFullYear()
+    ? `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${hm}`
+    : `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
 }
 
 /** 微博图片网格：1 张大图，2/4 张两列，其余三列（微博式） */
@@ -471,16 +478,17 @@ export function weiboComposer(o: { adminName: string }): string {
 </form>`
 }
 
-/** 微博页翻页：上一页 / 下一页（页数少，无需页码跳转） */
-export function weiboPager(page: number, totalPages: number): string {
+/** 微博页翻页：上一页 / 下一页（页数少，无需页码跳转）；按话题筛选时翻页要带上 topic */
+export function weiboPager(page: number, totalPages: number, topic?: string): string {
   if (totalPages <= 1) return ''
+  const href = (p: number) => `/weibo?page=${p}${topic ? `&topic=${encodeURIComponent(topic)}` : ''}`
   const prev =
     page > 1
-      ? `<a class="wb-pager-btn" href="/weibo?page=${page - 1}">← 新一条</a>`
+      ? `<a class="wb-pager-btn" href="${href(page - 1)}">← 新一条</a>`
       : '<span class="wb-pager-btn is-disabled">← 新一条</span>'
   const next =
     page < totalPages
-      ? `<a class="wb-pager-btn" href="/weibo?page=${page + 1}">更早的 →</a>`
+      ? `<a class="wb-pager-btn" href="${href(page + 1)}">更早的 →</a>`
       : '<span class="wb-pager-btn is-disabled">更早的 →</span>'
   return `<nav class="wb-pager">${prev}<span class="wb-pager-info">${page} / ${totalPages}</span>${next}</nav>`
 }

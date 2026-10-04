@@ -1,5 +1,5 @@
 /* 博客号后台 SPA（原生 ES Module，无构建依赖） */
-import { mountEditor } from './editor.js'
+import { flushEditorSave, mountEditor } from './editor.js'
 
 const $app = document.getElementById('app')
 const $toastSlot = document.getElementById('toast-slot')
@@ -13,6 +13,13 @@ const state = {
 
 /* 微博编辑态：null = 新建；点「编辑」后暂存，离开微博页时清空 */
 let wbEditing = null
+
+/* 文章列表搜索防抖：模块级，路由切换时清掉，防遗留回调把用户「拽回」文章页 */
+let postsSearchTimer = null
+/* 搜索框是否处于焦点中：重渲染后据此恢复焦点与光标 */
+let searchFocused = false
+/* 当前路由名（'editor' 等）：判断「离开编辑器」用 */
+let currentRoute = ''
 
 /* ---------------- 工具 ---------------- */
 export function esc(s) {
@@ -141,6 +148,8 @@ function authView(mode) {
     const f = e.target
     const errEl = document.getElementById('auth-err')
     errEl.textContent = ''
+    const btn = f.querySelector('button[type=submit]')
+    btn.disabled = true
     try {
       const body = { username: f.username.value.trim(), password: f.password.value }
       if (isSetup) body.displayName = f.displayName.value.trim()
@@ -159,6 +168,8 @@ function authView(mode) {
       navigate()
     } catch (err) {
       errEl.textContent = err.message
+    } finally {
+      btn.disabled = false
     }
   })
 }
@@ -262,7 +273,6 @@ async function viewPosts() {
   } catch (e) {
     return handleApiErr(e)
   }
-  state.pendingComments = 0
 
   const rows = d.items
     .map((p) => {
@@ -323,11 +333,17 @@ async function viewPosts() {
   }
   $app.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => nav({ status: b.dataset.tab, page: 1 })))
   const searchEl = document.getElementById('search-input')
-  let timer
+  searchEl.addEventListener('focus', () => (searchFocused = true))
+  searchEl.addEventListener('blur', () => (searchFocused = false))
   searchEl.addEventListener('input', () => {
-    clearTimeout(timer)
-    timer = setTimeout(() => nav({ q: searchEl.value.trim(), page: 1 }), 400)
+    clearTimeout(postsSearchTimer)
+    postsSearchTimer = setTimeout(() => nav({ q: searchEl.value.trim(), page: 1 }), 400)
   })
+  // 上一轮渲染时搜索框持有焦点（连续输入触发了重渲染）：恢复焦点并把光标放到末尾
+  if (searchFocused && kw) {
+    searchEl.focus()
+    searchEl.setSelectionRange(kw.length, kw.length)
+  }
   const prev = document.getElementById('pg-prev')
   const next = document.getElementById('pg-next')
   if (prev) prev.addEventListener('click', () => nav({ page: page - 1 }))
@@ -385,7 +401,6 @@ async function viewWeibo() {
   } catch (e) {
     return handleApiErr(e)
   }
-  state.pendingComments = 0
 
   const images = wbEditing ? [...wbEditing.images] : []
   const rows = d.items
@@ -519,6 +534,9 @@ async function viewWeibo() {
   async function saveWeibo(status) {
     const content = contentEl.value.trim()
     if (!content && !images.length) return toast('写点什么，或者配张图吧', true)
+    // 请求期间禁用全部按钮：连击会重复发微博
+    const btns = ['wb-save', 'wb-publish', 'wb-draft'].map((id) => document.getElementById(id)).filter(Boolean)
+    btns.forEach((b) => (b.disabled = true))
     try {
       if (wbEditing) {
         await api(`/admin/weibo/${wbEditing.id}`, { method: 'PUT', body: { content, images, status: wbEditing.status } })
@@ -531,6 +549,9 @@ async function viewWeibo() {
       viewWeibo()
     } catch (e) {
       toast(e.message, true)
+    } finally {
+      // 成功时页面已重渲染（按钮是旧节点）；失败时恢复可点
+      btns.forEach((b) => (b.disabled = false))
     }
   }
 
@@ -608,7 +629,6 @@ async function viewLinks() {
   } catch (e) {
     return handleApiErr(e)
   }
-  state.pendingComments = 0
   state.pendingLinks = d.pending
 
   const rows = d.items
@@ -822,6 +842,8 @@ function flModal(link) {
       sort: isEdit ? Number(m.mask.querySelector('#fl-sort').value) || 0 : 0,
     }
     if (!body.name || !body.url) return toast('站名和网址不能为空', true)
+    const saveBtn = m.mask.querySelector('#fl-save')
+    saveBtn.disabled = true
     try {
       if (isEdit) await api(`/admin/links/${link.id}`, { method: 'PUT', body })
       else await api('/admin/links', { method: 'POST', body })
@@ -830,6 +852,7 @@ function flModal(link) {
       viewLinks()
     } catch (e) {
       toast(e.message, true)
+      saveBtn.disabled = false
     }
   })
 }
@@ -889,12 +912,15 @@ async function viewCategories() {
     const el = document.getElementById('cat-name')
     const name = el.value.trim()
     if (!name) return toast('先填个分类名', true)
+    const btn = document.getElementById('cat-add')
+    btn.disabled = true
     try {
       await api('/admin/categories', { method: 'POST', body: { name } })
       toast('分类已创建')
       viewCategories()
     } catch (e) {
       toast(e.message, true)
+      btn.disabled = false
     }
   })
 
@@ -902,16 +928,21 @@ async function viewCategories() {
     const el = document.getElementById('tag-name')
     const name = el.value.trim()
     if (!name) return toast('先填个标签名', true)
+    const btn = document.getElementById('tag-add')
+    btn.disabled = true
     try {
       await api('/admin/tags', { method: 'POST', body: { name } })
       toast('标签已创建')
       viewCategories()
     } catch (e) {
       toast(e.message, true)
+      btn.disabled = false
     }
   }
   document.getElementById('tag-add').addEventListener('click', addTag)
   document.getElementById('tag-name').addEventListener('keydown', (e) => {
+    // 输入法组词回车（确认候选词）不建标签，与编辑器里同一处理
+    if (e.isComposing || e.keyCode === 229) return
     if (e.key === 'Enter') addTag()
   })
 
@@ -974,12 +1005,16 @@ async function viewComments() {
   const q = new URLSearchParams(location.hash.split('?')[1] || '')
   const status = q.get('status') || 'all'
   const type = q.get('type') || 'all'
+  const page = parseInt(q.get('page') || '1', 10)
   let d
   try {
-    d = await api(`/admin/comments?type=${type}&status=${status}&page=${q.get('page') || 1}`)
+    d = await api(`/admin/comments?type=${type}&status=${status}&page=${page}`)
   } catch (e) {
     return handleApiErr(e)
   }
+  // 后端返回全局待审数：审核操作后侧栏「评论」角标随之刷新
+  state.pendingComments = d.pending ?? 0
+  const totalPages = Math.max(1, Math.ceil(d.total / 20))
   const rows = d.items
     .map((cm) => {
       const wbText = String(cm.weibo_content || '').replace(/\s+/g, ' ').trim()
@@ -1035,7 +1070,8 @@ async function viewComments() {
           .join('')}
       </div>
     </div>
-    <div class="panel">${rows || '<div class="empty-box">还没有评论</div>'}</div>`
+    <div class="panel">${rows || '<div class="empty-box">还没有评论</div>'}</div>
+    ${totalPages > 1 ? `<div class="pager-admin"><button class="btn btn-sm" id="pg-prev" ${page <= 1 ? 'disabled' : ''}>上一页</button><span>${page} / ${totalPages} 页</span><button class="btn btn-sm" id="pg-next" ${page >= totalPages ? 'disabled' : ''}>下一页</button></div>` : ''}`
   )
   $app.querySelectorAll('[data-type]').forEach((b) =>
     b.addEventListener('click', () => nav({ type: b.dataset.type, page: 1 }))
@@ -1043,6 +1079,10 @@ async function viewComments() {
   $app.querySelectorAll('[data-tab]').forEach((b) =>
     b.addEventListener('click', () => nav({ status: b.dataset.tab, page: 1 }))
   )
+  const pgPrev = document.getElementById('pg-prev')
+  const pgNext = document.getElementById('pg-next')
+  if (pgPrev) pgPrev.addEventListener('click', () => nav({ page: page - 1 }))
+  if (pgNext) pgNext.addEventListener('click', () => nav({ page: page + 1 }))
   Array.from($app.querySelectorAll('.comment-row')).forEach((row, i) => {
     const cm = d.items[i]
     row.querySelector('[data-act=reply]')?.addEventListener('click', () => {
@@ -1055,12 +1095,15 @@ async function viewComments() {
       const box = row.querySelector('.comment-reply')
       const content = box.querySelector('textarea').value.trim()
       if (!content) return toast('先写点回复内容', true)
+      const sendBtn = box.querySelector('[data-act=send-reply]')
+      sendBtn.disabled = true
       try {
         await api(`/admin/comments/${cm.id}/replies`, { method: 'POST', body: { content } })
         toast('已回复')
         viewComments()
       } catch (e) {
         toast(e.message, true)
+        sendBtn.disabled = false
       }
     })
     row.querySelector('[data-act=approve]')?.addEventListener('click', async () => {
@@ -1125,7 +1168,14 @@ async function viewMedia() {
       <button class="btn btn-primary" id="media-upload">上传文件</button>
     </div>
     <div class="media-grid">${grid || '<div class="empty-box" style="grid-column:1/-1;">还没有上传过文件</div>'}</div>
-    ${d.total > 24 ? `<div class="pager-admin"><button class="btn btn-sm" id="pg-prev" ${page <= 1 ? 'disabled' : ''}>上一页</button><span>第 ${page} 页</span><button class="btn btn-sm" id="pg-next">下一页</button></div>` : ''}`
+    ${
+      d.total > 24
+        ? (() => {
+            const totalPages = Math.ceil(d.total / 24)
+            return `<div class="pager-admin"><button class="btn btn-sm" id="pg-prev" ${page <= 1 ? 'disabled' : ''}>上一页</button><span>第 ${page} / ${totalPages} 页</span><button class="btn btn-sm" id="pg-next" ${page >= totalPages ? 'disabled' : ''}>下一页</button></div>`
+          })()
+        : ''
+    }`
   )
 
   document.getElementById('media-upload').addEventListener('click', () => {
@@ -1390,8 +1440,10 @@ async function viewSettings() {
     toast('已恢复默认，记得点「保存全部」生效')
   })
 
-  document.getElementById('btn-save').addEventListener('click', async () => {
+  document.getElementById('btn-save').addEventListener('click', async (e) => {
     const g = (id) => document.getElementById(id)
+    const btn = e.currentTarget
+    btn.disabled = true
     const body = {
       siteName: g('st-siteName').value.trim() || '博客号',
       siteDescription: g('st-siteDescription').value.trim(),
@@ -1416,6 +1468,8 @@ async function viewSettings() {
       toast('设置已保存 ✅')
     } catch (e) {
       toast(e.message, true)
+    } finally {
+      btn.disabled = false
     }
   })
 
@@ -1565,6 +1619,12 @@ async function navigate() {
   const [path] = h.split('?')
   const parts = path.split('/')
   const name = parts[0] || 'home'
+  clearTimeout(postsSearchTimer)
+  // 离开编辑器：有未保存修改先自动保存再切页（此时编辑器 DOM 还在，能取到最新内容）；
+  // 保存失败只提示不阻塞导航，避免把用户困在编辑器里
+  if (currentRoute === 'editor' && name !== 'editor') {
+    await flushEditorSave().catch(() => toast('离开时自动保存失败，内容可能没存上，请回去检查', true))
+  }
   if (name !== 'weibo') wbEditing = null
 
   if (!state.user) {
@@ -1583,8 +1643,11 @@ async function navigate() {
     else if (name === 'editor') await viewEditor(parts[1] || 'new')
     else await viewHome()
   } catch (e) {
+    currentRoute = name
     handleApiErr(e)
+    return
   }
+  currentRoute = name
 }
 
 async function viewEditor(id) {

@@ -289,7 +289,7 @@ export function weibo(d: {
   <main class="wb-list">
     ${cards || `<p class="wb-empty">${d.adminName ? '还没有微博，在上面发第一条吧。' : '还没发过微博，去后台随手写一条吧。'}</p>`}
   </main>
-  ${weiboPager(d.page, d.totalPages)}
+  ${weiboPager(d.page, d.totalPages, d.topic)}
   <footer class="wx-footer">
     ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>

@@ -417,7 +417,17 @@ function htmlToMd(html) {
 }
 
 /* ---------------- 主挂载 ---------------- */
+// 编辑器可反复挂载：全局监听器/定时器在每次挂载前先拆掉上一次的，避免累积
+let cleanupEditor = null
+// 离开编辑器前的自动保存钩子（app.js 在路由切换时调用）
+let flushSave = null
+export function flushEditorSave() {
+  return flushSave ? flushSave() : Promise.resolve()
+}
+
 export async function mountEditor(root, postId) {
+  cleanupEditor?.()
+  flushSave = null
   const post = {
     id: null,
     slug: '',
@@ -445,6 +455,11 @@ export async function mountEditor(root, postId) {
   let saving = false
   let saveTimer = null
   let savedRange = null
+  // markDirty 每次自增：保存完成时若期间又有新输入（seq 变了），不能把 dirty 清掉，
+  // 否则飞行中的保存会「吞掉」新输入的已保存状态
+  let dirtySeq = 0
+  // 保存串行队列：自动保存进行中点「发布」会排队执行，不再静默丢请求造成假成功
+  let saveChain = Promise.resolve()
 
   root.innerHTML = `<div class="editor-page">
   <div class="ed-topbar">
@@ -671,6 +686,7 @@ export async function mountEditor(root, postId) {
 
   function markDirty() {
     dirty = true
+    dirtySeq++
     saveState.textContent = '有未保存更改'
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => save(false), 1500)
@@ -693,51 +709,66 @@ export async function mountEditor(root, postId) {
     }
   }
 
-  async function save(publishIntent) {
-    if (saving) return
-    if (!mdMode) {
-      // 富文本模式下同步 markdown 不可见内容
-    } else {
-      const d = await api('/admin/tools/md', { method: 'POST', body: { md: mdArea.value } })
-      editor.innerHTML = d.html
-    }
-    const payload = collect(publishIntent && publishIntent.status ? publishIntent : {})
-    if (!payload.title && !payload.content.replace(/<[^>]+>/g, '').trim()) return
-    saving = true
-    saveState.textContent = '保存中…'
-    try {
-      if (post.id) {
-        const d = await api(`/admin/posts/${post.id}`, { method: 'PUT', body: payload })
-        Object.assign(post, d.post, { tags: d.post.tagList || post.tags })
-        post.cover = payload.cover
-        post.tags = payload.tags
+  function save(publishIntent) {
+    // 排队执行：前一次保存（无论成败）结束后才跑下一次，保证点「发布」时
+    // 一定把当前内容与状态真正发出去，而不是被飞行中的自动保存顶掉
+    const run = async () => {
+      if (!mdMode) {
+        // 富文本模式下同步 markdown 不可见内容
       } else {
-        const d = await api('/admin/posts', { method: 'POST', body: payload })
-        post.id = d.post.id
-        post.slug = d.post.slug
-        post.cover = payload.cover
-        post.tags = payload.tags
-        // 无 hashchange 的地址替换，避免重挂载丢失光标
-        history.replaceState(null, '', `#/editor/${post.id}`)
+        const d = await api('/admin/tools/md', { method: 'POST', body: { md: mdArea.value } })
+        editor.innerHTML = d.html
       }
-      document.getElementById('ed-slug').value = post.slug
-      dirty = false
-      clearTimeout(saveTimer)
-      const t = new Date()
-      saveState.textContent = `已保存 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
-      const pillText = post.status === 'published' ? '已发布' : post.status === 'scheduled' ? `定时 ${fmtSchedule(post.publish_at)}` : '草稿'
-      pill.textContent = pillText
-      pill.className = `ed-status-pill chip ${post.status === 'published' ? 'chip-green' : post.status === 'scheduled' ? 'chip-warn' : 'chip-gray'}`
-      document.getElementById('ed-publish').textContent = post.status === 'published' ? '更新' : '发布'
-      return post
-    } catch (e) {
-      saveState.textContent = '保存失败，点击重试'
-      saveState.style.cursor = 'pointer'
-      saveState.onclick = () => save(false)
-      throw e
-    } finally {
-      saving = false
+      const payload = collect(publishIntent && publishIntent.status ? publishIntent : {})
+      if (!payload.title && !payload.content.replace(/<[^>]+>/g, '').trim()) return
+      saving = true
+      saveState.textContent = '保存中…'
+      const seqAtSave = dirtySeq
+      try {
+        if (post.id) {
+          const d = await api(`/admin/posts/${post.id}`, { method: 'PUT', body: payload })
+          Object.assign(post, d.post, { tags: d.post.tagList || post.tags })
+          post.cover = payload.cover
+          post.tags = payload.tags
+        } else {
+          const d = await api('/admin/posts', { method: 'POST', body: payload })
+          post.id = d.post.id
+          post.slug = d.post.slug
+          post.cover = payload.cover
+          post.tags = payload.tags
+          // 无 hashchange 的地址替换，避免重挂载丢失光标
+          history.replaceState(null, '', `#/editor/${post.id}`)
+        }
+        document.getElementById('ed-slug').value = post.slug
+        if (dirtySeq === seqAtSave) {
+          dirty = false
+          clearTimeout(saveTimer)
+          const t = new Date()
+          saveState.textContent = `已保存 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+        } else {
+          saveState.textContent = '有未保存更改'
+        }
+        const pillText = post.status === 'published' ? '已发布' : post.status === 'scheduled' ? `定时 ${fmtSchedule(post.publish_at)}` : '草稿'
+        pill.textContent = pillText
+        pill.className = `ed-status-pill chip ${post.status === 'published' ? 'chip-green' : post.status === 'scheduled' ? 'chip-warn' : 'chip-gray'}`
+        document.getElementById('ed-publish').textContent = post.status === 'published' ? '更新' : '发布'
+        return post
+      } catch (e) {
+        saveState.textContent = '保存失败，点击重试'
+        saveState.style.cursor = 'pointer'
+        saveState.onclick = () => save(false)
+        throw e
+      } finally {
+        saving = false
+      }
     }
+    const p = saveChain.then(run, run)
+    // 链子吞掉失败继续排下一次；真正的失败由返回的 p 抛给调用方
+    saveChain = p.then(
+      () => {},
+      () => {}
+    )
+    return p
   }
 
   async function ensureSaved() {
@@ -761,6 +792,9 @@ export async function mountEditor(root, postId) {
       return toast('发布前先取个标题吧', true)
     }
     if (mdMode) await exitMdMode()
+    // 记下发布前的真实状态：保存失败时精确回滚（不能猜，也不能写反）
+    const prevStatus = post.status
+    const prevPublishAt = post.publish_at
     // 勾了定时：保存为 scheduled，到点由 cron 自动发布
     const wantScheduled = document.getElementById('ed-scheduled')?.checked
     const atInput = document.getElementById('ed-publish-at')
@@ -788,8 +822,8 @@ export async function mountEditor(root, postId) {
           : '发布成功 🎉 点击「预览」查看文章'
       )
     } catch (e) {
-      post.status = wantScheduled ? 'draft' : 'scheduled'
-      post.publish_at = wantScheduled ? post.publish_at : null
+      post.status = prevStatus
+      post.publish_at = prevPublishAt
       toast(e.message, true)
     }
   }
@@ -885,9 +919,11 @@ export async function mountEditor(root, postId) {
     refreshToolbarState()
   })
 
-  document.addEventListener('selectionchange', () => {
+  // 编辑器获得焦点期间同步工具栏高亮（document 级，挂载/卸载要成对）
+  const onSelectionChange = () => {
     if (document.activeElement === editor) refreshToolbarState()
-  })
+  }
+  document.addEventListener('selectionchange', onSelectionChange)
 
   /* ---------- 对话框们 ---------- */
   function linkDialog() {
@@ -911,7 +947,11 @@ export async function mountEditor(root, postId) {
       insertHTML(`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text || url)}</a>&nbsp;`)
     }
     ok.addEventListener('click', doInsert)
-    m.mask.addEventListener('keydown', (e) => e.key === 'Enter' && doInsert())
+    m.mask.addEventListener('keydown', (e) => {
+      // 输入法组词回车（确认候选词）不触发插入
+      if (e.isComposing || e.keyCode === 229) return
+      if (e.key === 'Enter') doInsert()
+    })
   }
 
   function imageDialog() {
@@ -1039,6 +1079,13 @@ export async function mountEditor(root, postId) {
       const d = new Date(Date.now() + 3600_000)
       d.setSeconds(0, 0)
       publishAtInput.value = toLocalInput(d.getTime())
+    }
+    // 取消定时：scheduled 文章回到草稿，保存后不会再被 cron 自动发出（与使用手册一致）；
+    // 重新定时 = 再勾上开关并点「发布」
+    if (!scheduleSwitch.checked && post.status === 'scheduled') {
+      post.status = 'draft'
+      pill.textContent = '草稿'
+      pill.className = 'ed-status-pill chip chip-gray'
     }
     markDirty()
   })
@@ -1168,7 +1215,7 @@ export async function mountEditor(root, postId) {
     }
   })
 
-  // 离开提醒
+  // 离开提醒（关闭标签页/刷新时浏览器兜底确认；SPA 内部路由由 flushEditorSave 兜底）
   const beforeUnload = (e) => {
     if (dirty) {
       e.preventDefault()
@@ -1176,6 +1223,16 @@ export async function mountEditor(root, postId) {
     }
   }
   window.addEventListener('beforeunload', beforeUnload)
+
+  // 注册全局监听器的清理函数：下次挂载前先拆掉上一次的，防止随挂载次数累积
+  flushSave = async () => {
+    if (dirty) await save(false)
+  }
+  cleanupEditor = () => {
+    document.removeEventListener('selectionchange', onSelectionChange)
+    window.removeEventListener('beforeunload', beforeUnload)
+    flushSave = null
+  }
 
   /* ---------- Markdown 模式 ---------- */
   async function enterMdMode() {

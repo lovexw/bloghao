@@ -5,10 +5,12 @@ import {
   clientIp,
   createSession,
   destroySession,
+  getCookie,
   getSessionUser,
   hashPassword,
   rateLimit,
   safeEqual,
+  SESSION_COOKIE,
   sessionCookie,
 } from './auth'
 import {
@@ -857,7 +859,7 @@ api.get('/admin/comments', async (c) => {
   else if (type === 'weibo') where.push('c.weibo_id > 0')
   else if (type === 'guestbook') where.push('c.post_id = 0 AND c.weibo_id = 0')
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
-  const [listRes, countRes] = await Promise.all([
+  const [listRes, countRes, pendingRes] = await Promise.all([
     c.env.DB.prepare(
       `SELECT c.*, p.title AS post_title, p.slug AS post_slug, w.content AS weibo_content, pc.nickname AS parent_nickname
        FROM comments c
@@ -871,8 +873,10 @@ api.get('/admin/comments', async (c) => {
     c.env.DB.prepare(`SELECT COUNT(*) AS n FROM comments c ${whereSql}`)
       .bind(...binds)
       .first<{ n: number }>(),
+    // 全局待审数：侧栏「评论」角标在审核操作后随本接口刷新
+    c.env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE status = 'pending'").first<{ n: number }>(),
   ])
-  return c.json({ items: listRes.results ?? [], total: countRes?.n ?? 0, page })
+  return c.json({ items: listRes.results ?? [], total: countRes?.n ?? 0, page, pending: pendingRes?.n ?? 0 })
 })
 
 /** 后台回复评论（文章/微博通用）：挂在同一条顶层评论下，直接展示并带「作者」徽标 */
@@ -920,7 +924,18 @@ api.delete('/admin/comments/:id', async (c) => {
 })
 
 /* ---------------- 设置 ---------------- */
-api.get('/admin/settings', async (c) => c.json({ settings: await getSettings(c.env.DB) }))
+// 敏感项只写不读：GET 一律打码返回（明文只在生成 Token / 保存后不再回显）；
+// PUT 收到打码占位符视为「保持原值」，这样前端整表提交不会把占位符写进库
+const SECRET_SETTINGS = ['externalToken', 'telegramBotToken', 'telegramWebhookSecret']
+const SECRET_MASK = '••••••••'
+
+api.get('/admin/settings', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  for (const key of SECRET_SETTINGS) {
+    if (settings[key]) settings[key] = SECRET_MASK
+  }
+  return c.json({ settings })
+})
 
 api.put('/admin/settings', async (c) => {
   const body = await c.req.json<Record<string, unknown>>().catch(() => null)
@@ -929,7 +944,10 @@ api.put('/admin/settings', async (c) => {
   for (const key of SETTINGS_KEYS) {
     if (!(key in body)) continue
     const v = String((body as Record<string, unknown>)[key] ?? '')
-    if (key === 'theme' && !THEMES[v]) return jsonError('未知主题：' + v)
+    // 打码占位符原样提交 = 用户没改这一项，跳过以免覆盖真实值
+    if (SECRET_SETTINGS.includes(key) && v === SECRET_MASK) continue
+    // hasOwnProperty 挡住 constructor/toString 等原型链属性穿透成「合法主题」导致全站 500
+    if (key === 'theme' && !Object.prototype.hasOwnProperty.call(THEMES, v)) return jsonError('未知主题：' + v)
     if (key === 'postsPerPage') {
       patch[key] = String(clampInt(v, 1, 50, 10))
       continue
@@ -984,6 +1002,10 @@ api.put('/admin/password', async (c) => {
   const { hash: newHash, salt: newSalt } = await hashPassword(newPassword)
   await c.env.DB.prepare('UPDATE users SET password_hash = ?, salt = ?, updated_at = ? WHERE id = ?')
     .bind(newHash, newSalt, Date.now(), user.id)
+    .run()
+  // 改密后其余会话全部失效（保留当前会话，不把自己踢下线），被盗的旧 token 立即作废
+  await c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?')
+    .bind(user.id, getCookie(c.req.raw, SESSION_COOKIE) ?? '')
     .run()
   return c.json({ ok: true })
 })
@@ -1156,6 +1178,8 @@ api.post('/public/guestbook', async (c) => {
 
 /* ---------------- 微博互动（点赞 + 评论，公开） ---------------- */
 api.post('/public/like/weibo/:id', async (c) => {
+  // 限流防脚本刷赞刷踩（正常用户连点几条微博远够用）
+  if (!rateLimit(`like:${clientIp(c.req.raw)}`, 30, 10 * 60_000)) return jsonError('操作太频繁了，休息一下吧', 429)
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return jsonError('参数错误')
   const body = await c.req.json<{ delta?: number }>().catch(() => null)
@@ -1248,6 +1272,7 @@ api.post('/public/weibo/:id/comments', async (c) => {
 })
 
 api.post('/public/like/:slug', async (c) => {
+  if (!rateLimit(`like:${clientIp(c.req.raw)}`, 30, 10 * 60_000)) return jsonError('操作太频繁了，休息一下吧', 429)
   const slug = c.req.param('slug').slice(0, 100)
   const body = await c.req.json<{ delta?: number }>().catch(() => null)
   const delta = body?.delta === -1 ? -1 : 1

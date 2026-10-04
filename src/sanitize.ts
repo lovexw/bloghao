@@ -69,9 +69,10 @@ function escAttr(s: string): string {
 }
 export { escAttr }
 
-/** 危险协议一律拒绝；相对路径、https(s)、mailto、页内锚点放行 */
+/** 危险协议一律拒绝；相对路径、https(s)、mailto、页内锚点放行。
+ *  先剥掉 tab/换行：URL 解析器会忽略它们，`jav\tascript:` 这类混淆不能靠前缀正则漏过去 */
 function safeUrl(v: string): boolean {
-  const t = v.trim().toLowerCase()
+  const t = v.replace(/[\t\r\n]/g, '').trim().toLowerCase()
   if (/^(javascript|vbscript|data|file|blob|about):/.test(t)) return false
   if (/^[a-z][a-z0-9+.-]*:/.test(t)) return /^https?:/.test(t) || t.startsWith('mailto:')
   return true
