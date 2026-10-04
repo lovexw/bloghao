@@ -12,7 +12,14 @@ window.BlogHao &&
     name: 'wechat-collect',
     title: '采集公众号文章',
     icon:
-      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10"/><path d="m8 9 4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>',
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M9.5 4.3C5.5 4.3 2.2 6.9 2.2 10.1c0 1.8 1 3.4 2.7 4.5L4.3 17l2.8-1.4c.8.2 1.6.3 2.4.3 4 0 7.3-2.6 7.3-5.8S13.5 4.3 9.5 4.3Z"/>' +
+      '<path d="M16.2 10.7c-2.9 0-5.2 1.9-5.2 4.3 0 1.5.9 2.8 2.3 3.6l-.5 2.1 2.3-1.2c.4.1.7.1 1.1.1 2.9 0 5.2-1.9 5.2-4.3s-2.3-4.6-5.2-4.6Z"/>' +
+      '<circle cx="7.1" cy="9.2" r="0.9" fill="currentColor" stroke="none"/>' +
+      '<circle cx="11.9" cy="9.2" r="0.9" fill="currentColor" stroke="none"/>' +
+      '<circle cx="14.7" cy="14.3" r="0.7" fill="currentColor" stroke="none"/>' +
+      '<circle cx="17.9" cy="14.3" r="0.7" fill="currentColor" stroke="none"/>' +
+      '</svg>',
     onClick: function (ctx) {
       try {
         openCollectDialog(ctx)
