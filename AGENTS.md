@@ -13,6 +13,7 @@
 ```bash
 npm run dev            # 本地开发（端口被占用时自动 +1）
 npm run typecheck      # TypeScript 类型检查，提交前必须通过
+npm run smoke          # 本地冒烟：起 wrangler dev 逐路由断言 200（含多标签文章页回归守卫），改 SQL 拼接/渲染后必跑
 npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 ```
 
