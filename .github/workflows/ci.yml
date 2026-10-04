@@ -1,0 +1,28 @@
+name: CI
+
+# 每次推送/PR 强制跑类型检查与回归测试——bug 修复必须带着测试进来，
+# 防止已修复的问题（XSS 绕过、时区、转义、限流等）在后续改动中悄悄复发
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Regression tests
+        run: npm test

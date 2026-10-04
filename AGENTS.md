@@ -13,9 +13,42 @@
 ```bash
 npm run dev            # 本地开发（端口被占用时自动 +1）
 npm run typecheck      # TypeScript 类型检查，提交前必须通过
+npm test               # 回归测试（tests/，30+ 用例），提交前必须通过；CI（.github/workflows/ci.yml）每次推送强制执行
 npm run smoke          # 本地冒烟：起 wrangler dev 逐路由断言 200（含多标签文章页回归守卫），改 SQL 拼接/渲染后必跑
 npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 ```
+
+## 回归防线（改代码前先读，防已修好的 bug 复发）
+
+2026-10 做过一轮全量安全/健壮性审查并修复了三类共 40+ 问题；`tests/` 里的用例与下面每条规矩一一对应。**改动相关代码时先跑 `npm test`，新增同类功能必须沿用同一模式**：
+
+**XSS / 净化（tests/sanitize.test.ts、tests/markdown.test.ts）**
+
+- URL 白名单校验（sanitize.ts `safeUrl`、markdown.ts `safeUrlMd`）必须**先剥离 `\t\r\n`** 再做前缀判断——URL 解析器会忽略这些字符，`jav\tascript:` 这类混淆靠原始字符串拦不住；放行出的属性值必须再经 `escAttr`（实体二次转义也是防线）
+- 净化器**不放行 `id` 属性**（DOM clobbering 会打瘫评论区）；`<meta data-og-image>` 是唯一例外，改 OG 卡图功能时同步 tests/sanitize.test.ts 与 docs/API.md 白名单摘要
+- markdown.ts 的 `inline()` 收到的文本已经 `escLine` 转义过，属性上下文只能用 `escQuote` 补引号，**严禁再过 `escAttr`**（会把 `&` 打成 `&amp;amp;`，含参数的链接/图片 URL 全坏）
+- 图片转存（collect.ts）**只认文件魔数**（`sniffImageExt`），不信任源站 Content-Type / URL 参数；`/images/` 路由必须保留 `X-Content-Type-Options: nosniff`
+
+**时间口径（tests/utils.test.ts）**
+
+- SSR 端一切日期显示统一北京时间：用 `utils.ts` 的 `cstDate/fmtDate/fmtDateCN/fmtDateTime`（+8h 后取 UTC 分量），**禁止** `new Date(ts).getHours()` 这类依赖 Worker 时区（UTC）的写法——0-8 点发布的内容会显示成前一天；SQL 里按天/年聚合用 `strftime(..., ts/1000 + 28800, 'unixepoch')`；客户端 site.js 同口径（+8h + getUTC*）
+
+**SQL / 输入（tests/utils.test.ts）**
+
+- `LIKE` 模式里凡是 `\` 转义了 `%`/`_`，SQL 必须声明 `ESCAPE '\'`，否则转义不生效；JSON 数组列（tags/topics）匹配用 `jsonItemLikePattern`（带引号精确匹配 + 转义）
+- 正文长度上限按 **UTF-8 字节**（`new TextEncoder().encode(...)`），不是字符数
+- 自定义 slug 落库前过 `cleanSlug`；主题等枚举值校验用 `Object.prototype.hasOwnProperty.call(THEMES, v)`（防原型链属性穿透）
+
+**后台交互（public/admin/，无自动化测试，靠约定）**
+
+- 后台所有请求走 `api()`：401 会话过期已统一拦截回登录页（勿在别处重复处理，也别动 `state.user` 的判断顺序——登录表单的密码错误提示依赖它）；每个写操作按钮必须 try/catch + toast，请求期间 disabled 防连击
+- 编辑器 `save()` 是串行队列（勿改回早退模式——会丢发布意图造成假成功）；新弹窗一律用现成的 `modal()`（自带 Esc 关闭与焦点管理）
+- 输入框回车提交必须判 `e.isComposing || e.keyCode === 229`（中文输入法组词回车）
+
+**部署链路**
+
+- schema.sql 与 db.ts 的 SCHEMA_COLUMNS/SCHEMA_TABLES 是同一 schema 的两份表达：**加列/表必须两处同步**，且 cron（index.ts `scheduled()`）入口已强制先跑 ensureSchema——冷启动 isolate 不经过 fetch 中间件
+- 备份表数超过 `TABLE_ROW_LIMIT` 会在文件与 TG 中告警（backup.ts），改备份逻辑别把告警删了
 
 ## Git 约定
 

@@ -82,6 +82,18 @@ export function slugify(title: string): string {
   return 'p-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
 }
 
+/** 用户自定义 slug 的字符集清洗：空白折叠成 -，只留字母/数字/中文/_/-。
+ *  不清洗的坏链：空格、%、? 等字符会让 /post/:slug 渲染出异常路由 */
+export function cleanSlug(raw: string): string {
+  return raw
+    .trim()
+    .slice(0, 80)
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 export function clampInt(v: unknown, min: number, max: number, fallback: number): number {
   const n = parseInt(String(v ?? ''), 10)
   if (Number.isNaN(n)) return fallback

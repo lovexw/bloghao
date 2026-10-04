@@ -49,7 +49,7 @@ import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
-import { clampInt, excerpt, extractWeiboTopics, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
+import { clampInt, cleanSlug, excerpt, extractWeiboTopics, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
 
 type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
@@ -237,17 +237,6 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
     categoryId,
     publishAt,
   }
-}
-
-/** slug 字符集清洗：空白折叠成 -，其余非法字符删除；空返回空（调用方回退 slugify） */
-function cleanSlug(raw: string): string {
-  return raw
-    .trim()
-    .slice(0, 80)
-    .replace(/\s+/g, '-')
-    .replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '')
 }
 
 api.get('/admin/posts', async (c) => {

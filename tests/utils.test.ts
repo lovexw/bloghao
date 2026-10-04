@@ -1,0 +1,70 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { cleanSlug, clampInt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, jsonItemLikePattern, plainText } from '../src/utils.ts'
+
+// ── SSR 时间统一北京时间（回归：0-8 点发布的内容曾显示成前一天）──
+test('fmtDate 按 UTC+8 取墙上日期：UTC 16:30 = 北京次日 00:30', () => {
+  const ts = Date.UTC(2026, 9, 4, 16, 30) // 北京 2026-10-05 00:30
+  assert.equal(fmtDate(ts), '2026-10-05')
+  assert.equal(fmtDateTime(ts), '2026-10-05 00:30')
+  assert.equal(fmtDateCN(ts), '2026年10月5日')
+})
+
+test('fmtDate 正常日期与时区无关地稳定', () => {
+  const ts = Date.UTC(2026, 4, 1, 4, 0) // 北京 12:00，任何口径都是同一天
+  assert.equal(fmtDate(ts), '2026-05-01')
+  assert.equal(fmtDateTime(ts), '2026-05-01 12:00')
+})
+
+test('fmtDate/fmtDateCN/fmtDateTime 空值返回空串', () => {
+  assert.equal(fmtDate(null), '')
+  assert.equal(fmtDateCN(undefined), '')
+  assert.equal(fmtDateTime(0), '')
+})
+
+// ── plainText 实体解码顺序（回归：&amp;lt; 曾被二次解码成裸 <）──
+test('plainText 不做二次实体解码', () => {
+  assert.equal(plainText('<p>展示 &amp;lt;b&amp;gt; 字样</p>'), '展示 &lt;b&gt; 字样')
+  assert.equal(plainText('&amp;amp;'), '&amp;')
+})
+
+test('plainText 正常解码与去标签', () => {
+  assert.equal(plainText('<p>A &lt;script&gt; 好的</p>'), 'A <script> 好的')
+  assert.equal(plainText('<script>alert(1)</script>正文'), '正文')
+  assert.equal(plainText('a&nbsp;b'), 'a b')
+})
+
+// ── cleanSlug（回归：自定义 slug 曾未清洗，空格/特殊字符产生坏链）──
+test('cleanSlug 清洗空白与非法字符', () => {
+  assert.equal(cleanSlug('My Post!! v2.test'), 'My-Post-v2test')
+  assert.equal(cleanSlug('中文 标题!'), '中文-标题')
+  assert.equal(cleanSlug('  --a--b--  '), 'a-b')
+  assert.equal(cleanSlug('   '), '')
+  assert.equal(cleanSlug('hello-world_1'), 'hello-world_1')
+})
+
+// ── LIKE 通配符转义（回归：% _ 未声明 ESCAPE 时搜索恒为空）──
+test('jsonItemLikePattern 转义通配符并带 JSON 引号', () => {
+  const p = jsonItemLikePattern('100%')
+  assert.ok(p.startsWith('%') && p.endsWith('%'))
+  assert.ok(p.includes('\\%'), '百分号必须被反斜杠转义')
+  assert.ok(p.includes('"100'), '带 JSON 引号，防「猫」命中「波斯猫」')
+  const u = jsonItemLikePattern('a_b')
+  assert.ok(u.includes('\\_'))
+})
+
+// ── 其他基础工具（防手滑改坏）──
+test('clampInt 边界与非数字回退', () => {
+  assert.equal(clampInt('5', 1, 10, 3), 5)
+  assert.equal(clampInt('99', 1, 10, 3), 10)
+  assert.equal(clampInt('0', 1, 10, 3), 1)
+  assert.equal(clampInt('abc', 1, 10, 3), 3)
+})
+
+test('extractWeiboTopics 防误判：紧贴字母/汉字的 # 不算话题开头', () => {
+  // 「C#」「与#代码」的 # 前是字母/汉字，按设计不提取（防 C# 被当话题）
+  assert.deepEqual(extractWeiboTopics('写 C# 的日常 #随笔#'), ['随笔'])
+  assert.deepEqual(extractWeiboTopics('#生活#与#代码#'), ['生活'])
+  // 空格分隔的独立 #话题# 正常成对提取
+  assert.deepEqual(extractWeiboTopics('#生活# 和 #代码#'), ['生活', '代码'])
+})

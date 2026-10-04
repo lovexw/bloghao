@@ -220,8 +220,9 @@ function renderHtml(blocks: Block[], srcMap: Map<string, string>): string {
 
 /* ---------------- 图片转存 ---------------- */
 
-/** 从文件魔数识别图片真实类型；识别不出返回 null（HTML/SVG/其它一律拒收） */
-function sniffImageExt(buf: ArrayBuffer): 'jpg' | 'png' | 'gif' | 'webp' | null {
+/** 从文件魔数识别图片真实类型；识别不出返回 null（HTML/SVG/其它一律拒收）。
+ *  导出仅为回归测试：类型只认魔数，不信任源站 Content-Type / URL 的 wx_fmt */
+export function sniffImageExt(buf: ArrayBuffer): 'jpg' | 'png' | 'gif' | 'webp' | null {
   const b = new Uint8Array(buf, 0, Math.min(16, buf.byteLength))
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg'
   if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png'
