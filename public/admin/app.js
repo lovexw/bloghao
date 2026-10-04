@@ -1186,6 +1186,33 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
+      <div class="form-section"><h3>外部发布</h3><div class="sec-desc">用 Telegram 机器人或开放 API 远程发微博（文字 / 图片 / 相册都可以）</div>
+        <div class="form-item">
+          <label>API Token（开放接口密钥，重新生成后旧 Token 立即失效）</label>
+          <div class="fav-row">
+            <input class="input" id="st-externalToken" readonly style="flex:1;min-width:200px;font-family:ui-monospace,monospace;" value="${esc(s.externalToken || '')}" placeholder="未生成，点右侧按钮" onclick="this.select()">
+            <button class="btn btn-sm" id="btn-token-gen" type="button">${s.externalToken ? '重新生成' : '生成 Token'}</button>
+            <button class="btn btn-sm btn-ghost" id="btn-token-copy" type="button" ${s.externalToken ? '' : 'disabled'}>复制</button>
+          </div>
+          <div class="sec-desc" style="margin-top:6px;">接口：<code>POST ${esc(location.origin)}/api/external/weibo</code>，用法见 docs/GUIDE.md 第 8 节</div>
+        </div>
+        <div class="form-item">
+          <label>Telegram Bot Token（找 @BotFather 发 /newbot 创建机器人后获得）</label>
+          <input class="input" id="st-telegramBotToken" placeholder="123456789:AA…" autocomplete="off" value="${esc(s.telegramBotToken || '')}">
+        </div>
+        <div class="form-item">
+          <label>允许发布的 Chat ID（逗号分隔；给机器人发 /start 可查看自己的 ID）</label>
+          <input class="input" id="st-telegramAllowFrom" placeholder="如 123456789" value="${esc(s.telegramAllowFrom || '')}">
+        </div>
+        <div class="fav-row">
+          <button class="btn" id="btn-tg-webhook" type="button">保存并一键设置 Webhook</button>
+          <span class="sec-desc" id="tg-webhook-status"></span>
+        </div>
+        <div class="sec-desc" style="margin-top:6px;">设置好后在 Telegram 给机器人发文字 / 图片即可发微博；相册多图自动合并成一条；消息开头写 /draft 存草稿</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:20px;">
       <div class="form-section"><h3>关于页</h3><div class="sec-desc">显示在 /about，支持富文本</div>
         <textarea class="textarea" id="st-about" rows="5">${esc(s.about)}</textarea>
       </div>
@@ -1280,6 +1307,8 @@ async function viewSettings() {
       allowComments: g('st-allowComments').checked ? '1' : '0',
       moderateComments: g('st-moderateComments').checked ? '1' : '0',
       postsPerPage: g('st-postsPerPage').value || '10',
+      telegramBotToken: g('st-telegramBotToken').value.trim(),
+      telegramAllowFrom: g('st-telegramAllowFrom').value.trim(),
       about: g('st-about').value,
     }
     try {
@@ -1303,6 +1332,44 @@ async function viewSettings() {
     } catch (e) {
       toast(e.message, true)
     }
+  })
+
+  const tokenInput = document.getElementById('st-externalToken')
+  document.getElementById('btn-token-gen').addEventListener('click', async () => {
+    if (tokenInput.value && !(await confirmBox('重新生成后旧 Token 立即失效，已配置的外部工具需要更换新 Token。确定？'))) return
+    try {
+      const d = await api('/admin/external/token', { method: 'POST' })
+      tokenInput.value = d.token
+      document.getElementById('btn-token-copy').disabled = false
+      toast('Token 已生成并保存，同步给外部工具即可使用')
+    } catch (e) {
+      toast(e.message, true)
+    }
+  })
+  document.getElementById('btn-token-copy').addEventListener('click', () => {
+    if (!tokenInput.value) return
+    navigator.clipboard.writeText(tokenInput.value).then(() => toast('已复制'))
+  })
+
+  document.getElementById('btn-tg-webhook').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-tg-webhook')
+    const statusEl = document.getElementById('tg-webhook-status')
+    const botToken = document.getElementById('st-telegramBotToken').value.trim()
+    if (!botToken) return toast('先填写 Telegram Bot Token', true)
+    btn.disabled = true
+    btn.textContent = '设置中…'
+    try {
+      // 先落库两项 Telegram 配置，再让服务端校验 Token 并调 setWebhook
+      await api('/admin/settings', { method: 'PUT', body: { telegramBotToken: botToken, telegramAllowFrom: document.getElementById('st-telegramAllowFrom').value.trim() } })
+      state.settings.telegramBotToken = botToken
+      const d = await api('/admin/external/telegram/webhook', { method: 'POST' })
+      statusEl.textContent = `✅ 已绑定 ${d.bot}`
+      toast('Webhook 设置成功，去 Telegram 给机器人发 /start 试试')
+    } catch (e) {
+      toast(e.message, true)
+    }
+    btn.disabled = false
+    btn.textContent = '保存并一键设置 Webhook'
   })
 }
 

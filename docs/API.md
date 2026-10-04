@@ -187,8 +187,46 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | --- | --- | --- |
 | POST | `/api/admin/collect/wechat` | Body `{url}`，仅接受 `https://mp.weixin.qq.com/s/...`；服务端抓取正文，配图与封面转存 R2，生成**保留原文发布时间**的草稿；返回 `{ok, post, account, images}`。限频 10 次/分钟/IP；单篇最多转存 30 张图、单图 ≤ 25MB、正文 ≤ ~900KB。编辑器插件「采集公众号文章」调用（见 docs/PLUGINS.md） |
 
+### 外部发布（管理）
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/admin/external/token` | 生成并保存新的开放 API Token（旧的立即失效），返回 `{ok, token}` |
+| POST | `/api/admin/external/telegram/webhook` | 校验 Bot Token（getMe）→ 首次自动生成 Webhook 密钥 → 调 Telegram setWebhook；返回 `{ok, bot:"@name", webhookUrl}`。需先通过设置接口保存 `telegramBotToken` |
+
+外部发布相关设置键（可经 `PUT /api/admin/settings` 写入）：`externalToken`（开放 API 密钥，空 = 接口关闭，建议用上面的专用端点生成）、`telegramBotToken`、`telegramAllowFrom`（逗号分隔的 Chat ID 白名单）、`telegramWebhookSecret`（Webhook 密钥，建议由专用端点自动生成）。
+
 ### GET /api/meta/themes
 已注册主题列表 `{themes:[{id,name,description}]}`。
+
+## 外部接口（Token 鉴权，供 Telegram 机器人 / 第三方工具调用）
+
+鉴权方式三选一：`Authorization: Bearer <token>`、`X-Auth-Token: <token>`、`?token=<token>`。Token 在后台「设置 → 外部发布」生成，空 Token = 接口关闭。
+
+### GET /api/external/weibo
+连通性测试，返回 `{ok, site, usage}`。
+
+### POST /api/external/weibo
+发布一条微博。`Content-Type: application/json` 与 `multipart/form-data` 均可：
+
+```json
+{ "content": "文字，可含 #话题#", "images": ["https://外链 或 /images/站内 或 data:image/…;base64,…"], "status": "published | draft" }
+```
+
+multipart 字段：`content`、`status`、`images`（文件，可重复；也接受图片地址字符串）。`status` 缺省为 `published`。
+
+- 约束与后台一致：`content` ≤ 5000 字、图片 ≤ 9 张（JPG/PNG/WebP/GIF，上传文件 ≤ 25MB，存 R2）、文字与图片不能同时为空
+- 返回 `{ok, id, url, status, images}`，`url` 形如 `https://站点/weibo#wb-<id>`
+- 错误：401 无效 Token；422 内容为空 / 图片超限 / 格式不支持；429 限频（30 次/分钟/Token）
+- 话题不接受直传，服务端从正文提取（同微博管理接口）
+
+### POST /api/telegram/webhook
+Telegram Bot API 的 Webhook 接收端，由 Telegram 服务器调用（`?secret=` 与 `X-Telegram-Bot-Api-Secret-Token` 校验，密钥由后台一键设置生成）。行为：
+
+- 白名单外会话：回复其 Chat ID 与授权提示，不落库；`/start`、`/help` 回复使用说明
+- 文字 / 图片 / 图片+caption（白名单会话）→ 发布为微博，图片经 Bot API 下载后转存 R2；成功后回复微博链接
+- 相册（同 `media_group_id`）缓冲合并为一条微博（缓冲表 `tg_buffer`，几秒无新图即发布）
+- `/draft 文字` 存草稿；其余指令回复可用指令说明
+- 限频 20 次/分钟/Chat
 
 ## HTML 白名单（净化器摘要）
 

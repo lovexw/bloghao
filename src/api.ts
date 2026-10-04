@@ -41,6 +41,7 @@ import {
 } from './db'
 import { mdToHtml } from './markdown'
 import { collectRoutes } from './collect'
+import { adminExternalRoutes, externalRoutes, telegramRoutes } from './external'
 import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
 import { THEMES } from './themes/registry'
@@ -156,6 +157,11 @@ api.use('/admin/*', async (c, next) => {
 
 /* 采集插件（公众号文章 → 草稿），见 src/collect.ts */
 api.route('/admin/collect', collectRoutes)
+
+/* 外部发布：开放 API / Telegram 机器人（自鉴权）与后台管理端点，见 src/external.ts */
+api.route('/admin/external', adminExternalRoutes)
+api.route('/external', externalRoutes)
+api.route('/telegram', telegramRoutes)
 
 api.get('/admin/stats', async (c) => {
   const db = c.env.DB

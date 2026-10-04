@@ -120,6 +120,17 @@ CREATE TABLE IF NOT EXISTS friend_links (
 );
 CREATE INDEX IF NOT EXISTS idx_friend_links_status ON friend_links (status, sort, id);
 
+-- Telegram 相册缓冲：一次多选会拆成多条消息（同一 media_group_id），
+-- 先逐条写入这里（图片已转存 R2），几秒没有新图后合并发布成一条微博并清空
+CREATE TABLE IF NOT EXISTS tg_buffer (
+  media_group_id TEXT PRIMARY KEY,
+  content        TEXT NOT NULL DEFAULT '',
+  images         TEXT NOT NULL DEFAULT '[]', -- JSON 数组，如 ["/images/u/202510/xxx.jpg"]
+  status         TEXT NOT NULL DEFAULT 'published',
+  chat_id        TEXT NOT NULL DEFAULT '',
+  updated_at     INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''

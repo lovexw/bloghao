@@ -40,6 +40,7 @@
 
 - **文章**：草稿 / 发布 / 置顶 / 自定义 slug / 分类（单分类）/ 标签（多标签）/ 摘要 / 封面 / 阅读量与点赞 / 阅读时长 / 相关文章
 - **微博**：5000 字以内 + 9 图，话题从正文 `#话题#` 自动提取（兼容 Memos 式 `#层级/标签`），草稿与置顶，微博页 `?topic=` 按话题筛选
+- **外部发布**：Telegram 机器人发文字 / 图片 / 相册即发微博（相册自动合并，图片转存 R2，Chat ID 白名单）；另有 Token 鉴权开放 API（JSON / multipart / base64，教程见 docs/GUIDE.md 8.1–8.2）
 - **评论**：文章评论 / 微博评论在后台分开管理；楼中楼回复；防垃圾三件套（蜜罐、同 IP 限流、长度限制）
 - **分类与标签**：分类页 `/category/:slug`；分类页可直接预建 / 删除全站标签
 - **站点外观**：站点名称 / 描述 / 页脚 / 头像 / 浏览器 favicon（均可上传到图床）/ 每页文章数 / 关于页富文本
@@ -113,6 +114,7 @@ bloghao-xwblog/
 ├── src/                # Cloudflare Worker（后端 + SSR + 主题）
 │   ├── index.ts        # 入口与路由（页面、图床、RSS、随机阅读）
 │   ├── api.ts          # 全部 JSON API（文章/微博/友链/分类/评论/设置…）
+│   ├── external.ts     # 外部发布：开放 API + Telegram 机器人 + 管理端点
 │   ├── pages.ts        # 公开页 SSR（首页/微博/友链/文章/搜索…）
 │   ├── collect.ts      # 公众号采集插件服务端
 │   ├── auth.ts / sanitize.ts / markdown.ts / db.ts / render.ts / rss.ts

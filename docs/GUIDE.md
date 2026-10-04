@@ -172,6 +172,70 @@
 - **下架 / 发布**：下架转回草稿（转草稿会自动取消置顶），再发布就恢复
 - **删除**：不可恢复，这条微博下的评论一并删除
 
+### 8.1 从外面发微博：Telegram 机器人（推荐）
+
+两步接好之后，**在 Telegram 里给机器人发消息 = 发微博**——文字、图片、图片+文字都可以，最适合手机上随手记。
+
+**第 1 步：创建机器人**（一分钟）：
+
+1. Telegram 搜索 **@BotFather**，发送 `/newbot`
+2. 按提示给机器人起名（显示名）和用户名（必须以 `bot` 结尾）
+3. BotFather 会回复一串 **Bot Token**，形如 `123456789:AAH8x…`，复制它
+
+**第 2 步：后台配置**（后台「设置 → 外部发布」）：
+
+1. 把 Bot Token 粘进「**Telegram Bot Token**」，点右上角「**保存全部**」
+2. 点「**保存并一键设置 Webhook**」——显示 `✅ 已绑定 @你的机器人` 即接入完成（这一步会自动生成 Webhook 密钥并注册到 Telegram，不需要手动操作 BotFather）
+
+**第 3 步：授权你自己**：
+
+1. 在 Telegram 里给机器人发一条 `/start`，它会回复你的 **Chat ID**（一串数字）
+2. 把这串数字填进「**允许发布的 Chat ID**」，再点「保存全部」
+
+完成。现在直接给机器人发消息即可：
+
+| 你发的 | 得到的 |
+| --- | --- |
+| 文字 | 文字微博（正文带 `#话题#` 照常归类） |
+| 图片（caption 可写字） | 图文微博，最多 9 张 |
+| 一次多选几张的相册 | 自动**合并成一条**多图微博 |
+| 消息开头写 `/draft ` | 存为草稿（`/draft 今天先记一笔`） |
+| `/start` 或 `/help` | 查看帮助与自己的 Chat ID |
+
+发布成功机器人会回复 `✅ 已发布到微博` 并附上链接；图片经机器人中转**存进你的 R2 图床**，和手动上传一致。发错了去后台「微博」页改或删。
+
+> **安全**：Webhook 地址带随机密钥，伪造请求会被拒；不在白名单里的会话发了消息只会收到「未授权」提示，不能发布。所以机器人可以放心用。
+>
+> **注意**：Bot Token 等同于发布权限，只填在自己后台；想撤销某个工具的权限，点「重新生成」API Token 或在 BotFather 里 `/revoke` 换新 Token。
+
+### 8.2 程序化发布：开放 API
+
+任何能发 HTTP 请求的工具——iOS 快捷指令、n8n /影刀自动化、脚本、其他网站——都能发微博。先在「设置 → 外部发布」点「**生成 Token**」并复制，然后：
+
+```bash
+TOKEN=你生成的Token
+
+# 纯文字（含话题）
+curl -X POST https://blog.xiaowuleyi.com/api/external/weibo \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"从终端发的第一条微博 #折腾#"}'
+
+# 图片文件（multipart，可重复 images 字段传多张）
+curl -X POST https://blog.xiaowuleyi.com/api/external/weibo \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "content=配图微博" \
+  -F "images=@/path/to/photo.jpg"
+
+# base64 图片（JSON 里直接给 data URL，适合快捷指令 / 截图上传）
+curl -X POST https://blog.xiaowuleyi.com/api/external/weibo \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"截图", "images":["data:image/png;base64,iVBORw0…"]}'
+```
+
+**规则与后台发布器完全一致**：文字 ≤ 5000 字、图片 ≤ 9 张（JPG / PNG / WebP / GIF，文件走接口上传 ≤ 25MB）、话题从正文 `#话题#` 自动提取、`"status":"draft"` 存草稿、限频 30 次/分钟。返回 `{ok, id, url, images}`，`url` 直接指向这条微博。接口参数详见 [API.md](API.md)。
+
 ## 9. 媒体库（图床）
 
 侧栏「媒体」：所有上传过的图片和视频按时间倒序展示，点击可预览、复制访问地址（`/images/u/202610/xxx.png`）、删除。写文章、发微博、传头像图标、采集公众号配图——都存在这一个桶里。
@@ -240,6 +304,7 @@
 | **开启留言** | 关掉后文章页与微博卡片的评论表单一起隐藏，已有评论仍展示 |
 | **留言先审后展** | 开启后新留言进「待审核」，你通过后才展示（你自己以作者身份发言的不受影响） |
 | **每页文章数** | 首页 / 分类列表分页大小（1-50） |
+| **外部发布** | Telegram 机器人与开放 API 的配置（Token 生成、Bot Token、Chat ID 白名单、一键设置 Webhook），详见 8.1 / 8.2 节 |
 | **关于页** | 显示在 `/about`，支持富文本，写你的故事 |
 | **修改密码** | 页面底部「账号」区，旧密码 + 新密码（8-64 位） |
 

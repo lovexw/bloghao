@@ -13,6 +13,11 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   about: '<p>在这里写下关于你的故事。</p>',
   faviconUrl: '',
   avatarUrl: '',
+  // 外部发布（见 src/external.ts）：空 Token = 开放接口关闭
+  externalToken: '',
+  telegramBotToken: '',
+  telegramAllowFrom: '',
+  telegramWebhookSecret: '',
 }
 
 export async function getSettings(db: D1Database): Promise<SettingsMap> {
@@ -393,6 +398,15 @@ const SCHEMA_COLUMNS: { table: string; column: string; ddl: string }[] = [
   { table: 'comments', column: 'is_admin', ddl: 'ALTER TABLE comments ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0' },
 ]
 const SCHEMA_TABLES = [
+  // Telegram 相册缓冲（src/external.ts）：多选拆成的多条消息先落这里，几秒后合并成一条微博
+  `CREATE TABLE IF NOT EXISTS tg_buffer (
+    media_group_id TEXT PRIMARY KEY,
+    content        TEXT NOT NULL DEFAULT '',
+    images         TEXT NOT NULL DEFAULT '[]',
+    status         TEXT NOT NULL DEFAULT 'published',
+    chat_id        TEXT NOT NULL DEFAULT '',
+    updated_at     INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS tags (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT    NOT NULL UNIQUE,
