@@ -5,9 +5,11 @@ import {
   getPostBySlug,
   getPostCategoryId,
   getSettings,
+  listAllPublishedArchives,
   listApprovedComments,
   listCategories,
   listFriendLinks,
+  listGuestbookComments,
   listPosts,
   listWeibo,
   listWeiboTopics,
@@ -18,6 +20,7 @@ import {
   type PostSort,
 } from './db'
 import {
+  archiveGroups,
   commentsHtml,
   friendLinkApply,
   friendLinkCards,
@@ -298,6 +301,7 @@ export async function renderPost(c: C): Promise<Response> {
   )
 }
 
+/** 关于我页（/about）：内容在后台「设置 → 关于我」维护，导航高亮 about */
 export async function renderAbout(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
@@ -308,10 +312,87 @@ export async function renderAbout(c: C): Promise<Response> {
     contentHtml: sanitizeHtml(settings.about || '<p>作者很懒，什么都没写。</p>'),
     categories,
     tags,
+    navActive: 'about',
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({ settings, css: theme.css, title: '关于', description: `关于 ${settings.siteName}`, path: '/about', body: html })
+    page({
+      settings,
+      css: theme.css,
+      title: '关于我',
+      description: `关于 ${settings.siteName} 与这里的故事`,
+      path: '/about',
+      body: html,
+    })
+  )
+}
+
+/** 文章归档页（/archives）：全部已发布文章按年分组，独立页面便于搜索引擎收录 */
+export async function renderArchive(c: C): Promise<Response> {
+  baseHeaders(c)
+  const settings = await getSettings(c.env.DB)
+  const theme = getTheme(settings.theme)
+  const [rows, categories, tags] = await Promise.all([listAllPublishedArchives(c.env.DB), navCategories(c), navTags(c)])
+  const html = theme.archives({
+    settings,
+    categories,
+    tags,
+    total: rows.length,
+    groups: archiveGroups(rows),
+  })
+  c.header('Cache-Control', 'no-cache')
+  return c.html(
+    page({
+      settings,
+      css: theme.css,
+      title: '文章归档',
+      description: `${settings.siteName}的全部文章归档，共 ${rows.length} 篇，按年份回顾每一个阶段的写作`,
+      path: '/archives',
+      body: html,
+    })
+  )
+}
+
+/** 留言板页（/guestbook）：独立留言墙，留言存进 comments（post_id 与 weibo_id 均为 0） */
+export async function renderGuestbook(c: C): Promise<Response> {
+  baseHeaders(c)
+  const settings = await getSettings(c.env.DB)
+  const theme = getTheme(settings.theme)
+  const [comments, categories, tags, user] = await Promise.all([
+    listGuestbookComments(c.env.DB),
+    navCategories(c),
+    navTags(c),
+    getSessionUser(c.env.DB, c.req.raw),
+  ])
+  const html = theme.guestbook({
+    settings,
+    categories,
+    tags,
+    count: comments.length,
+    html: commentsHtml({
+      comments,
+      slug: '',
+      allowComments: settings.allowComments === '1',
+      count: comments.length,
+      isAdmin: !!user,
+      // 管理员登录：表单免填昵称，以作者身份发言
+      adminName: user ? (user.display_name || user.username || '').slice(0, 24) : undefined,
+      tip: settings.moderateComments === '1' && !user ? '提交后审核通过即展示' : undefined,
+      guestbook: true,
+      // 页头已有「留言板」大标题，留言区标题换成「全部留言」避免重复
+      title: '全部留言',
+    }),
+  })
+  c.header('Cache-Control', 'no-cache')
+  return c.html(
+    page({
+      settings,
+      css: theme.css,
+      title: '留言板',
+      description: `${settings.siteName}的留言板，想对作者说点什么，就在这里写下来`,
+      path: '/guestbook',
+      body: html,
+    })
   )
 }
 

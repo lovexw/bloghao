@@ -87,6 +87,25 @@ export interface ThemeModule {
     contentHtml: string
     categories: import('../render').CategoryLink[]
     tags?: import('../render').TagCount[]
+    /** 导航高亮：关于我页传 'about' */
+    navActive?: string
+  }): string
+  /** 文章归档页（/archives）：全部已发布文章按年分组，pages 层构建好 groups */
+  archives(d: {
+    settings: Record<string, string>
+    categories: import('../render').CategoryLink[]
+    tags?: import('../render').TagCount[]
+    /** 文章总篇数（页头副标题用） */
+    total: number
+    groups: import('../render').ArchiveYearGroup[]
+  }): string
+  /** 留言板页（/guestbook）：html 为 commentsHtml({ guestbook: true }) 构建的留言墙 + 表单 */
+  guestbook(d: {
+    settings: Record<string, string>
+    categories: import('../render').CategoryLink[]
+    tags?: import('../render').TagCount[]
+    html: string
+    count: number
   }): string
 }
 

@@ -811,7 +811,7 @@ api.delete('/admin/uploads', async (c) => {
 /* ---------------- 评论管理 ---------------- */
 api.get('/admin/comments', async (c) => {
   const status = c.req.query('status')
-  const type = c.req.query('type') // post = 文章评论，weibo = 微博评论
+  const type = c.req.query('type') // post = 文章评论，weibo = 微博评论，guestbook = 留言板
   const page = clampInt(c.req.query('page'), 1, 100000, 1)
   const limit = 20
   const where: string[] = []
@@ -822,6 +822,7 @@ api.get('/admin/comments', async (c) => {
   }
   if (type === 'post') where.push('c.post_id > 0')
   else if (type === 'weibo') where.push('c.weibo_id > 0')
+  else if (type === 'guestbook') where.push('c.post_id = 0 AND c.weibo_id = 0')
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
   const [listRes, countRes] = await Promise.all([
     c.env.DB.prepare(
@@ -1031,6 +1032,55 @@ api.post('/public/comments', async (c) => {
       ip,
       Date.now()
     )
+    .run()
+  return c.json({ ok: true, pending })
+})
+
+/* ---------------- 留言板（公开，post_id 与 weibo_id 均为 0 即留言板留言） ---------------- */
+api.post('/public/guestbook', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  const user = await getSessionUser(c.env.DB, c.req.raw)
+  if (!user && settings.allowComments !== '1') return jsonError('作者已关闭留言', 403)
+  const ip = clientIp(c.req.raw)
+  // 管理员回复不受留言频率限制
+  if (!user && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError('留言太频繁，休息一下吧', 429)
+  const body = await c.req
+    .json<{ nickname?: string; content?: string; parentId?: number; link?: string }>()
+    .catch(() => null)
+  // 蜜罐字段：正常用户不会填写，机器人会 —— 静默丢弃
+  if (body?.link) return c.json({ ok: true })
+  const content = String(body?.content || '').trim().slice(0, 1000)
+  if (!content) return jsonError('留言内容不能为空')
+
+  const parentId = Number(body?.parentId) || 0
+  if (user) {
+    const parent = parentId
+      ? await c.env.DB.prepare('SELECT * FROM comments WHERE id = ? AND post_id = 0 AND weibo_id = 0').bind(parentId).first<CommentRow>()
+      : null
+    if (parentId && !parent) return jsonError('要回复的留言不存在', 404)
+    await c.env.DB.prepare(
+      'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (0, 0, ?, 1, ?, ?, ?, ?, ?)'
+    )
+      .bind(
+        parent ? parent.parent_id || parent.id : 0,
+        (user.display_name || user.username).slice(0, 24),
+        content,
+        'approved',
+        ip,
+        Date.now()
+      )
+      .run()
+    return c.json({ ok: true })
+  }
+
+  if (parentId) return jsonError('只有作者可以回复留言', 403)
+  const nickname = String(body?.nickname || '').trim().slice(0, 24)
+  if (!nickname) return jsonError('昵称和留言内容不能为空')
+  const pending = settings.moderateComments === '1'
+  await c.env.DB.prepare(
+    'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (0, 0, 0, 0, ?, ?, ?, ?, ?)'
+  )
+    .bind(nickname, content, pending ? 'pending' : 'approved', ip, Date.now())
     .run()
   return c.json({ ok: true, pending })
 })

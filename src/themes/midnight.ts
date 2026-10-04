@@ -1,6 +1,7 @@
 import type { SettingsMap } from '../types'
 import type { PostSort } from '../db'
 import {
+  archiveListHtml,
   categoryLink,
   esc,
   fmtDate,
@@ -16,6 +17,7 @@ import {
   weiboHomeEntry,
   weiboPager,
   weiboTopicBar,
+  type ArchiveYearGroup,
   type CategoryLink,
   type FriendLinkView,
   type HomePostView,
@@ -77,7 +79,7 @@ export function home(d: {
   ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
   <header class="md-header">
     <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
-    <nav class="md-nav"><a class="md-nav-link" href="/about">关于</a></nav>
+    <nav class="md-nav"><a class="md-nav-link" href="/about">关于我</a></nav>
   </header>
   <section class="md-hero">
     <h1>${esc(s.siteName)}</h1>
@@ -149,15 +151,75 @@ export function post(d: {
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[]; tags?: TagCount[] }): string {
+export function about(d: {
+  settings: SettingsMap
+  contentHtml: string
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  navActive?: string
+}): string {
   return `<div class="md-wrap">
-  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags })}
+  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
   <header class="md-header"><a class="md-logo" href="/">${logoMark(d.settings)}${esc(d.settings.siteName)}</a></header>
   <article class="md-article">
-    <h1 class="md-title">关于</h1>
+    <h1 class="md-title">关于我</h1>
     <div class="rich">${d.contentHtml}</div>
   </article>
   <footer class="md-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 文章归档页：全部文章按年份分组，等宽字日期 + 细线列表 */
+export function archives(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  total: number
+  groups: ArchiveYearGroup[]
+}): string {
+  const s = d.settings
+  return `<div class="md-wrap">
+  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, active: 'archives' })}
+  <header class="md-header">
+    <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
+    <nav class="md-nav"><a class="md-nav-link is-active" href="/archives">archives</a><a class="md-nav-link" href="/guestbook">guestbook</a><a class="md-nav-link" href="/about">关于我</a></nav>
+  </header>
+  <section class="md-hero md-hero-slim">
+    <h1>文章归档</h1>
+    <p>${d.total > 0 ? `// 共 ${d.total} 篇 · 按年份倒序` : '// 写下的每一篇都会收进这里'}</p>
+  </section>
+  <main class="md-archives">${archiveListHtml(d.groups) || '<p class="md-empty">夜航日志还是空的。</p>'}</main>
+  <footer class="md-footer">
+    <span>${esc(s.footerText || '')}</span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
+</div>`
+}
+
+/** 留言板页：独立留言墙（复用 .cmt-* 结构与样式） */
+export function guestbook(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  html: string
+  count: number
+}): string {
+  const s = d.settings
+  return `<div class="md-wrap">
+  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, active: 'guestbook' })}
+  <header class="md-header">
+    <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
+    <nav class="md-nav"><a class="md-nav-link" href="/archives">archives</a><a class="md-nav-link is-active" href="/guestbook">guestbook</a><a class="md-nav-link" href="/about">关于我</a></nav>
+  </header>
+  <section class="md-hero md-hero-slim">
+    <h1>留言板</h1>
+    <p>${d.count > 0 ? `// 已有 ${d.count} 条留言 · 随便聊聊` : '// 想说点什么，就在这里写下来'}</p>
+  </section>
+  <main class="md-guestbook">${d.html}</main>
+  <footer class="md-footer">
+    <span>${esc(s.footerText || '')}</span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
 </div>`
 }
 
@@ -188,7 +250,7 @@ export function weibo(d: {
   ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, active: 'weibo' })}
   <header class="md-header">
     <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
-    <nav class="md-nav"><a class="md-nav-link is-active" href="/weibo">weibo</a><a class="md-nav-link" href="/about">关于</a></nav>
+    <nav class="md-nav"><a class="md-nav-link is-active" href="/weibo">weibo</a><a class="md-nav-link" href="/about">关于我</a></nav>
   </header>
   <section class="md-hero md-hero-slim">
     <h1>微博</h1>
@@ -219,7 +281,7 @@ export function links(d: {
   ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, active: 'links' })}
   <header class="md-header">
     <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
-    <nav class="md-nav"><a class="md-nav-link is-active" href="/links">links</a><a class="md-nav-link" href="/about">关于</a></nav>
+    <nav class="md-nav"><a class="md-nav-link is-active" href="/links">links</a><a class="md-nav-link" href="/about">关于我</a></nav>
   </header>
   <section class="md-hero md-hero-slim">
     <h1>友情链接</h1>

@@ -43,6 +43,10 @@ export function buildSitemap(settings: SettingsMap, posts: PostRow[], siteUrl: s
   const urls = [
     { loc: `${siteUrl}/`, lastmod: fmtDate(Date.now()) },
     { loc: `${siteUrl}/about`, lastmod: '' },
+    { loc: `${siteUrl}/archives`, lastmod: fmtDate(Date.now()) },
+    { loc: `${siteUrl}/guestbook`, lastmod: '' },
+    { loc: `${siteUrl}/weibo`, lastmod: '' },
+    { loc: `${siteUrl}/links`, lastmod: '' },
     ...posts.map((p) => ({
       loc: `${siteUrl}/post/${xmlEsc(p.slug)}`,
       lastmod: fmtDate(p.updated_at),

@@ -161,6 +161,80 @@
     })
   }
 
+  /* ---------------- 留言板（/guestbook：访客留言 + 作者回复，结构与文章留言一致） ---------------- */
+  var gbForm = document.getElementById('guestbook-form')
+  if (gbForm) {
+    var gbTip = gbForm.querySelector('.cmt-tip')
+    var gbTipDefault = gbTip ? gbTip.textContent : ''
+    var gbParentInput = gbForm.querySelector('[name=parentId]')
+    var gbNickname = gbForm.querySelector('[name=nickname]')
+
+    function gbSetReply(id, name) {
+      gbForm.dataset.replyId = id ? String(id) : ''
+      if (gbParentInput) gbParentInput.value = id ? String(id) : ''
+      if (gbNickname) gbNickname.required = !id
+      if (!gbTip) return
+      if (!id) {
+        gbTip.textContent = gbTipDefault
+        return
+      }
+      gbTip.innerHTML = '回复 @' + esc(name) + ' <button type="button" class="cmt-reply-cancel">取消</button>'
+      var cancel = gbTip.querySelector('.cmt-reply-cancel')
+      if (cancel)
+        cancel.addEventListener('click', function () {
+          gbSetReply(0, '')
+        })
+      gbForm.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      var ta = gbForm.querySelector('[name=content]')
+      if (ta) ta.focus()
+    }
+
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('.cmt-reply-btn') : null
+      if (!btn || !document.getElementById('guestbook').contains(btn)) return
+      e.preventDefault()
+      gbSetReply(Number(btn.getAttribute('data-reply')), btn.getAttribute('data-name') || '')
+    })
+
+    gbForm.addEventListener('submit', function (e) {
+      e.preventDefault()
+      var btn = gbForm.querySelector('.cmt-submit')
+      var content = gbForm.querySelector('[name=content]')
+      var link = gbForm.querySelector('[name=link]')
+      if (!content.value.trim()) return
+      // 管理员表单没有昵称输入（服务端直接取作者身份），访客留言必须填昵称
+      if (gbNickname && !gbForm.dataset.replyId && !gbNickname.value.trim()) return
+      var label = btn.textContent
+      btn.textContent = '发送中…'
+      btn.disabled = true
+      postJSON('/api/public/guestbook', {
+        nickname: gbNickname ? gbNickname.value.trim() : '',
+        content: content.value.trim(),
+        link: link ? link.value : '',
+        parentId: gbForm.dataset.replyId ? Number(gbForm.dataset.replyId) : undefined,
+      })
+        .then(function (d) {
+          if (d && d.pending) {
+            if (gbTip) gbTip.textContent = '已提交，审核通过后展示'
+            content.value = ''
+            gbSetReply(0, '')
+            btn.textContent = label
+            btn.disabled = false
+          } else {
+            if (gbTip) gbTip.textContent = '留言成功，感谢参与 🙂'
+            setTimeout(function () {
+              location.reload()
+            }, 600)
+          }
+        })
+        .catch(function (err) {
+          if (gbTip) gbTip.textContent = err.message || '发送失败，请重试'
+          btn.textContent = label
+          btn.disabled = false
+        })
+    })
+  }
+
   /* ---------------- 微博卡片：折叠评论区 ---------------- */
   var authPromise = null
   function authState() {

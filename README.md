@@ -43,7 +43,7 @@
 - **外部发布**：Telegram 机器人发文字 / 图片 / 相册即发微博（相册自动合并，图片转存 R2，Chat ID 白名单）；另有 Token 鉴权开放 API（JSON / multipart / base64，教程见 docs/GUIDE.md 8.1–8.2）
 - **评论**：文章评论 / 微博评论在后台分开管理；楼中楼回复；防垃圾三件套（蜜罐、同 IP 限流、长度限制）
 - **分类与标签**：分类页 `/category/:slug`；分类页可直接预建 / 删除全站标签
-- **站点外观**：站点名称 / 描述 / 页脚 / 头像 / 浏览器 favicon（均可上传到图床）/ 每页文章数 / 关于页富文本
+- **站点外观**：站点名称 / 描述 / 页脚 / 头像 / 浏览器 favicon（均可上传到图床）/ 每页文章数 / 关于我富文本
 - **规范属性透传**：`data-w`、`data-ignore-width`、`data-no-dark`、`data-ignore-dm` 原样保留
 - **账号**：首次进入后台即创建管理员，后台可改密码
 
@@ -55,13 +55,15 @@
 | --- | --- |
 | [`/`](https://blog.xiaowuleyi.com/) | 首页：微博入口卡 + 搜索框 + 排序条 + 文章列表 |
 | [`/weibo`](https://blog.xiaowuleyi.com/weibo) | 微博时间线（随手记），从正文 `#话题#` 可进入话题筛选 |
+| [`/archives`](https://blog.xiaowuleyi.com/archives) | 文章归档：全部文章按年份分组 |
+| [`/guestbook`](https://blog.xiaowuleyi.com/guestbook) | 留言板：独立留言墙（楼中楼、作者回复） |
 | [`/links`](https://blog.xiaowuleyi.com/links) | 友情链接 + 访客申请收录 |
 | [`/post/:slug`](https://blog.xiaowuleyi.com) | 文章页（评论楼中楼、点赞、相关文章） |
 | [`/category/:slug`](https://blog.xiaowuleyi.com) · `/tag/:tag` · `/search?q=` | 分类 / 标签 / 搜索归档 |
-| [`/about`](https://blog.xiaowuleyi.com/about) · [`/random`](https://blog.xiaowuleyi.com/random) · [`/rss.xml`](https://blog.xiaowuleyi.com/rss.xml) | 关于 · 随机一篇 · RSS 订阅 |
+| [`/about`](https://blog.xiaowuleyi.com/about) · [`/random`](https://blog.xiaowuleyi.com/random) · [`/rss.xml`](https://blog.xiaowuleyi.com/rss.xml) | 关于我 · 随机一篇 · RSS 订阅 |
 | [`/admin/`](https://blog.xiaowuleyi.com/admin/) | 管理后台（写作、微博、友链、评论、媒体、设置） |
 
-顶部导航（四主题一致）：**首页 · 微博 · 分类话题（折叠菜单）· 友情链接 · 随机**。
+顶部导航（四主题一致）：**首页 · 微博 · 归档 · 留言板 · 分类话题（折叠菜单）· 友情链接 · 关于我 · 随机**。
 
 ## 🚀 部署自己的副本
 
@@ -135,7 +137,7 @@ bloghao-xwblog/
 | [docs/GUIDE.md](docs/GUIDE.md) | **使用手册**：后台导览、写文章 / 发微博全流程、评论与友链管理、采集插件、设置逐项说明 |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | **部署教程**：资源创建、首次上线、自定义域名、GitHub 自动部署、备份恢复、FAQ |
 | [docs/API.md](docs/API.md) | API 参考：全部公开 / 管理接口 |
-| [docs/THEMES.md](docs/THEMES.md) | 主题开发指南：一套主题 = 五类页面（首页 / 文章 / 微博 / 友链 / 关于） |
+| [docs/THEMES.md](docs/THEMES.md) | 主题开发指南：一套主题 = 七类页面（首页 / 文章 / 微博 / 友链 / 关于我 / 归档 / 留言板） |
 | [docs/PLUGINS.md](docs/PLUGINS.md) | 插件开发指南：编辑器插件 API 与内置「公众号采集」 |
 | [docs/wechat-typography-spec.md](docs/wechat-typography-spec.md) | 微信排版规范落地对照 + 体检规则表 |
 

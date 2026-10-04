@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { api } from './api'
 import { ensureSchema, getSettings, listPosts } from './db'
-import { renderAbout, renderCategory, renderHome, renderLinks, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
+import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
 import { buildRss, buildSitemap } from './rss'
 import type { Env, SessionUser } from './types'
 
@@ -28,6 +28,8 @@ app.get('/tag/:tag', renderHome)
 app.get('/category/:slug', renderCategory)
 app.get('/post/:slug', renderPost)
 app.get('/about', renderAbout)
+app.get('/archives', renderArchive)
+app.get('/guestbook', renderGuestbook)
 app.get('/weibo', renderWeibo)
 app.get('/links', renderLinks)
 app.get('/search', renderSearch)

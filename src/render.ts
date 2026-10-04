@@ -79,10 +79,10 @@ export interface TagCount {
 }
 
 /**
- * 全站顶部导航：首页 + 微博 + 分类话题（details 折叠菜单）+ 友情链接 + 随机。
+ * 全站顶部导航：首页 + 微博 + 归档 + 留言板 + 分类话题（details 折叠菜单）+ 友情链接 + 关于我 + 随机。
  * cls 传主题前缀（如 wx-snav），结构统一、样式交由主题 CSS 塑形。
  * 分类与标签收进同一折叠菜单（标签可能很多，菜单内部滚动），
- * active 传 'home' / 'weibo' / 'links' / 分类 slug / 'tag:标签名'。
+ * active 传 'home' / 'weibo' / 'archives' / 'guestbook' / 'links' / 'about' / 分类 slug / 'tag:标签名'。
  */
 export function siteNav(o: {
   cls: string
@@ -114,10 +114,68 @@ export function siteNav(o: {
   return `<nav class="${o.cls}" aria-label="站点导航">
   ${item('/', '首页', o.active === 'home')}
   ${item('/weibo', '微博', o.active === 'weibo')}
+  ${item('/archives', '归档', o.active === 'archives')}
+  ${item('/guestbook', '留言板', o.active === 'guestbook')}
   ${drop}
   ${item('/links', '友情链接', o.active === 'links')}
+  ${item('/about', '关于我', o.active === 'about')}
   ${item('/random', '随机')}
 </nav>`
+}
+
+/* ---------------- 文章归档（共享构建器） ----------------
+ * 年份小节 + 日期外置的细线列表，结构全主题共用（语义化 .ar-* class），视觉由主题 CSS 塑形。
+ */
+export interface ArchiveItemView {
+  slug: string
+  title: string
+  /** 发文时间（published_at 缺失回退 created_at），用于分组与展示 */
+  ts: number
+}
+
+export interface ArchiveYearGroup {
+  year: number
+  count: number
+  items: ArchiveItemView[]
+}
+
+/** 按年分组：年份倒序，组内按时间倒序 */
+export function archiveGroups(posts: ArchiveItemView[]): ArchiveYearGroup[] {
+  const map = new Map<number, ArchiveItemView[]>()
+  for (const p of posts) {
+    const year = new Date(p.ts).getFullYear()
+    const list = map.get(year) || []
+    list.push(p)
+    map.set(year, list)
+  }
+  return [...map.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([year, items]) => ({
+      year,
+      count: items.length,
+      items: items.sort((a, b) => b.ts - a.ts),
+    }))
+}
+
+/** 归档列表 HTML：每篇一行的 <time> + 标题链接（纯静态超链接，利于搜索引擎收录） */
+export function archiveListHtml(groups: ArchiveYearGroup[]): string {
+  return groups
+    .map(
+      (g) => `<section class="ar-group">
+  <h2 class="ar-year">${g.year}<i>${g.count} 篇</i></h2>
+  <ul class="ar-list">${g.items
+    .map(
+      (p) => `<li class="ar-item">
+  <a class="ar-link" href="/post/${esc(p.slug)}">
+    <time class="ar-date" datetime="${fmtDate(p.ts)}">${fmtDate(p.ts).replace(/-/g, '.')}</time>
+    <span class="ar-title">${esc(p.title)}</span>
+  </a>
+</li>`
+    )
+    .join('\n')}</ul>
+</section>`
+    )
+    .join('\n')
 }
 
 /* ---------------- 友情链接（共享构建器） ----------------
@@ -408,6 +466,7 @@ export function pagerHtml(c: PagerContext): string {
 /** 留言区（评论列表 + 表单），语义化 class 交给主题 CSS 塑形
  * - 楼中楼：parent_id 指向顶层评论的回复缩进展示，作者发言带「作者」徽标
  * - isAdmin：当前访客为管理员，渲染每条留言的「回复」按钮（site.js 接管交互）
+ * - guestbook：留言板页（/guestbook）复用同一套结构，表单提交到 /api/public/guestbook
  */
 export function commentsHtml(o: {
   comments: CommentRow[]
@@ -419,6 +478,8 @@ export function commentsHtml(o: {
   adminName?: string
   title?: string
   tip?: string
+  /** 留言板模式：区块与表单换成 guestbook 专用 id，提交目标不同 */
+  guestbook?: boolean
 }): string {
   const tops = o.comments.filter((c) => !c.parent_id)
   const children = new Map<number, CommentRow[]>()
@@ -452,8 +513,7 @@ export function commentsHtml(o: {
 
   const list = tops.map(renderItem).join('\n')
 
-  const form = o.allowComments
-    ? `<form id="comment-form" class="cmt-form${o.adminName ? ' is-admin' : ''}" data-slug="${esc(o.slug)}">
+  const formInner = `
   <input type="hidden" name="parentId" value="">
   ${
     o.adminName
@@ -463,17 +523,21 @@ export function commentsHtml(o: {
     <input class="cmt-input cmt-hp" name="link" tabindex="-1" autocomplete="off" aria-hidden="true">
   </div>`
   }
-  <textarea class="cmt-textarea" name="content" maxlength="1000" rows="3" placeholder="写下你的想法…" required></textarea>
+  <textarea class="cmt-textarea" name="content" maxlength="1000" rows="3" placeholder="${o.guestbook ? '想对作者说点什么…' : '写下你的想法…'}" required></textarea>
   <div class="cmt-form-foot">
     <span class="cmt-tip">${esc(o.tip || '留言即刻展示，请友善交流')}</span>
     <button class="cmt-submit" type="submit">发送</button>
   </div>
-</form>`
+`
+  const form = o.allowComments
+    ? o.guestbook
+      ? `<form id="guestbook-form" class="cmt-form${o.adminName ? ' is-admin' : ''}" data-guestbook="1">${formInner}</form>`
+      : `<form id="comment-form" class="cmt-form${o.adminName ? ' is-admin' : ''}" data-slug="${esc(o.slug)}">${formInner}</form>`
     : `<p class="cmt-closed">作者已关闭留言。</p>`
 
-  return `<section class="cmt-section" id="comments">
-  <h2 class="cmt-title">${esc(o.title || '留言')} <span class="cmt-count">${o.count}</span></h2>
-  ${o.comments.length ? `<ul class="cmt-list">${list}</ul>` : `<p class="cmt-empty">还没有留言，来抢沙发～</p>`}
+  return `<section class="cmt-section${o.guestbook ? ' gb-section' : ''}" id="${o.guestbook ? 'guestbook' : 'comments'}">
+  <h2 class="cmt-title">${esc(o.title || (o.guestbook ? '留言板' : '留言'))} <span class="cmt-count">${o.count}</span></h2>
+  ${o.comments.length ? `<ul class="cmt-list">${list}</ul>` : `<p class="cmt-empty">${o.guestbook ? '还没有人留言，来坐个沙发，说点什么吧～' : '还没有留言，来抢沙发～'}</p>`}
   ${form}
 </section>`
 }

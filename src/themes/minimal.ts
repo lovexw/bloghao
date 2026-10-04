@@ -1,6 +1,7 @@
 import type { SettingsMap } from '../types'
 import type { PostSort } from '../db'
 import {
+  archiveListHtml,
   categoryLink,
   esc,
   fmtDate,
@@ -16,6 +17,7 @@ import {
   weiboHomeEntry,
   weiboPager,
   weiboTopicBar,
+  type ArchiveYearGroup,
   type CategoryLink,
   type FriendLinkView,
   type HomePostView,
@@ -74,7 +76,7 @@ export function home(d: {
   <header class="mn-header">
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
     <nav class="mn-nav">
-      <a class="mn-nav-link" href="/about">关于</a>
+      <a class="mn-nav-link" href="/about">关于我</a>
     </nav>
   </header>
   <p class="mn-intro">${esc(s.siteDescription)}</p>
@@ -144,15 +146,71 @@ export function post(d: {
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[]; tags?: TagCount[] }): string {
+export function about(d: {
+  settings: SettingsMap
+  contentHtml: string
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  navActive?: string
+}): string {
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
   <header class="mn-header"><a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a></header>
   <article class="mn-article">
-    <h1 class="mn-title">关于</h1>
+    <h1 class="mn-title">关于我</h1>
     <div class="rich">${d.contentHtml}</div>
   </article>
   <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 文章归档页：全部文章按年份分组，日期外置的细线列表 */
+export function archives(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  total: number
+  groups: ArchiveYearGroup[]
+}): string {
+  const s = d.settings
+  return `<div class="mn-wrap">
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'archives' })}
+  <header class="mn-header">
+    <a class="mn-logo" href="/">${esc(s.siteName)}</a>
+    <nav class="mn-nav"><a class="mn-nav-link is-active" href="/archives">归档</a><a class="mn-nav-link" href="/guestbook">留言板</a><a class="mn-nav-link" href="/about">关于我</a></nav>
+  </header>
+  <h1 class="mn-title mn-page-title">归档</h1>
+  <p class="mn-intro">${d.total > 0 ? `共 ${d.total} 篇 · 按年份倒序` : '写下的每一篇都会收进这里'}</p>
+  <main class="mn-archives">${archiveListHtml(d.groups) || '<p class="mn-empty">Nothing here yet. Start writing.</p>'}</main>
+  <footer class="mn-footer">
+    <span>${esc(s.footerText || '')}</span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
+</div>`
+}
+
+/** 留言板页：独立留言墙（复用 .cmt-* 结构与样式） */
+export function guestbook(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  html: string
+  count: number
+}): string {
+  const s = d.settings
+  return `<div class="mn-wrap">
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'guestbook' })}
+  <header class="mn-header">
+    <a class="mn-logo" href="/">${esc(s.siteName)}</a>
+    <nav class="mn-nav"><a class="mn-nav-link" href="/archives">归档</a><a class="mn-nav-link is-active" href="/guestbook">留言板</a><a class="mn-nav-link" href="/about">关于我</a></nav>
+  </header>
+  <h1 class="mn-title mn-page-title">留言板</h1>
+  <p class="mn-intro">${d.count > 0 ? `已有 ${d.count} 条留言 · 随便聊聊` : '想说点什么，就在这里写下来'}</p>
+  <main>${d.html}</main>
+  <footer class="mn-footer">
+    <span>${esc(s.footerText || '')}</span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
 </div>`
 }
 
@@ -183,7 +241,7 @@ export function weibo(d: {
   ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'weibo' })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
-    <nav class="mn-nav"><a class="mn-nav-link is-active" href="/weibo">微博</a><a class="mn-nav-link" href="/about">关于</a></nav>
+    <nav class="mn-nav"><a class="mn-nav-link is-active" href="/weibo">微博</a><a class="mn-nav-link" href="/about">关于我</a></nav>
   </header>
   ${topicBar}
   <main class="wb-list">
@@ -210,7 +268,7 @@ export function links(d: {
   ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'links' })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
-    <nav class="mn-nav"><a class="mn-nav-link is-active" href="/links">友链</a><a class="mn-nav-link" href="/about">关于</a></nav>
+    <nav class="mn-nav"><a class="mn-nav-link is-active" href="/links">友链</a><a class="mn-nav-link" href="/about">关于我</a></nav>
   </header>
   <main class="fl-grid">
     ${friendLinkCards(d.items) || '<p class="wb-empty">No links yet.</p>'}

@@ -1,6 +1,6 @@
 # 主题开发指南
 
-博客号的公开页面（首页 / 文章页 / **微博页** / **友链页** / 关于页）由**主题模块**服务端渲染。任何会写 HTML/CSS 的人都可以新增主题，无需理解后端。
+博客号的公开页面（首页 / 文章页 / **微博页** / **友链页** / 关于我页 / **归档页** / **留言板页**）由**主题模块**服务端渲染。任何会写 HTML/CSS 的人都可以新增主题，无需理解后端。
 
 ## 目录结构
 
@@ -15,13 +15,14 @@ src/themes/
 
 ## 一个主题需要提供什么
 
-一套主题 = **五个渲染函数**（`home` / `weibo` / `links` / `post` / `about`）+ 全局 CSS。新建 `src/themes/mytheme.ts` 与 `src/themes/mytheme.css`：
+一套主题 = **七个渲染函数**（`home` / `weibo` / `links` / `post` / `about` / `archives` / `guestbook`）+ 全局 CSS。新建 `src/themes/mytheme.ts` 与 `src/themes/mytheme.css`：
 
 ```ts
 import type { ThemeModule } from './registry'
 import {
   commentsHtml, esc, fmtDate, likesBtn, pagerHtml, tagLink, type HomePostView,
   friendLinkCards, friendLinkApply, siteNav, weiboCards, weiboPager, type WeiboItemView,
+  archiveListHtml, type ArchiveYearGroup,
 } from '../render'
 import css from './mytheme.css'
 
@@ -38,7 +39,7 @@ export function home(d: {
   categorySlug?: string              // 分类页当前 slug
   categories: { name: string; slug: string }[]   // 顶部导航数据
   tags: { name: string; count: number }[]        // 顶部导航「分类话题」菜单的标签（带计数）
-  navActive?: string                 // 导航高亮：'home' | 'weibo' | 'links' | 分类slug | 'tag:标签名' | 'search'
+  navActive?: string                 // 导航高亮：'home' | 'weibo' | 'archives' | 'guestbook' | 'links' | 'about' | 分类slug | 'tag:标签名' | 'search'
   notice?: string                    // 列表上方通知区（搜索结果/分类说明），服务端拼好的 HTML
   emptyText?: string                 // 空列表文案
   weibo?: { items: WeiboItemView[]; total: number } | null  // 首页微博入口卡数据（仅首页传入）
@@ -115,8 +116,36 @@ export function about(d: {
   contentHtml: string
   categories: { name: string; slug: string }[]
   tags?: { name: string; count: number }[]
+  navActive?: string                 // 关于我页固定传 'about'
 }): string {
-  return `<div class="my-about"><div class="rich">${d.contentHtml}</div></div>`
+  return `<div class="my-about"><h1>关于我</h1><div class="rich">${d.contentHtml}</div></div>`
+}
+
+export function archives(d: {
+  settings: Record<string, string>
+  categories: { name: string; slug: string }[]
+  tags?: { name: string; count: number }[]
+  total: number                      // 文章总篇数（页头副标题用）
+  groups: ArchiveYearGroup[]         // 按年分组（年份倒序、组内时间倒序），直接交给 archiveListHtml
+}): string {
+  // 归档列表复用 render.ts 的 archiveListHtml（语义化 .ar-* class，样式由你的 CSS 塑形）
+  return `<div class="my-page">
+    <h1>文章归档</h1>
+    ${archiveListHtml(d.groups)}
+  </div>`
+}
+
+export function guestbook(d: {
+  settings: Record<string, string>
+  categories: { name: string; slug: string }[]
+  tags?: { name: string; count: number }[]
+  html: string                       // 留言墙 + 表单，pages 层用 commentsHtml({ guestbook: true }) 拼好，直接输出
+  count: number                      // 留言条数（页头副标题用）
+}): string {
+  return `<div class="my-page">
+    <h1>留言板</h1>
+    ${d.html}
+  </div>`
 }
 
 export { id, css }
@@ -143,9 +172,9 @@ export const THEMES: Record<string, ThemeModule> = {
 | `fmtDate / fmtDateCN / fmtViews` | 日期（`2026-10-03` / `2026年10月3日`）与 `1.2w` 阅读数 |
 | `page(o)` | 完整 HTML 外壳（head / meta / OG 标签 / 内联 CSS / 挂 site.js），所有页面统一走它 |
 | `pagerHtml({page,totalPages,base})` | 标准分页条，class 交给你的 CSS 塑形 |
-| `siteNav({cls,categories,tags,active})` | 顶部站点导航（首页 / 微博 / 「分类话题」details 折叠菜单 / 友情链接 / 随机）。菜单面板（`.{cls}-menu/-chips/-caret` 等）由你的 CSS 塑形，参考任一现有主题的同名段落 |
+| `siteNav({cls,categories,tags,active})` | 顶部站点导航（首页 / 微博 / 归档 / 留言板 / 「分类话题」details 折叠菜单 / 友情链接 / 关于我 / 随机）。菜单面板（`.{cls}-menu/-chips/-caret` 等）由你的 CSS 塑形，参考任一现有主题的同名段落 |
 | `homeSortBar({sort,seed,tag,categorySlug,q})` | 首页/分类/搜索共用的排序条（最新 / 最多阅读 / 最多点赞 / 最多留言 / 随机） |
-| `commentsHtml({...})` | 完整留言区（列表 + 表单 + 蜜罐 + 楼中楼回复按钮），语义化 class：`.cmt-*` |
+| `commentsHtml({...})` | 完整留言区（列表 + 表单 + 蜜罐 + 楼中楼回复按钮），语义化 class：`.cmt-*`；传 `guestbook: true` 即留言板页的留言墙 |
 | `likesBtn(slug, likes)` | 点赞按钮，配 `public/site.js` 自动工作，class `.like-btn` |
 | `tagLink(name)` / `categoryLink(c)` | 标签链接 `/tag/<encodeURIComponent(name)>` / 分类链接 `/category/<slug>` |
 | `weiboCards({settings,items,avatarHtml,allowComments,adminName})` | 微博卡片列表（头像 + 文字 + 话题高亮 + 图片网格 + 点赞 + 折叠评论），class `.wb-*` |
@@ -154,13 +183,14 @@ export const THEMES: Record<string, ThemeModule> = {
 | `weiboImageGrid(images)` | 微博图片网格（1 大图 / 2·4 双列 / 其余三列） |
 | `weiboTopicBar(topics, active?)` | 微博话题条（`?topic=` 筛选用） |
 | `friendLinkCards(items)` / `friendLinkApply()` | 友链卡片列表 / 访客申请收录表单（含蜜罐），class `.fl-*` |
+| `archiveGroups(posts)` / `archiveListHtml(groups)` | 归档按年分组 / 归档列表（年份小节 + 日期外置链接列表），class `.ar-*` |
 
 ## 交互约定
 
 公开页只挂了一个 `public/site.js`，主题不需要写任何 JS，自动处理：
 
 1. 点击 `.like-btn` → 调 `/api/public/like/:slug`（或微博的 `/api/public/like/weibo/:id`），更新计数与 `.liked` 状态（localStorage 去重）
-2. 提交 `#comment-form` / `.wb-cmt-form` → 调对应评论接口，成功后刷新或就地刷新列表；管理员登录态由服务端渲染进表单（免填昵称）
+2. 提交 `#comment-form` / `.wb-cmt-form` / `#guestbook-form` → 调对应评论接口，成功后刷新或就地刷新列表；管理员登录态由服务端渲染进表单（免填昵称）
 3. 微博卡片评论区的展开 / 折叠、楼中楼回复按钮、友链申请表单提交
 4. 顶部「分类话题」折叠菜单：点击菜单外或按 Esc 收起
 

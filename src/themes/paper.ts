@@ -1,6 +1,7 @@
 import type { SettingsMap } from '../types'
 import type { PostSort } from '../db'
 import {
+  archiveListHtml,
   categoryLink,
   esc,
   fmtDate,
@@ -16,6 +17,7 @@ import {
   weiboHomeEntry,
   weiboPager,
   weiboTopicBar,
+  type ArchiveYearGroup,
   type CategoryLink,
   type FriendLinkView,
   type HomePostView,
@@ -99,7 +101,7 @@ export function home(d: {
     base: homeListBase({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q }),
   })}
   <footer class="pp-footer">
-    ${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+    ${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -148,18 +150,64 @@ export function post(d: {
     ${related}
     ${d.comments.html}
   </article>
-  <footer class="pp-footer">${esc(d.settings.footerText || '')}<span class="pp-footer-links"><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
+  <footer class="pp-footer">${esc(d.settings.footerText || '')}<span class="pp-footer-links"><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[]; tags?: TagCount[] }): string {
+export function about(d: {
+  settings: SettingsMap
+  contentHtml: string
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  navActive?: string
+}): string {
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags })}
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
   <article class="pp-article">
-    <h1 class="pp-title">关于</h1>
+    <h1 class="pp-title">关于我</h1>
     <div class="pp-body rich">${d.contentHtml}</div>
   </article>
-  <footer class="pp-footer">${esc(d.settings.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
+  <footer class="pp-footer">${esc(d.settings.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/guestbook">留言板</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 文章归档页：全部文章按年份分组，日期外置的细线列表 */
+export function archives(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  total: number
+  groups: ArchiveYearGroup[]
+}): string {
+  const s = d.settings
+  return `<div class="pp-page">
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, active: 'archives' })}
+  <header class="wb-page-head">
+    <h1 class="wb-page-title">文章归档</h1>
+    <p class="wb-page-sub">${d.total > 0 ? `字字皆岁月 · 共 ${d.total} 篇` : '写下的每一篇都会收进这里'}</p>
+  </header>
+  <main class="pp-archives">${archiveListHtml(d.groups) || '<p class="wb-empty">纸上还无字，正是落笔时。</p>'}</main>
+  <footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 留言板页：独立留言墙（复用 .cmt-* 结构与样式） */
+export function guestbook(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  html: string
+  count: number
+}): string {
+  const s = d.settings
+  return `<div class="pp-page">
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, active: 'guestbook' })}
+  <header class="wb-page-head">
+    <h1 class="wb-page-title">留言板</h1>
+    <p class="wb-page-sub">${d.count > 0 ? `已有 ${d.count} 条留言 · 随便聊聊` : '想说点什么，就在这里落笔'}</p>
+  </header>
+  <main class="pp-guestbook">${d.html}</main>
+  <footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 
@@ -220,7 +268,7 @@ export function links(d: {
     ${friendLinkCards(d.items) || '<p class="wb-empty">纸上暂无友链，去后台添加，或在下方申请收录。</p>'}
   </main>
   ${friendLinkApply()}
-  <footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
+  <footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 

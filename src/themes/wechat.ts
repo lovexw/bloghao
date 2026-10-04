@@ -1,6 +1,7 @@
 import type { SettingsMap } from '../types'
 import type { PostSort } from '../db'
 import {
+  archiveListHtml,
   categoryLink,
   esc,
   fmtDate,
@@ -17,6 +18,7 @@ import {
   weiboHomeEntry,
   weiboPager,
   weiboTopicBar,
+  type ArchiveYearGroup,
   type CategoryLink,
   type FriendLinkView,
   type HomePostView,
@@ -112,7 +114,7 @@ export function home(d: {
     base: homeListBase({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q }),
   })}
   <footer class="wx-footer">
-    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -181,19 +183,69 @@ export function post(d: {
   </div>
   ${related}
   ${d.comments.html}
-  <footer class="wx-footer">${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/admin">管理</a></span></footer>
+  <footer class="wx-footer">${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[]; tags?: TagCount[] }): string {
+export function about(d: {
+  settings: SettingsMap
+  contentHtml: string
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  navActive?: string
+}): string {
   return `<div class="wx-article">
-  ${siteNav({ cls: 'wx-snav', categories: d.categories, tags: d.tags })}
-  <h1 class="wx-title">关于</h1>
+  ${siteNav({ cls: 'wx-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
+  <h1 class="wx-title">关于我</h1>
   <div class="wx-meta"><a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(d.settings)}</a>
     <div class="wx-meta-main"><a class="wx-account" href="/">${esc(d.settings.siteName)}</a></div>
   </div>
   <article class="rich">${d.contentHtml}</article>
-  <footer class="wx-footer">${esc(d.settings.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/admin">管理</a></span></footer>
+  <footer class="wx-footer">${esc(d.settings.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/guestbook">留言板</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 文章归档页：全部文章按年份分组，日期外置的细线列表 */
+export function archives(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  total: number
+  groups: ArchiveYearGroup[]
+}): string {
+  const s = d.settings
+  return `<div class="wx-page">
+  ${siteNav({ cls: 'wx-snav', categories: d.categories, tags: d.tags, active: 'archives' })}
+  <header class="wb-page-head">
+    <h1 class="wb-page-title">文章归档</h1>
+    <p class="wb-page-sub">${d.total > 0 ? `写下的每一篇 · 共 ${d.total} 篇` : '写下的每一篇都会收进这里'}</p>
+  </header>
+  <main class="wx-archives">${archiveListHtml(d.groups) || '<p class="wb-empty">还没有文章，去后台写下第一篇吧。</p>'}</main>
+  <footer class="wx-footer">
+    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
+</div>`
+}
+
+/** 留言板页：独立留言墙（复用 .cmt-* 结构与样式） */
+export function guestbook(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  html: string
+  count: number
+}): string {
+  const s = d.settings
+  return `<div class="wx-page">
+  ${siteNav({ cls: 'wx-snav', categories: d.categories, tags: d.tags, active: 'guestbook' })}
+  <header class="wb-page-head">
+    <h1 class="wb-page-title">留言板</h1>
+    <p class="wb-page-sub">${d.count > 0 ? `已有 ${d.count} 条留言 · 随便聊聊` : '想说点什么，就在这里写下来'}</p>
+  </header>
+  <main class="wx-guestbook">${d.html}</main>
+  <footer class="wx-footer">
+    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
 </div>`
 }
 
@@ -232,7 +284,7 @@ export function weibo(d: {
   </main>
   ${weiboPager(d.page, d.totalPages)}
   <footer class="wx-footer">
-    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }
@@ -257,7 +309,7 @@ export function links(d: {
   </main>
   ${friendLinkApply()}
   <footer class="wx-footer">
-    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+    ${esc(s.footerText || '')}<span class="wx-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
   </footer>
 </div>`
 }

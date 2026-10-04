@@ -928,16 +928,19 @@ async function viewComments() {
     .map((cm) => {
       const wbText = String(cm.weibo_content || '').replace(/\s+/g, ' ').trim()
       const wbShort = wbText.length > 16 ? wbText.slice(0, 16) + '…' : wbText
+      const typeChip = cm.post_id ? '文章' : cm.weibo_id ? '微博' : '留言板'
       const target = cm.post_id
         ? `<a class="comment-post" href="/post/${esc(cm.post_slug)}#comments" target="_blank">《${esc(cm.post_title)}》</a>`
-        : `<a class="comment-post" href="/weibo#wb-${cm.weibo_id}" target="_blank">微博${wbShort ? ` · ${esc(wbShort)}` : ''}</a>`
+        : cm.weibo_id
+          ? `<a class="comment-post" href="/weibo#wb-${cm.weibo_id}" target="_blank">微博${wbShort ? ` · ${esc(wbShort)}` : ''}</a>`
+          : `<a class="comment-post" href="/guestbook" target="_blank">留言板</a>`
       return `<div class="comment-row">
       <div class="comment-main">
         <div class="comment-meta">
           <span class="who">${esc(cm.nickname)}</span>
           ${Number(cm.is_admin) ? '<span class="chip chip-green">作者</span>' : ''}
           ${cm.status === 'pending' ? '<span class="chip chip-warn">待审核</span>' : '<span class="chip chip-green">已展示</span>'}
-          <span class="chip chip-gray">${cm.post_id ? '文章' : '微博'}</span>
+          <span class="chip chip-gray">${typeChip}</span>
           ${target}
           ${cm.parent_nickname ? `<span class="chip chip-gray">回复 @${esc(cm.parent_nickname)}</span>` : ''}
           <span style="color:var(--sub);font-size:12px;">${fmtDateTime(cm.created_at)}</span>
@@ -966,8 +969,8 @@ async function viewComments() {
     `<div class="page-head"><div><div class="page-title">评论</div><div class="page-sub">共 ${d.total} 条</div></div></div>
     <div class="toolbar">
       <div class="tabs">
-        ${['all', 'post', 'weibo']
-          .map((t) => `<button class="tab${t === type ? ' is-active' : ''}" data-type="${t}">${{ all: '全部', post: '文章评论', weibo: '微博评论' }[t]}</button>`)
+        ${['all', 'post', 'weibo', 'guestbook']
+          .map((t) => `<button class="tab${t === type ? ' is-active' : ''}" data-type="${t}">${{ all: '全部', post: '文章评论', weibo: '微博评论', guestbook: '留言板' }[t]}</button>`)
           .join('')}
       </div>
       <div class="tabs">
@@ -1172,9 +1175,9 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
-      <div class="form-section"><h3>评论</h3><div class="sec-desc">访客留言的规则</div>
+      <div class="form-section"><h3>评论</h3><div class="sec-desc">访客留言的规则（文章、微博与留言板通用）</div>
         <div class="switch-row">
-          <div><div class="switch-label">开启留言</div><div class="switch-sub">关闭后文章页隐藏留言区</div></div>
+          <div><div class="switch-label">开启留言</div><div class="switch-sub">关闭后文章页与留言板隐藏留言区</div></div>
           <label class="switch"><input type="checkbox" id="st-allowComments" ${s.allowComments === '1' ? 'checked' : ''}><span class="track"></span></label>
         </div>
         <div class="switch-row">
@@ -1213,7 +1216,7 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
-      <div class="form-section"><h3>关于页</h3><div class="sec-desc">显示在 /about，支持富文本</div>
+      <div class="form-section"><h3>关于我</h3><div class="sec-desc">显示在 /about（顶部导航「关于我」页），支持富文本</div>
         <textarea class="textarea" id="st-about" rows="5">${esc(s.about)}</textarea>
       </div>
     </div>

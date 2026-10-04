@@ -326,9 +326,9 @@ img { max-width: 100%; height: auto; }
   .cmt-input, .cmt-textarea, .wb-cmt-input, .wb-cmt-textarea { font-size: 16px; }
 }
 
-/* ---------- 顶部站点导航（首页/微博/分类话题/随机） ---------- */
+/* ---------- 顶部站点导航（首页/微博/归档/留言板/分类话题/友情链接/关于我/随机） ---------- */
 .pp-snav {
-  display: flex; align-items: center; gap: 22px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 22px;
   padding: 15px 2px 13px; border-bottom: 1px solid var(--pp-line);
 }
 .pp-snav-link {
@@ -505,7 +505,36 @@ img { max-width: 100%; height: auto; }
 .fl-submit:hover { opacity: 0.88; }
 .fl-submit:disabled { opacity: 0.6; }
 
+/* ---------- 文章归档 ---------- */
+.pp-archives { margin-top: 22px; }
+.ar-group { margin-bottom: 36px; }
+.ar-group:last-child { margin-bottom: 0; }
+.ar-year {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 20px; font-weight: 700; letter-spacing: 0.06em;
+  padding-bottom: 8px;
+}
+.ar-year i { font-style: normal; font-size: 12px; font-weight: 400; color: var(--pp-sub); letter-spacing: 0.08em; }
+.ar-list { list-style: none; }
+.ar-item { border-bottom: 1px dashed var(--pp-line); }
+.ar-item:last-child { border-bottom: none; }
+.ar-link { display: flex; align-items: baseline; gap: 18px; padding: 14px 2px; transition: background 0.2s ease; }
+.ar-link:hover { background: rgba(160, 60, 46, 0.03); }
+.ar-date { flex: 0 0 auto; font-size: 13px; color: var(--pp-sub); font-variant-numeric: tabular-nums; letter-spacing: 0.06em; }
+.ar-title {
+  flex: 1; min-width: 0;
+  font-size: 16px; line-height: 1.7; letter-spacing: 0.02em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color 0.2s ease;
+}
+.ar-link:hover .ar-title { color: var(--pp-accent); }
+
+/* ---------- 留言板 ---------- */
+.pp-guestbook .cmt-section { margin-top: 16px; }
+
 @media (max-width: 480px) {
   .fl-grid { grid-template-columns: 1fr; gap: 10px; }
   .fl-input, .fl-textarea { font-size: 16px; }
+  .ar-link { gap: 12px; padding: 12px 0; }
+  .ar-title { font-size: 15px; }
 }

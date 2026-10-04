@@ -33,6 +33,9 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### POST /api/public/like/weibo/:id
 微博点赞，同上。
 
+### POST /api/public/guestbook
+留言板留言（`/guestbook` 页）。Body 与规则同 `POST /api/public/comments`（`nickname` / `content` / 蜜罐 `link` / 限流 / 审核），无 `slug`；管理员带 `parentId` 即以作者身份回复（楼中楼）。存储上留言板留言是 `post_id = 0 AND weibo_id = 0` 的评论。响应 `{ok, pending?}`。
+
 ### GET /api/public/weibo/:id/comments
 微博的已展示评论（平铺 ASC，最多 200 条），元素含 `id/parent_id/is_admin/nickname/content/created_at`；前端按 `parent_id` 组装楼中楼。响应 `{comments, allowComments}`。
 
@@ -169,9 +172,9 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### 评论
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/comments?status=all\|pending\|approved&type=all\|post\|weibo&page=1` | 列表（`type` 拆分文章评论与微博评论；附文章标题/slug、微博内容、父评论昵称） |
+| GET | `/api/admin/comments?status=all\|pending\|approved&type=all\|post\|weibo&page=1` | 列表（`type` 拆分文章评论 / 微博评论 / 留言板（`guestbook`）；附文章标题/slug、微博内容、父评论昵称） |
 | PUT | `/api/admin/comments/:id` | Body `{status:"approved"\|"pending"}`（通过 / 隐藏） |
-| POST | `/api/admin/comments/:id/replies` | Body `{content}`，以作者身份回复该评论（文章/微博通用），挂在同一顶层评论下，直接展示并带「作者」徽标 |
+| POST | `/api/admin/comments/:id/replies` | Body `{content}`，以作者身份回复该评论（文章/微博/留言板通用），挂在同一顶层评论下，直接展示并带「作者」徽标 |
 | DELETE | `/api/admin/comments/:id` | 删除（连带其下的回复） |
 
 ### 设置 / 账号 / 工具

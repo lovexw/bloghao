@@ -153,6 +153,24 @@ export async function listApprovedComments(db: D1Database, postId: number): Prom
   return results ?? []
 }
 
+/** 留言板（/guestbook）：post_id 与 weibo_id 都为 0 的评论即留言板留言 */
+export async function listGuestbookComments(db: D1Database): Promise<CommentRow[]> {
+  const { results } = await db
+    .prepare("SELECT * FROM comments WHERE post_id = 0 AND weibo_id = 0 AND status = 'approved' ORDER BY created_at ASC LIMIT 500")
+    .all<CommentRow>()
+  return results ?? []
+}
+
+/** 文章归档（/archives）：全部已发布文章的标题与时间，按时间倒序（上限 2000 篇） */
+export async function listAllPublishedArchives(db: D1Database): Promise<{ slug: string; title: string; ts: number }[]> {
+  const { results } = await db
+    .prepare(
+      "SELECT slug, title, COALESCE(published_at, created_at) AS ts FROM posts WHERE status = 'published' ORDER BY ts DESC LIMIT 2000"
+    )
+    .all<{ slug: string; title: string; ts: number }>()
+  return results ?? []
+}
+
 export async function relatedPosts(db: D1Database, post: PostRow, limit = 3): Promise<PostRow[]> {
   const tags = parseTags(post)
   if (tags.length) {
