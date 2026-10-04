@@ -27,12 +27,13 @@ CREATE TABLE IF NOT EXISTS posts (
   summary      TEXT    NOT NULL DEFAULT '',
   cover        TEXT    NOT NULL DEFAULT '',
   tags         TEXT    NOT NULL DEFAULT '[]', -- JSON 数组，如 ["生活","Cloudflare"]
-  status       TEXT    NOT NULL DEFAULT 'draft', -- draft | published
+  status       TEXT    NOT NULL DEFAULT 'draft', -- draft | published | scheduled（定时发布）
   pinned       INTEGER NOT NULL DEFAULT 0,
   views        INTEGER NOT NULL DEFAULT 0,
   likes        INTEGER NOT NULL DEFAULT 0,
   author_id    INTEGER,
   published_at INTEGER,
+  publish_at   INTEGER,                -- 定时发布时间：到点由 Cron 翻成 published（src/scheduler.ts）
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );

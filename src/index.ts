@@ -11,14 +11,17 @@ const app = new Hono<{ Bindings: Env; Variables: { user: SessionUser | null } }>
 
 // 老库缺列自动补齐（幂等），每个 isolate 只执行一次
 let schemaReady: Promise<void> | null = null
-app.use('*', async (c, next) => {
+function ensureSchemaOnce(db: D1Database): Promise<void> {
   if (!schemaReady) {
-    schemaReady = ensureSchema(c.env.DB).catch((err) => {
+    schemaReady = ensureSchema(db).catch((err) => {
       schemaReady = null
       throw err
     })
   }
-  await schemaReady
+  return schemaReady
+}
+app.use('*', async (c, next) => {
+  await ensureSchemaOnce(c.env.DB)
   await next()
 })
 
@@ -80,13 +83,18 @@ app.get('/images/*', async (c) => {
   const obj = await c.env.IMAGES.get(key)
   if (!obj) return c.text('Not found', 404)
   if (obj.httpEtag && c.req.header('If-None-Match') === obj.httpEtag) {
-    return new Response(null, { status: 304, headers: { ETag: obj.httpEtag } })
+    return new Response(null, {
+      status: 304,
+      headers: { ETag: obj.httpEtag, 'X-Content-Type-Options': 'nosniff' },
+    })
   }
   const headers = new Headers()
   obj.writeHttpMetadata(headers)
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/octet-stream')
   headers.set('ETag', obj.httpEtag)
   headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  // 禁止浏览器嗅探内容类型：图床里只允许真正的图片被当图片渲染
+  headers.set('X-Content-Type-Options', 'nosniff')
   return new Response(obj.body, { headers })
 })
 
@@ -106,10 +114,18 @@ app.onError((err, c) => {
 export default {
   fetch: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx),
   scheduled: (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
-    // 备份 cron 是 "30 16 * * *"（北京时间 00:30）；其余每分钟触发只做定时发布扫描
+    // 备份 cron 是 "30 16 * * *"（北京时间 00:30）；其余每分钟触发只做定时发布扫描。
+    // cron 可能落在从未处理过请求的 isolate：先补齐 schema，否则冷启动库上
+    // 定时发布/备份会因缺列缺表而报错。
     const isBackupCron = controller.cron === '30 16 * * *'
     return ctx.waitUntil(
       (async () => {
+        try {
+          await ensureSchemaOnce(env.DB)
+        } catch (e) {
+          // 迁移失败不阻塞 cron：后续查询自会报错并走各自的兜底提醒
+          console.error('ensureSchema (cron) failed:', e)
+        }
         await runScheduledPublish(env)
         if (isBackupCron) await scheduledBackup(controller, env)
       })()

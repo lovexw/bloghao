@@ -25,14 +25,6 @@ const FETCH_TIMEOUT_MS = 15_000 // 单次抓取（页面/图片）超时
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
 
-const IMAGE_MIMES: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/jpg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-}
-
 const NAMED_ENTITIES: Record<string, string> = {
   nbsp: '\u00a0',
   lt: '<',
@@ -228,6 +220,20 @@ function renderHtml(blocks: Block[], srcMap: Map<string, string>): string {
 
 /* ---------------- 图片转存 ---------------- */
 
+/** 从文件魔数识别图片真实类型；识别不出返回 null（HTML/SVG/其它一律拒收） */
+function sniffImageExt(buf: ArrayBuffer): 'jpg' | 'png' | 'gif' | 'webp' | null {
+  const b = new Uint8Array(buf, 0, Math.min(16, buf.byteLength))
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg'
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png'
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'gif' // GIF87a / GIF89a
+  if (
+    b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && // RIFF
+    b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50 // WEBP
+  )
+    return 'webp'
+  return null
+}
+
 async function saveImage(
   c: { env: Env },
   url: string,
@@ -241,24 +247,25 @@ async function saveImage(
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
     if (!res.ok) return null
-    const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
-    const fmt = /[?&]wx_fmt=(\w+)/i.exec(url)?.[1]?.toLowerCase()
-    const sniffed = fmt ? (fmt === 'jpeg' || fmt === 'jpg' ? 'jpg' : ['png', 'gif', 'webp'].includes(fmt) ? fmt : null) : null
-    const ext = IMAGE_MIMES[mime] || sniffed
-    if (!ext) return null
     const buf = await res.arrayBuffer()
     if (buf.byteLength === 0 || buf.byteLength > MAX_UPLOAD_BYTES) return null
+    // 类型只认文件魔数，不信任源站 Content-Type / URL 的 wx_fmt：
+    // 声明成图片但内容是 HTML/SVG 的响应一律拒收，存储的 Content-Type
+    // 由识别出的扩展名反推，保证 /images/ 回源时永远是安全的图片类型
+    const ext = sniffImageExt(buf)
+    if (!ext) return null
+    const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`
     const now = new Date()
     const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     const key = `u/${ym}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.${ext}`
     await c.env.IMAGES.put(key, buf, {
       httpMetadata: {
-        contentType: mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+        contentType,
         cacheControl: 'public, max-age=31536000, immutable',
       },
     })
     await c.env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(key, name.slice(0, 120), mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`, buf.byteLength, Date.now())
+      .bind(key, name.slice(0, 120), contentType, buf.byteLength, Date.now())
       .run()
     return `/images/${key}`
   } catch {

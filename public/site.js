@@ -38,7 +38,9 @@
   function hasAlphaSampled(bmp) {
     var cv = document.createElement('canvas')
     cv.width = cv.height = 1
-    var d = cv.getContext('2d').drawImage(bmp, 0, 0, 1, 1).getImageData(0, 0, 1, 1).data
+    var ctx = cv.getContext('2d')
+    ctx.drawImage(bmp, 0, 0, 1, 1)
+    var d = ctx.getImageData(0, 0, 1, 1).data
     return d[3] < 250
   }
 

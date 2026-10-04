@@ -66,7 +66,9 @@ function hasAlpha(bmp) {
   // 抽样画到 1x1 看平均透明度：不透明 PNG 转 JPEG 更划算
   const cv = document.createElement('canvas')
   cv.width = cv.height = 1
-  const d = cv.getContext('2d').drawImage(bmp, 0, 0, 1, 1).getImageData(0, 0, 1, 1).data
+  const ctx = cv.getContext('2d')
+  ctx.drawImage(bmp, 0, 0, 1, 1)
+  const d = ctx.getImageData(0, 0, 1, 1).data
   return d[3] < 250
 }
 
@@ -1114,14 +1116,20 @@ export async function mountEditor(root, postId) {
     const files = [...(cd.files || [])]
     if (files.length) {
       e.preventDefault()
+      // 粘贴点即插入点：上传是异步的，先锁定当前光标，避免插到上次操作残留的位置
+      saveSelection()
       for (const f of files) {
-        if (/^(image|video)\//.test(f.type)) await uploadAndInsert(f)
+        if (/^(image|video)\//.test(f.type)) {
+          await uploadAndInsert(f)
+          saveSelection() // 光标停在上一个文件后面，作为下一个文件的插入点（保持先后顺序）
+        }
       }
       return
     }
     const html = cd.getData('text/html')
     if (html) {
       e.preventDefault()
+      saveSelection()
       saveState.textContent = '正在净化粘贴内容…'
       try {
         const d = await api('/admin/tools/sanitize', { method: 'POST', body: { html } })
@@ -1144,7 +1152,10 @@ export async function mountEditor(root, postId) {
     saveSelection()
     const files = [...(e.dataTransfer?.files || [])]
     for (const f of files) {
-      if (/^(image|video)\//.test(f.type)) await uploadAndInsert(f)
+      if (/^(image|video)\//.test(f.type)) {
+        await uploadAndInsert(f)
+        saveSelection() // 光标停在上一个文件后面，多文件按顺序追加
+      }
     }
   })
 

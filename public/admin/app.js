@@ -51,7 +51,16 @@ async function api(path, opts = {}) {
   const res = await fetch('/api' + path, init)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const err = new Error(data.error || '请求失败')
+    // 会话过期兜底：登录之后发生的 401 一律立即回登录页并提示，
+    // 各操作按钮不再出现「点了没反应」的静默失败。
+    // 登录/初始化时 state.user 还没值，密码错误的 401 仍走表单内的错误提示。
+    const expired = res.status === 401 && !!state.user
+    if (expired) {
+      state.user = null
+      authView('login')
+      toast('登录已过期，请重新登录', true)
+    }
+    const err = new Error(expired ? '登录已过期，请重新登录' : data.error || '请求失败')
     err.status = res.status
     throw err
   }
@@ -328,25 +337,37 @@ async function viewPosts() {
     const id = row.dataset.id
     const post = d.items.find((p) => String(p.id) === id)
     row.querySelector('[data-act=pin]').addEventListener('click', async () => {
-      await api(`/admin/posts/${id}/pin`, { method: 'POST', body: { pinned: !post.pinned } })
-      toast(post.pinned ? '已取消置顶' : '已置顶')
-      viewPosts()
+      try {
+        await api(`/admin/posts/${id}/pin`, { method: 'POST', body: { pinned: !post.pinned } })
+        toast(post.pinned ? '已取消置顶' : '已置顶')
+        viewPosts()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
     row.querySelector('[data-act=toggle]').addEventListener('click', async () => {
       const publish = post.status !== 'published'
-      // 定时文章点「发布」立即发出并清掉定时时间
-      await api(`/admin/posts/${id}`, {
-        method: 'PUT',
-        body: { ...post, status: publish ? 'published' : 'draft', publishAt: publish ? null : post.publishAt ?? null },
-      })
-      toast(publish ? '已发布 🎉' : '已转为草稿')
-      viewPosts()
+      try {
+        // 定时文章点「发布」立即发出并清掉定时时间
+        await api(`/admin/posts/${id}`, {
+          method: 'PUT',
+          body: { ...post, status: publish ? 'published' : 'draft', publishAt: publish ? null : post.publishAt ?? null },
+        })
+        toast(publish ? '已发布 🎉' : '已转为草稿')
+        viewPosts()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
     row.querySelector('[data-act=del]').addEventListener('click', async () => {
       if (!(await confirmBox(`确定删除《${post.title}》？该操作不可恢复。`))) return
-      await api(`/admin/posts/${id}`, { method: 'DELETE' })
-      toast('已删除')
-      viewPosts()
+      try {
+        await api(`/admin/posts/${id}`, { method: 'DELETE' })
+        toast('已删除')
+        viewPosts()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
   })
 }
@@ -558,9 +579,13 @@ async function viewWeibo() {
     })
     row.querySelector('[data-act=del]').addEventListener('click', async () => {
       if (!(await confirmBox('确定删除这条微博？该操作不可恢复。'))) return
-      await api(`/admin/weibo/${id}`, { method: 'DELETE' })
-      toast('已删除')
-      viewWeibo()
+      try {
+        await api(`/admin/weibo/${id}`, { method: 'DELETE' })
+        toast('已删除')
+        viewWeibo()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
   })
 }
@@ -681,9 +706,13 @@ async function viewLinks() {
     })
     row.querySelector('[data-act=del]')?.addEventListener('click', async () => {
       if (!(await confirmBox(`确定删除友链「${link.name}」？`))) return
-      await api(`/admin/links/${id}`, { method: 'DELETE' })
-      toast('已删除')
-      viewLinks()
+      try {
+        await api(`/admin/links/${id}`, { method: 'DELETE' })
+        toast('已删除')
+        viewLinks()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
   })
 }
@@ -929,9 +958,13 @@ async function viewCategories() {
     })
     row.querySelector('[data-act=del]').addEventListener('click', async () => {
       if (!(await confirmBox(`删除分类「${cat.name}」？其下文章会变为未分类，文章本身不受影响。`))) return
-      await api(`/admin/categories/${id}`, { method: 'DELETE' })
-      toast('已删除')
-      viewCategories()
+      try {
+        await api(`/admin/categories/${id}`, { method: 'DELETE' })
+        toast('已删除')
+        viewCategories()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
   })
 }
@@ -1031,20 +1064,32 @@ async function viewComments() {
       }
     })
     row.querySelector('[data-act=approve]')?.addEventListener('click', async () => {
-      await api(`/admin/comments/${cm.id}`, { method: 'PUT', body: { status: 'approved' } })
-      toast('已展示')
-      viewComments()
+      try {
+        await api(`/admin/comments/${cm.id}`, { method: 'PUT', body: { status: 'approved' } })
+        toast('已展示')
+        viewComments()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
     row.querySelector('[data-act=hide]')?.addEventListener('click', async () => {
-      await api(`/admin/comments/${cm.id}`, { method: 'PUT', body: { status: 'pending' } })
-      toast('已隐藏')
-      viewComments()
+      try {
+        await api(`/admin/comments/${cm.id}`, { method: 'PUT', body: { status: 'pending' } })
+        toast('已隐藏')
+        viewComments()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
     row.querySelector('[data-act=del]')?.addEventListener('click', async () => {
       if (!(await confirmBox('删除这条评论？它的回复也会一并删除。'))) return
-      await api(`/admin/comments/${cm.id}`, { method: 'DELETE' })
-      toast('已删除')
-      viewComments()
+      try {
+        await api(`/admin/comments/${cm.id}`, { method: 'DELETE' })
+        toast('已删除')
+        viewComments()
+      } catch (e) {
+        toast(e.message, true)
+      }
     })
   })
 }
@@ -1118,10 +1163,14 @@ async function viewMedia() {
       })
       m.mask.querySelector('#mi-del').addEventListener('click', async () => {
         if (!(await confirmBox('删除后引用它的文章将无法显示图片，确定？'))) return
-        await api(`/admin/uploads?key=${encodeURIComponent(key)}`, { method: 'DELETE' })
-        toast('已删除')
-        m.close()
-        viewMedia()
+        try {
+          await api(`/admin/uploads?key=${encodeURIComponent(key)}`, { method: 'DELETE' })
+          toast('已删除')
+          m.close()
+          viewMedia()
+        } catch (e) {
+          toast(e.message, true)
+        }
       })
     })
   })
@@ -1452,7 +1501,9 @@ const IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 300 * 1024, QUALITY: 0.82 }
 function hasAlphaSampled(bmp) {
   const cv = document.createElement('canvas')
   cv.width = cv.height = 1
-  const d = cv.getContext('2d').drawImage(bmp, 0, 0, 1, 1).getImageData(0, 0, 1, 1).data
+  const ctx = cv.getContext('2d')
+  ctx.drawImage(bmp, 0, 0, 1, 1)
+  const d = ctx.getImageData(0, 0, 1, 1).data
   return d[3] < 250
 }
 
