@@ -143,6 +143,7 @@ bloghao-xwblog/
 | [docs/THEMES.md](docs/THEMES.md) | 主题开发指南：一套主题 = 七类页面（首页 / 文章 / 微博 / 友链 / 关于我 / 归档 / 留言板） |
 | [docs/PLUGINS.md](docs/PLUGINS.md) | 插件开发指南：编辑器插件 API 与内置「公众号采集」 |
 | [docs/wechat-typography-spec.md](docs/wechat-typography-spec.md) | 微信排版规范落地对照 + 体检规则表 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 开发方向备忘：已调研未启动的功能方向（会员体系等）与待拍板决策 |
 
 ## ❓ FAQ
 
