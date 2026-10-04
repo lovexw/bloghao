@@ -244,16 +244,15 @@ export function weiboTextHtml(content: string): string {
   })
 }
 
-/** 微博话题条：「全部」+ 各话题（带条数），当前话题高亮 */
+/** 微博话题条：默认不显示（避免标签堆满页头）；仅从正文 #话题# 链接进入筛选时，显示「全部 + 当前话题」方便退出筛选 */
 export function weiboTopicBar(topics: { name: string; count: number }[], active?: string): string {
-  if (!topics.length) return ''
+  if (!active) return ''
+  const hit = topics.find((t) => t.name === active)
   const chip = (name: string, label: string, count?: number) =>
     `<a class="wb-topic-chip${name === (active || '') ? ' is-active' : ''}" href="/weibo${
       name ? `?topic=${encodeURIComponent(name)}` : ''
     }">${esc(label)}${count != null ? `<i>${count}</i>` : ''}</a>`
-  return `<nav class="wb-topics" aria-label="微博话题">${chip('', '全部')}${topics
-    .map((t) => chip(t.name, '#' + t.name, t.count))
-    .join('')}</nav>`
+  return `<nav class="wb-topics" aria-label="微博话题">${chip('', '全部')}${chip(active, '#' + active, hit?.count)}</nav>`
 }
 
 /** 微博卡片底栏：点赞（同文章 like-btn，data-type=weibo）+ 评论数（点开卡片内折叠评论区） */

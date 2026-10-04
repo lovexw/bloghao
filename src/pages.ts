@@ -332,7 +332,8 @@ export async function renderWeibo(c: C): Promise<Response> {
       pinnedFirst: true,
     }),
     navCategories(c),
-    listWeiboTopics(c.env.DB),
+    // 话题条只在按话题筛选时显示，未筛选时不必查话题统计
+    topic ? listWeiboTopics(c.env.DB) : Promise.resolve([]),
     getSessionUser(c.env.DB, c.req.raw),
     navTags(c),
   ])
