@@ -164,20 +164,24 @@ img { max-width: 100%; height: auto; }
 .md-related a span { font-size: 15px; font-weight: 600; }
 .md-related time { font-size: 12px; color: var(--md-sub); font-family: var(--md-mono); flex: 0 0 auto; }
 
-.cmt-section { margin-top: 48px; border-top: 1px solid var(--md-line); padding-top: 26px; }
-.cmt-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+/* 留言：评论区 = 深色面板卡，整块浮出页面底色，评论间用分隔线 */
+.cmt-section { margin-top: 48px; background: var(--md-card); border: 1px solid var(--md-line); border-radius: 12px; padding: 18px 18px 14px; }
+.cmt-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+.cmt-title::before { content: ''; flex: 0 0 auto; width: 3px; height: 14px; border-radius: 1px; background: var(--md-accent); }
 .cmt-count { color: var(--md-sub); font-weight: 400; font-family: var(--md-mono); }
 .cmt-list { list-style: none; }
-.cmt-item { padding: 14px 16px; background: var(--md-card); border: 1px solid var(--md-line); border-radius: 10px; margin-bottom: 10px; }
+.cmt-item { padding: 13px 2px; background: transparent; border: none; border-bottom: 1px solid var(--md-line); border-radius: 0; margin-bottom: 0; }
+.cmt-list > .cmt-item:last-child { border-bottom: none; }
 .cmt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .cmt-name { font-size: 14px; color: var(--md-accent); font-weight: 600; }
 .cmt-time { font-size: 12px; color: var(--md-sub); font-family: var(--md-mono); }
 .cmt-body { font-size: 15px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
-.cmt-children { list-style: none; margin: 12px 0 0 14px; padding-left: 12px; border-left: 2px solid var(--md-line); }
-.cmt-children .cmt-item { margin-bottom: 8px; }
+.cmt-children { list-style: none; margin: 10px 0 0 14px; padding-left: 12px; border-left: 2px solid var(--md-line); }
+.cmt-children .cmt-item { margin-bottom: 0; padding: 10px 0 0; border-bottom: none; }
 .cmt-badge { font-size: 11px; color: var(--md-accent); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; margin-left: 6px; }
-.cmt-empty { color: var(--md-sub); font-size: 14px; font-family: var(--md-mono); }
-.cmt-form { margin-top: 20px; }
+.cmt-empty { color: var(--md-sub); font-size: 14px; font-family: var(--md-mono); padding: 4px 0 6px; }
+/* 输入区收进更深的内嵌容器，与留言列表分开 */
+.cmt-form { margin-top: 16px; background: var(--md-bg); border: 1px solid var(--md-line); border-radius: 8px; padding: 12px; }
 .cmt-form-row { display: flex; gap: 10px; margin-bottom: 10px; }
 /* 管理员登录后的发言身份行（文章/微博评论表单共用），替代昵称输入框 */
 .cmt-as { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; color: var(--md-sub); font-family: var(--md-mono); }
@@ -226,6 +230,8 @@ img { max-width: 100%; height: auto; }
 
 @media (max-width: 480px) {
   .md-title { font-size: 24px; }
+  .cmt-section { padding: 14px 12px 12px; }
+  .cmt-form { padding: 10px; }
   .md-hero h1 { font-size: 24px; }
 }
 
@@ -574,7 +580,8 @@ img { max-width: 100%; height: auto; }
 .ar-link:hover .ar-title { color: var(--md-accent); }
 
 /* ---------- 留言板 ---------- */
-.md-guestbook .gb-section { margin-top: 10px; border-top: none; padding-top: 0; }
+/* 面板即页面主体，只收窄上边距；不再覆写边框/内边距 */
+.md-guestbook .gb-section { margin-top: 10px; }
 
 @media (max-width: 480px) {
   .ar-link { gap: 12px; }

@@ -138,19 +138,22 @@ img { max-width: 100%; height: auto; }
 .mn-related a { display: block; padding: 8px 0; font-size: 16px; font-weight: 600; border-bottom: 1px solid var(--mn-line); transition: padding-left 0.2s ease; }
 .mn-related a:hover { padding-left: 6px; }
 
-.cmt-section { margin-top: 52px; border-top: 1px solid var(--mn-line); padding-top: 28px; }
-.cmt-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 20px; }
-.cmt-count { color: var(--mn-sub); font-weight: 400; }
+/* ---------- 留言 ---------- */
+/* 评论区 = 新章节：加大留白 + 标题前短黑线记号，输入区收进细边框容器 */
+.cmt-section { margin-top: 64px; }
+.cmt-title { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 20px; }
+.cmt-title::before { content: ''; flex: 0 0 auto; width: 26px; height: 3px; background: var(--mn-ink); }
+.cmt-count { color: var(--mn-sub); font-weight: 400; letter-spacing: 0; }
 .cmt-list { list-style: none; }
-.cmt-item { padding: 14px 0; border-bottom: 1px solid var(--mn-line); }
+.cmt-item { padding: 16px 0; border-bottom: 1px solid var(--mn-line); }
 .cmt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .cmt-name { font-size: 14px; font-weight: 600; }
 .cmt-time { font-size: 12px; color: var(--mn-sub); }
 .cmt-body { font-size: 15px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
 .cmt-children { list-style: none; margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--mn-line); }
 .cmt-badge { font-size: 11px; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; margin-left: 6px; font-weight: 400; }
-.cmt-empty { color: var(--mn-sub); font-size: 14px; }
-.cmt-form { margin-top: 22px; }
+.cmt-empty { color: var(--mn-sub); font-size: 14px; padding: 6px 0; }
+.cmt-form { margin-top: 24px; border: 1px solid var(--mn-line); border-radius: 2px; padding: 14px 16px; }
 .cmt-form-row { display: flex; gap: 10px; margin-bottom: 10px; }
 /* 管理员登录后的发言身份行（文章/微博评论表单共用），替代昵称输入框 */
 .cmt-as { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; color: var(--mn-sub); }
@@ -196,6 +199,8 @@ img { max-width: 100%; height: auto; }
   .mn-item-title { font-size: 18px; }
   /* 输入框字号 ≥16px，避免 iOS Safari 聚焦时自动放大页面 */
   .cmt-input, .cmt-textarea, .wb-cmt-input, .wb-cmt-textarea, .wb-composer-textarea { font-size: 16px; }
+  .cmt-section { margin-top: 52px; }
+  .cmt-form { padding: 12px; }
   .wb-composer { padding: 12px 12px; }
   .wb-composer-tile { width: 64px; height: 64px; }
 }
@@ -505,7 +510,8 @@ img { max-width: 100%; height: auto; }
 }
 .ar-link:hover .ar-title { text-decoration: underline; text-underline-offset: 3px; }
 
-main .gb-section { margin-top: 0; border-top: none; padding-top: 4px; }
+/* 留言板页：评论区面板即页面主体，不再加章节上边距 */
+main .gb-section { margin-top: 12px; }
 
 @media (max-width: 480px) {
   .ar-link { gap: 12px; }

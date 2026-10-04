@@ -278,19 +278,30 @@ a.wx-account:hover { opacity: 0.75; }
 .wx-related-item span { font-size: 11px; color: #bbb; padding: 0 10px; }
 
 /* ---------- 留言 ---------- */
-.cmt-section { margin-top: 36px; }
-.cmt-title { font-size: 15px; color: #999; font-weight: 400; margin-bottom: 12px; }
-.cmt-count { color: #bbb; font-weight: 400; margin-left: 4px; }
+/* 评论区 = 白色面板卡（与微博卡/时光机卡同语言），一眼与正文区分 */
+.cmt-section {
+  margin-top: 36px;
+  background: var(--wx-card);
+  border: 1px solid var(--wx-line);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  box-shadow: 0 1px 3px rgba(43, 36, 25, 0.04);
+}
+.cmt-title { display: flex; align-items: center; gap: 8px; font-size: 16px; color: #1a1a1a; font-weight: 600; margin-bottom: 14px; }
+.cmt-title::before { content: ''; flex: 0 0 auto; width: 4px; height: 16px; border-radius: 2px; background: var(--wx-accent); }
+.cmt-count { background: #f0ede7; color: #8f887d; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 500; }
 .cmt-list { list-style: none; }
-.cmt-item { padding: 12px 0; border-bottom: 1px solid var(--wx-line); }
+.cmt-item { padding: 12px 14px; background: #f7f7f7; border-radius: 10px; margin-bottom: 10px; }
+.cmt-list > .cmt-item:last-child { margin-bottom: 0; }
 .cmt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .cmt-name { font-size: 14px; color: var(--wx-link); font-weight: 500; }
 .cmt-time { font-size: 12px; color: #bbb; flex: 0 0 auto; }
 .cmt-body { font-size: 15px; line-height: 1.7; margin-top: 5px; white-space: pre-wrap; word-break: break-word; }
-.cmt-children { list-style: none; margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--wx-line); }
+.cmt-children { list-style: none; margin: 10px 0 0 14px; padding-left: 12px; border-left: 2px solid var(--wx-line); }
+.cmt-children .cmt-item { background: transparent; padding: 10px 0 0; margin-bottom: 0; }
 .cmt-badge { font-size: 11px; color: var(--wx-accent); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; margin-left: 6px; font-weight: 400; }
-.cmt-empty { color: #bbb; font-size: 14px; padding: 16px 0; }
-.cmt-form { margin-top: 18px; }
+.cmt-empty { color: #bbb; font-size: 14px; padding: 10px 0 12px; text-align: center; }
+.cmt-form { margin-top: 16px; }
 .cmt-form-row { display: flex; gap: 10px; margin-bottom: 10px; }
 /* 管理员登录后的发言身份行（文章/微博评论表单共用），替代昵称输入框 */
 .cmt-as { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; color: #b5aea1; }
@@ -543,6 +554,8 @@ a.wx-account:hover { opacity: 0.75; }
   .wx-post-thumb, .wx-post-thumb img { width: 64px; height: 64px; }
   .wx-related-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .wb-page-head { padding-top: 32px; }
+  .cmt-section { padding: 13px 12px 12px; border-radius: 12px; }
+  .cmt-item { padding: 11px 12px; }
   .wb-card { padding: 14px 14px 16px; border-radius: 12px; }
   .wb-composer { padding: 10px 12px 12px; border-radius: 12px; }
   .wb-composer-tile { width: 64px; height: 64px; }

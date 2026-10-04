@@ -138,9 +138,11 @@ img { max-width: 100%; height: auto; }
 .pp-related time { font-size: 12px; color: var(--pp-sub); flex: 0 0 auto; }
 
 /* ---------- 留言 ---------- */
-.cmt-section { margin-top: 48px; border-top: 1px solid var(--pp-line); padding-top: 28px; }
-.cmt-title { font-size: 16px; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 18px; }
-.cmt-count { color: var(--pp-sub); font-weight: 400; font-size: 14px; }
+/* 评论区 = 报刊章节：2px 墨色粗线开卷，标题细线延伸到行尾 */
+.cmt-section { margin-top: 48px; border-top: 2px solid var(--pp-ink); padding-top: 24px; }
+.cmt-title { display: flex; align-items: center; gap: 12px; font-size: 16px; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 18px; }
+.cmt-title::after { content: ''; flex: 1 1 auto; height: 1px; background: var(--pp-line); }
+.cmt-count { color: var(--pp-sub); font-weight: 400; font-size: 14px; letter-spacing: 0; }
 .cmt-list { list-style: none; }
 .cmt-item { padding: 14px 16px; background: var(--pp-card); border: 1px solid var(--pp-line); border-radius: 6px; margin-bottom: 12px; }
 .cmt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -150,15 +152,16 @@ img { max-width: 100%; height: auto; }
 .cmt-children { list-style: none; margin: 12px 0 0 14px; padding-left: 12px; border-left: 2px solid var(--pp-line); }
 .cmt-children .cmt-item { margin-bottom: 8px; }
 .cmt-badge { font-size: 11px; color: var(--pp-accent); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; margin-left: 6px; }
-.cmt-empty { color: var(--pp-sub); font-size: 14px; }
-.cmt-form { margin-top: 20px; }
+.cmt-empty { color: var(--pp-sub); font-size: 14px; padding: 4px 0 6px; }
+/* 输入区自成一块「投稿框」：卡片底 + 细边框，与上面留言列表分开 */
+.cmt-form { margin-top: 20px; background: var(--pp-card); border: 1px solid var(--pp-line); border-radius: 6px; padding: 14px 16px; }
 .cmt-form-row { display: flex; gap: 10px; margin-bottom: 10px; }
 /* 管理员登录后的发言身份行（文章/微博评论表单共用），替代昵称输入框 */
 .cmt-as { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; color: var(--pp-sub); letter-spacing: 0.04em; }
 .cmt-as b { color: var(--pp-accent); font-weight: 700; }
 .cmt-input {
   flex: 1; font: inherit; font-size: 14px;
-  border: 1px solid var(--pp-line); background: var(--pp-card);
+  border: 1px solid var(--pp-line); background: #fff;
   border-radius: 6px; padding: 10px 12px; color: var(--pp-ink); outline: none;
   transition: border-color 0.2s ease;
 }
@@ -166,7 +169,7 @@ img { max-width: 100%; height: auto; }
 .cmt-hp { position: absolute; left: -9999px; height: 0; width: 0; opacity: 0; }
 .cmt-textarea {
   width: 100%; font: inherit; font-size: 15px;
-  border: 1px solid var(--pp-line); background: var(--pp-card);
+  border: 1px solid var(--pp-line); background: #fff;
   border-radius: 6px; padding: 10px 12px; color: var(--pp-ink);
   min-height: 88px; resize: vertical; outline: none;
   transition: border-color 0.2s ease;
@@ -368,6 +371,8 @@ img { max-width: 100%; height: auto; }
   .wb-imgs-1 img { max-height: 360px; }
   /* 输入框字号 ≥16px，避免 iOS Safari 聚焦时自动放大页面 */
   .cmt-input, .cmt-textarea, .wb-cmt-input, .wb-cmt-textarea, .wb-composer-textarea { font-size: 16px; }
+  .cmt-section { margin-top: 40px; padding-top: 20px; }
+  .cmt-form { padding: 12px; }
 }
 
 /* ---------- 顶部站点导航（首页/微博/归档/留言板/分类话题/友情链接/关于我/随机） ---------- */
