@@ -389,6 +389,170 @@
       })
   })
 
+  /* ---------------- 前台发微博（管理员登录时微博页顶部的发布框，能力与后台发布器一致） ---------------- */
+  var composerForm = document.querySelector('[data-wb-composer]')
+  if (composerForm) {
+    var WB_MAX_IMAGES = 9
+    var WB_MAX_CHARS = 5000
+    var cpText = composerForm.querySelector('.wb-composer-textarea')
+    var cpTiles = composerForm.querySelector('.wb-composer-tiles')
+    var cpAdd = composerForm.querySelector('.wb-composer-add')
+    var cpCount = composerForm.querySelector('.wb-composer-count')
+    var cpTip = composerForm.querySelector('.wb-composer-tip')
+    var cpButtons = composerForm.querySelectorAll('.wb-composer-add, .wb-composer-draft, .wb-composer-publish')
+    var cpImages = []
+    var cpTipTimer = null
+
+    function cpMsg(msg) {
+      if (!cpTip) return
+      cpTip.textContent = msg || ''
+      if (cpTipTimer) clearTimeout(cpTipTimer)
+      if (msg) cpTipTimer = setTimeout(function () { cpTip.textContent = '' }, 4000)
+    }
+
+    function cpRender() {
+      if (cpTiles) {
+        cpTiles.hidden = !cpImages.length
+        cpTiles.innerHTML = cpImages
+          .map(function (u, i) {
+            return (
+              '<span class="wb-composer-tile"><img src="' + esc(u) + '" alt="">'+
+              '<button type="button" class="wb-composer-tile-del" data-i="' + i + '" title="移除">×</button></span>'
+            )
+          })
+          .join('')
+      }
+      if (cpAdd) cpAdd.textContent = '加图（' + cpImages.length + '/' + WB_MAX_IMAGES + '）'
+      if (cpCount && cpText) cpCount.textContent = cpText.value.length + ' / ' + WB_MAX_CHARS
+    }
+
+    if (cpTiles) {
+      cpTiles.addEventListener('click', function (e) {
+        var del = e.target && e.target.closest ? e.target.closest('.wb-composer-tile-del') : null
+        if (!del) return
+        cpImages.splice(Number(del.getAttribute('data-i')), 1)
+        cpRender()
+      })
+    }
+    if (cpText) cpText.addEventListener('input', cpRender)
+
+    function cpUpload(file) {
+      var fd = new FormData()
+      fd.append('file', file)
+      return fetch('/api/admin/upload', { method: 'POST', body: fd }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.error) || '上传失败')
+          return d.url
+        })
+      })
+    }
+
+    function cpAddFiles(fileList) {
+      var all = Array.prototype.slice.call(fileList || [])
+      var imgs = all.filter(function (f) { return /^image\//.test(f.type) })
+      if (!imgs.length) {
+        if (all.length) cpMsg('只支持 JPG / PNG / WebP / GIF 图片')
+        return
+      }
+      var room = WB_MAX_IMAGES - cpImages.length
+      if (room <= 0) {
+        cpMsg('最多 ' + WB_MAX_IMAGES + ' 张图')
+        return
+      }
+      if (imgs.length > room) cpMsg('最多 ' + WB_MAX_IMAGES + ' 张图，多出的已忽略')
+      var label = cpAdd ? cpAdd.textContent : ''
+      if (cpAdd) cpAdd.disabled = true
+      var chain = Promise.resolve()
+      imgs.slice(0, room).forEach(function (f) {
+        chain = chain.then(function () {
+          if (cpAdd) cpAdd.textContent = '上传中 ' + f.name.slice(0, 12) + '…'
+          return cpUpload(f).then(function (url) {
+            cpImages.push(url)
+            cpRender()
+          })
+        })
+      })
+      chain
+        .catch(function (err) {
+          cpMsg((err && err.message) || '上传失败')
+        })
+        .finally(function () {
+          if (cpAdd) {
+            cpAdd.disabled = false
+            cpAdd.textContent = label
+          }
+          cpRender()
+        })
+    }
+
+    if (cpAdd) {
+      cpAdd.addEventListener('click', function () {
+        var input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/jpeg,image/png,image/webp,image/gif'
+        input.multiple = true
+        input.onchange = function () { cpAddFiles(input.files) }
+        input.click()
+      })
+    }
+
+    // 粘贴图片：光标在发布框内 ⌘/Ctrl+V 即上传（纯文本粘贴不受影响）
+    composerForm.addEventListener('paste', function (e) {
+      var files = Array.prototype.slice.call((e.clipboardData && e.clipboardData.files) || [])
+      if (!files.length) return
+      e.preventDefault()
+      cpAddFiles(files)
+    })
+    // 拖拽图片到发布框（拖文本进输入框仍是默认行为）
+    composerForm.addEventListener('dragover', function (e) {
+      var types = e.dataTransfer && e.dataTransfer.types
+      if (!types || !Array.prototype.includes.call(types, 'Files')) return
+      e.preventDefault()
+      composerForm.classList.add('is-dragover')
+    })
+    composerForm.addEventListener('dragleave', function () {
+      composerForm.classList.remove('is-dragover')
+    })
+    composerForm.addEventListener('drop', function (e) {
+      var files = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || [])
+      if (!files.length) return
+      e.preventDefault()
+      composerForm.classList.remove('is-dragover')
+      cpAddFiles(files)
+    })
+
+    function cpPublish(status) {
+      var content = cpText ? cpText.value.trim() : ''
+      if (!content && !cpImages.length) {
+        cpMsg('写点什么，或者配张图吧')
+        return
+      }
+      cpButtons.forEach(function (b) { b.disabled = true })
+      postJSON('/api/admin/weibo', { content: content, images: cpImages, status: status })
+        .then(function () {
+          if (status === 'published') {
+            location.reload()
+            return
+          }
+          if (cpText) cpText.value = ''
+          cpImages = []
+          cpRender()
+          cpMsg('草稿已保存，到后台「微博」页可继续编辑')
+        })
+        .catch(function (err) {
+          cpMsg((err && err.message) || '发布失败，请重试')
+        })
+        .finally(function () {
+          cpButtons.forEach(function (b) { b.disabled = false })
+        })
+    }
+    var cpPub = composerForm.querySelector('.wb-composer-publish')
+    var cpDraft = composerForm.querySelector('.wb-composer-draft')
+    if (cpPub) cpPub.addEventListener('click', function () { cpPublish('published') })
+    if (cpDraft) cpDraft.addEventListener('click', function () { cpPublish('draft') })
+    cpRender()
+  }
+
   /* ---------------- 友链申请收录（/links 页表单） ---------------- */
   document.addEventListener('submit', function (e) {
     var form = e.target

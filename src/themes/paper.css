@@ -270,6 +270,48 @@ img { max-width: 100%; height: auto; }
 .wb-cmt-submit { border: none; background: var(--pp-accent); color: #f7f4ee; font-size: 13px; padding: 6px 18px; border-radius: 999px; cursor: pointer; }
 .wb-cmt-submit:disabled { opacity: 0.6; }
 
+/* 前台发微博框（仅管理员登录时渲染，交互在 site.js） */
+.wb-composer {
+  background: var(--pp-card);
+  border: 1px solid var(--pp-line);
+  border-radius: 6px;
+  padding: 12px 18px 14px;
+  margin-top: 20px;
+}
+.wb-composer.is-dragover { border-color: var(--pp-accent); border-style: dashed; }
+.wb-composer-as { font-size: 12.5px; color: var(--pp-sub); padding: 2px 0 8px; letter-spacing: 0.04em; }
+.wb-composer-as b { color: var(--pp-accent); font-weight: 600; }
+.wb-composer-textarea {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; color: var(--pp-ink);
+  border: 1px solid var(--pp-line); border-radius: 4px; background: var(--pp-card);
+  padding: 8px 11px; outline: none; resize: vertical; line-height: 1.7; min-height: 66px;
+}
+.wb-composer-textarea:focus { border-color: var(--pp-accent); }
+.wb-composer-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wb-composer-tiles[hidden] { display: none; }
+.wb-composer-tile { position: relative; width: 72px; height: 72px; border-radius: 4px; overflow: hidden; }
+.wb-composer-tile img { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--pp-line); }
+.wb-composer-tile-del {
+  position: absolute; top: 3px; right: 3px; width: 18px; height: 18px;
+  border: none; border-radius: 50%; background: rgba(0, 0, 0, 0.55); color: #f7f4ee;
+  font-size: 13px; line-height: 18px; padding: 0; cursor: pointer; text-align: center;
+}
+.wb-composer-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.wb-composer-add, .wb-composer-draft {
+  font: inherit; font-size: 13px; color: var(--pp-sub); background: transparent;
+  border: 1px solid var(--pp-line); border-radius: 999px; padding: 4px 14px; cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.wb-composer-add:hover, .wb-composer-draft:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
+.wb-composer-count { font-size: 12px; color: var(--pp-sub); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.wb-composer-tip {
+  flex: 1; min-width: 0; font-size: 12px; color: var(--pp-accent); text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-composer-actions { display: flex; gap: 8px; margin-left: auto; }
+.wb-composer-publish { border: none; background: var(--pp-accent); color: #f7f4ee; font-size: 13px; padding: 6px 18px; border-radius: 999px; cursor: pointer; }
+.wb-composer-add:disabled, .wb-composer-draft:disabled, .wb-composer-publish:disabled { opacity: 0.6; cursor: default; }
+
 /* 首页微博入口卡：报头下方一张「随手记」便笺 */
 .wb-home {
   margin: 24px 0 0;
@@ -319,11 +361,13 @@ img { max-width: 100%; height: auto; }
   .wb-page-head { padding-top: 34px; }
   .wb-page-title { font-size: 22px; }
   .wb-card { padding: 14px 14px 16px; }
+  .wb-composer { padding: 10px 12px 12px; }
+  .wb-composer-tile { width: 64px; height: 64px; }
   .wb-home { padding: 2px 14px; }
   .wb-imgs { gap: 4px; }
   .wb-imgs-1 img { max-height: 360px; }
   /* 输入框字号 ≥16px，避免 iOS Safari 聚焦时自动放大页面 */
-  .cmt-input, .cmt-textarea, .wb-cmt-input, .wb-cmt-textarea { font-size: 16px; }
+  .cmt-input, .cmt-textarea, .wb-cmt-input, .wb-cmt-textarea, .wb-composer-textarea { font-size: 16px; }
 }
 
 /* ---------- 顶部站点导航（首页/微博/归档/留言板/分类话题/友情链接/关于我/随机） ---------- */

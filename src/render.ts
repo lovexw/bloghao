@@ -416,6 +416,24 @@ export function weiboHomeEntry(o: { items: WeiboItemView[]; total: number }): st
 </section>`
 }
 
+/** 前台微博页发布框：管理员登录时由主题渲染在时间线顶部（访客不可见），交互在 site.js，与后台发布器同款能力 */
+export function weiboComposer(o: { adminName: string }): string {
+  return `<form class="wb-composer" data-wb-composer>
+  <p class="wb-composer-as">以作者 <b>${esc(o.adminName)}</b> 的身份发布</p>
+  <textarea class="wb-composer-textarea" name="content" maxlength="5000" rows="3" placeholder="有什么新鲜事？正文里写 #话题# 可归类"></textarea>
+  <div class="wb-composer-tiles" hidden></div>
+  <div class="wb-composer-foot">
+    <button class="wb-composer-add" type="button">加图（0/9）</button>
+    <span class="wb-composer-count" data-count>0 / 5000</span>
+    <span class="wb-composer-tip" data-tip aria-live="polite"></span>
+    <span class="wb-composer-actions">
+      <button class="wb-composer-draft" type="button">存草稿</button>
+      <button class="wb-composer-publish" type="button">发布</button>
+    </span>
+  </div>
+</form>`
+}
+
 /** 微博页翻页：上一页 / 下一页（页数少，无需页码跳转） */
 export function weiboPager(page: number, totalPages: number): string {
   if (totalPages <= 1) return ''

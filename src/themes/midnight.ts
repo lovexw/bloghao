@@ -14,6 +14,7 @@ import {
   siteNav,
   tagLink,
   weiboCards,
+  weiboComposer,
   weiboHomeEntry,
   weiboPager,
   weiboTopicBar,
@@ -239,6 +240,7 @@ export function weibo(d: {
 }): string {
   const s = d.settings
   const topicBar = weiboTopicBar(d.topics || [], d.topic)
+  const composer = d.adminName ? weiboComposer({ adminName: d.adminName }) : ''
   const cards = weiboCards({
     settings: s,
     items: d.items,
@@ -257,8 +259,9 @@ export function weibo(d: {
     <p>${d.topic ? `话题 #${esc(d.topic)} · 共 ${d.total} 条` : d.total > 0 ? `随手记 · 共 ${d.total} 条` : '随手记，想写就写'}</p>
   </section>
   ${topicBar}
+  ${composer}
   <main class="md-list wb-list">
-    ${cards || '<p class="md-empty wb-empty">夜航微博还是空的。</p>'}
+    ${cards || `<p class="md-empty wb-empty">${d.adminName ? '夜航微博还是空的，在上面发第一条信号。' : '夜航微博还是空的。'}</p>`}
   </main>
   ${weiboPager(d.page, d.totalPages)}
   <footer class="md-footer">
