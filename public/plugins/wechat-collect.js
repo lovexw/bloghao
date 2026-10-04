@@ -78,6 +78,8 @@ function openCollectDialog(ctx) {
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url }),
+          // 多图文章服务端要逐张转存，放宽到 2 分钟
+          signal: AbortSignal.timeout(120000),
         })
         const d = await res.json().catch(() => ({}))
         if (!res.ok || !d.ok || !d.post || !d.post.id) {
@@ -89,7 +91,7 @@ function openCollectDialog(ctx) {
         location.hash = '#/editor/' + d.post.id
       } catch (e) {
         go.disabled = false
-        showStatus('网络错误，采集失败', true)
+        showStatus(e && e.name === 'TimeoutError' ? '采集超时，请重试或稍后再试' : '网络错误，采集失败', true)
       }
     }
 

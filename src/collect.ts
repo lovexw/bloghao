@@ -21,6 +21,7 @@ export const collectRoutes = new Hono<CollectEnv>()
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024 // 与手动上传一致
 const MAX_IMAGES = 30 // Workers 免费档单请求 50 个子请求，预留余量
 const MAX_HTML_BYTES = 900_000 // 文章接口上限 1MB，留余量
+const FETCH_TIMEOUT_MS = 15_000 // 单次抓取（页面/图片）超时
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
 
@@ -193,6 +194,8 @@ function parseBlocks(body: string): Block[] {
           .replace(/<\/(?:em|i)\b[^>]*>/gi, '\u0001/e')
           .replace(/<[^>]+>/g, '')
       )
+        // 清掉控制字符：防止 &#1; 之类数字实体还原出 \u0001 与加粗/斜体哨兵冲突
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
         .replace(/[ \t\u00a0]+/g, ' ')
         .replace(/\n\s*\n+/g, '\n')
         .trim()
@@ -235,6 +238,7 @@ async function saveImage(
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, Referer: 'https://mp.weixin.qq.com/' },
       redirect: 'follow',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
     if (!res.ok) return null
     const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
@@ -279,6 +283,7 @@ collectRoutes.post('/wechat', async (c) => {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
       redirect: 'follow',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
     if (!res.ok) return c.json({ error: `抓取失败（HTTP ${res.status}）` }, 502)
     html = await res.text()

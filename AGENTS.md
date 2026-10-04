@@ -31,6 +31,6 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 ## 结构速查
 
 - `src/themes/`：四套主题 + `registry.ts` 注册表，新主题见 docs/THEMES.md；`wechat` 为默认主题
-- `src/pages.ts` 渲染公开页，`src/api.ts` 全部 JSON API
+- `src/pages.ts` 渲染公开页，`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）
 - `public/admin/`：后台（app.js 路由与页面，editor.js 写作编辑器，admin.css 样式）
 - 编辑器内容样式（`.ed-editor`）与文章页（`.rich`）需保持视觉一致——改一处记得镜像另一处

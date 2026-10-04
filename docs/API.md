@@ -110,6 +110,11 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | POST | `/api/admin/tools/md` | Body `{md}` → `{html}`，Markdown 渲染 |
 | POST | `/api/admin/tools/sanitize` | Body `{html}` → `{html}`，白名单净化（粘贴用） |
 
+### 采集（公众号文章）
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/admin/collect/wechat` | Body `{url}`，仅接受 `https://mp.weixin.qq.com/s/...`；服务端抓取正文，配图与封面转存 R2，生成**保留原文发布时间**的草稿；返回 `{ok, post, account, images}`。限频 10 次/分钟/IP；单篇最多转存 30 张图、单图 ≤ 25MB、正文 ≤ ~900KB。编辑器插件「采集公众号文章」调用（见 docs/PLUGINS.md） |
+
 ### GET /api/meta/themes
 已注册主题列表 `{themes:[{id,name,description}]}`。
 
