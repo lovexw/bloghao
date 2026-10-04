@@ -51,7 +51,13 @@ ${items}
 </rss>`
 }
 
-export function buildSitemap(settings: SettingsMap, posts: PostRow[], siteUrl: string): string {
+export function buildSitemap(
+  settings: SettingsMap,
+  posts: { slug: string; updated_at: number }[],
+  siteUrl: string,
+  categories: { slug: string; name: string }[] = [],
+  tags: { name: string; count: number }[] = []
+): string {
   const urls = [
     { loc: `${siteUrl}/`, lastmod: fmtDate(Date.now()) },
     { loc: `${siteUrl}/about`, lastmod: '' },
@@ -59,8 +65,17 @@ export function buildSitemap(settings: SettingsMap, posts: PostRow[], siteUrl: s
     { loc: `${siteUrl}/guestbook`, lastmod: '' },
     { loc: `${siteUrl}/weibo`, lastmod: '' },
     { loc: `${siteUrl}/links`, lastmod: '' },
+    // 分类/标签列表页同样可收录；slug/标签名做百分号编码（中文标签是非 ASCII IRI）
+    ...categories.map((cat) => ({
+      loc: `${siteUrl}/category/${encodeURIComponent(cat.slug)}`,
+      lastmod: '',
+    })),
+    ...tags.map((t) => ({
+      loc: `${siteUrl}/tag/${encodeURIComponent(t.name)}`,
+      lastmod: '',
+    })),
     ...posts.map((p) => ({
-      loc: `${siteUrl}/post/${xmlEsc(p.slug)}`,
+      loc: `${siteUrl}/post/${encodeURIComponent(p.slug)}`,
       lastmod: fmtDate(p.updated_at),
     })),
   ]

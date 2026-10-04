@@ -182,7 +182,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### 设置 / 账号 / 工具
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, theme, allowComments, moderateComments, notifyNewComment, rssFullText, backupEnabled, postsPerPage, about`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl` 只接受站内 `/images/` 与 `http(s)` 外链 |
+| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, theme, allowComments, moderateComments, notifyNewComment, rssFullText, backupEnabled, postsPerPage, about, externalToken, telegramBotToken, telegramAllowFrom, telegramWebhookSecret`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl` 只接受站内 `/images/` 与 `http(s)` 外链；`externalToken`/`telegramBotToken`/`telegramWebhookSecret` 为敏感项，GET 返回打码（`••••••••`），PUT 收到打码占位符视为保持原值 |
 | PUT | `/api/admin/password` | Body `{oldPassword, newPassword}`（8-64 位） |
 | POST | `/api/admin/tools/md` | Body `{md}` → `{html}`，Markdown 渲染 |
 | POST | `/api/admin/tools/sanitize` | Body `{html}` → `{html}`，白名单净化（粘贴用） |
@@ -210,7 +210,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 
 ## 外部接口（Token 鉴权，供 Telegram 机器人 / 第三方工具调用）
 
-鉴权方式三选一：`Authorization: Bearer <token>`、`X-Auth-Token: <token>`、`?token=<token>`。Token 在后台「设置 → 外部发布」生成，空 Token = 接口关闭。
+鉴权方式二选一（只认请求头，避免 Token 进访问日志）：`Authorization: Bearer <token>` 或 `X-Auth-Token: <token>`。Token 在后台「设置 → 外部发布」生成，空 Token = 接口关闭。
 
 ### GET /api/external/weibo
 连通性测试，返回 `{ok, site, usage}`。
@@ -230,7 +230,7 @@ multipart 字段：`content`、`status`、`images`（文件，可重复；也接
 - 话题不接受直传，服务端从正文提取（同微博管理接口）
 
 ### POST /api/telegram/webhook
-Telegram Bot API 的 Webhook 接收端，由 Telegram 服务器调用（`?secret=` 与 `X-Telegram-Bot-Api-Secret-Token` 校验，密钥由后台一键设置生成）。行为：
+Telegram Bot API 的 Webhook 接收端，由 Telegram 服务器调用（校验 `X-Telegram-Bot-Api-Secret-Token` 请求头，密钥由后台一键设置生成并经 setWebhook 的 `secret_token` 下发；旧的 `?secret=` 绑定方式仍兼容，重新点一次「一键设置 Webhook」即切换为纯 header）。行为：
 
 - 白名单外会话：回复其 Chat ID 与授权提示，不落库；`/start`、`/help` 回复使用说明
 - 文字 / 图片 / 图片+caption（白名单会话）→ 发布为微博，图片经 Bot API 下载后转存 R2；成功后回复微博链接
@@ -240,8 +240,9 @@ Telegram Bot API 的 Webhook 接收端，由 Telegram 服务器调用（`?secret
 
 ## HTML 白名单（净化器摘要）
 
-- 保留：`p br hr h1-h6 blockquote pre code ul ol li a img video source strong em u s del ins mark sup sub small span section div figure figcaption table thead tbody tfoot tr th td caption details summary abbr cite q kbd samp`
-- 丢弃（连同内容）：`script style iframe svg math form input button select textarea template link meta base object embed …`
-- 链接仅允许 `http(s) / mailto / 站内相对 / #锚点`；`data:`/`javascript:` 一律拒绝
+- 保留：`p br hr h1-h6 blockquote pre code ul ol li a img video source strong b em i u s del ins mark sup sub small span section div figure figcaption table thead tbody tfoot tr th td caption details summary abbr cite q kbd samp wbr`
+- 丢弃（连同内容）：`script style iframe svg math form input button select textarea template link meta base object embed …`；`id` 属性一律剥除（防 DOM clobbering）
+- 唯一例外：`<meta data-og-image="/images/…">` 原样保留（编辑器生成的 OG 分享卡图标记，仅限站内路径）
+- 链接仅允许 `http(s) / mailto / 站内相对 / #锚点`（校验前剥离 tab/换行，`jav&#9;ascript:` 之类混淆无法绕过）；`data:`/`javascript:` 一律拒绝
 - 内联样式仅保留排版属性（颜色/字号/行高/间距/边框/对齐等）；`url()` 只接受站内 `/` 开头路径；`!important` 被剥除
 - 规范属性 `data-w / data-ignore-width / data-no-dark / data-ignore-dm` 原样保留

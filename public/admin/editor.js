@@ -354,10 +354,12 @@ export function runChecks(html) {
 
 function applyAutoFixes() {
   const editor = document.getElementById('ed-editor')
-  let html = editor.innerHTML
-  html = html.replace(/!important/gi, '')
-  html = html.replace(/text-align\s*:\s*(start|end)/gi, 'text-align: left')
-  editor.innerHTML = html
+  // 只改写元素的 style 属性：整段字符串替换会把代码块里讲解的 !important / text-align 示例一并删掉
+  editor.querySelectorAll('[style]').forEach((el) => {
+    const s = el.getAttribute('style') || ''
+    const fixed = s.replace(/\s*!important/gi, '').replace(/text-align\s*:\s*(start|end)/gi, 'text-align: left')
+    if (fixed !== s) el.setAttribute('style', fixed)
+  })
   markDirty()
 }
 
@@ -689,7 +691,8 @@ export async function mountEditor(root, postId) {
     dirtySeq++
     saveState.textContent = '有未保存更改'
     clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => save(false), 1500)
+    // catch 兜底：md 模式转换失败等异常不能变成 unhandled rejection
+    saveTimer = setTimeout(() => save(false).catch(() => {}), 1500)
   }
 
   function collect(extra = {}) {
@@ -1039,10 +1042,22 @@ export async function mountEditor(root, postId) {
     const mask = document.createElement('div')
     mask.className = 'modal-mask'
     mask.innerHTML = `<div class="modal${opts.large ? ' modal-lg' : ''}" role="dialog">${html}</div>`
-    const close = () => mask.remove()
+    const close = () => {
+      document.removeEventListener('keydown', onKey)
+      mask.remove()
+      if (opener && opener.focus) opener.focus()
+    }
+    // Esc 关闭；打开时焦点落进弹窗，关闭后归还触发元素
+    const onKey = (e) => {
+      if (e.key === 'Escape') close()
+    }
+    document.addEventListener('keydown', onKey)
+    const opener = document.activeElement
     mask.addEventListener('click', (e) => e.target === mask && close())
     mask.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close))
     document.body.appendChild(mask)
+    const focusable = mask.querySelector('input, textarea, select, button:not([disabled])')
+    if (focusable) focusable.focus()
     return { mask, close }
   }
 
@@ -1162,14 +1177,15 @@ export async function mountEditor(root, postId) {
     if (!cd) return
     const files = [...(cd.files || [])]
     if (files.length) {
+      // 只拦截图片/视频：剪贴板是 PDF 等其它文件时走浏览器默认粘贴，别吞掉
+      const media = files.filter((f) => /^(image|video)\//.test(f.type))
+      if (!media.length) return
       e.preventDefault()
       // 粘贴点即插入点：上传是异步的，先锁定当前光标，避免插到上次操作残留的位置
       saveSelection()
-      for (const f of files) {
-        if (/^(image|video)\//.test(f.type)) {
-          await uploadAndInsert(f)
-          saveSelection() // 光标停在上一个文件后面，作为下一个文件的插入点（保持先后顺序）
-        }
+      for (const f of media) {
+        await uploadAndInsert(f)
+        saveSelection() // 光标停在上一个文件后面，作为下一个文件的插入点（保持先后顺序）
       }
       return
     }

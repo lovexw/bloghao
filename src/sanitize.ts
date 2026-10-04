@@ -38,8 +38,10 @@ const ALLOWED_TAGS = new Set([
   'details', 'summary',
 ])
 
-/** 所有标签都可用的属性 */
-const GLOBAL_ATTRS = new Set(['class', 'id', 'data-w', 'data-ignore-width', 'data-no-dark', 'data-ignore-dm'])
+/** 所有标签都可用的属性。
+ *  不放行 id：正文在评论区之前，<img id="comment-form"> 之类的 DOM clobbering
+ *  会让 site.js 的 getElementById 命中正文元素，评论区功能瘫痪（锚点锚 id 同理不可靠） */
+const GLOBAL_ATTRS = new Set(['class', 'data-w', 'data-ignore-width', 'data-no-dark', 'data-ignore-dm'])
 
 const TAG_ATTRS: Record<string, Set<string>> = {
   a: new Set(['href', 'target', 'title']),
@@ -148,10 +150,6 @@ function sanitizeAttrs(tag: string, raw: string): string {
     }
     if (name === 'class') {
       v = v.replace(/[^\w\- ]/g, '').replace(/\s+/g, ' ').trim()
-      if (!v) continue
-    }
-    if (name === 'id') {
-      v = v.replace(/[^\w\-]/g, '')
       if (!v) continue
     }
     if (name === 'data-w') {

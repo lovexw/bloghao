@@ -11,17 +11,18 @@ export function escAttr(s: unknown): string {
   return esc(s)
 }
 
-/** 去掉 HTML 标签取纯文本摘要 */
+/** 去掉 HTML 标签取纯文本摘要。
+ *  实体解码先处理 lt/gt/quot/apos、最后处理 amp：顺序反了会把 &amp;lt; 二次解码成裸 < */
 export function plainText(html: string): string {
   return html
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, '&')
     .replace(/\s+/g, ' ')
     .trim()
 }

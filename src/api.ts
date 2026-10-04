@@ -140,6 +140,9 @@ api.post('/auth/login', async (c) => {
         user: { id: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar },
       })
     }
+  } else {
+    // 用户不存在也跑一次等开销的哈希：响应耗时对齐，防时序侧信道枚举用户名
+    await hashPassword(password, 'timing-equalizer-salt-0000')
   }
   return jsonError('用户名或密码错误', 401)
 })
@@ -205,7 +208,8 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
   const b = raw as Record<string, unknown>
   const title = String(b.title ?? '').slice(0, 150).trim()
   const content = String(b.content ?? '')
-  if (content.length > MAX_CONTENT_BYTES) return { tooBig: true as const }
+  // 上限按 UTF-8 字节数（与常量名、collect 一致）：100 万个 CJK 字符实际可存 ~3MB
+  if (new TextEncoder().encode(content).length > MAX_CONTENT_BYTES) return { tooBig: true as const }
   const status = b.status === 'published' ? 'published' : b.status === 'scheduled' ? 'scheduled' : 'draft'
   // 定时发布目标时间（毫秒）：不填或非法时由 PUT 沿用旧值；已过去的时间等价于「到点即发」
   const publishAt = Number.isFinite(Number(b.publishAt)) && Number(b.publishAt) > 0 ? Math.floor(Number(b.publishAt)) : null
@@ -228,10 +232,22 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
     tags,
     status,
     pinned: b.pinned ? 1 : 0,
-    slug: String(b.slug ?? '').trim().slice(0, 80),
+    // 自定义 slug 清洗：只留字母/数字/中文/_/-，空白转连字符，防坏链与异常路由
+    slug: cleanSlug(String(b.slug ?? '')),
     categoryId,
     publishAt,
   }
+}
+
+/** slug 字符集清洗：空白折叠成 -，其余非法字符删除；空返回空（调用方回退 slugify） */
+function cleanSlug(raw: string): string {
+  return raw
+    .trim()
+    .slice(0, 80)
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 api.get('/admin/posts', async (c) => {

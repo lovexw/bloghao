@@ -12,6 +12,7 @@ import {
   listGuestbookComments,
   listOnThisDay,
   listPosts,
+  listPublishedTags,
   listWeibo,
   listWeiboTopics,
   parseTags,
@@ -72,17 +73,7 @@ function shouldCountView(ip: string, postId: number): boolean {
 
 /** 顶部导航「分类话题」菜单用：已发布文章的标签（按使用次数排序，计数展示） */
 async function navTags(c: C): Promise<{ name: string; count: number }[]> {
-  const { results } = await c.env.DB.prepare(
-    "SELECT tags FROM posts WHERE status = 'published' LIMIT 1000"
-  ).all<{ tags: string }>()
-  const count = new Map<string, number>()
-  for (const r of results ?? []) {
-    for (const t of parseTags({ tags: r.tags } as PostRow)) count.set(t, (count.get(t) || 0) + 1)
-  }
-  return [...count.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 100)
-    .map(([name, count]) => ({ name, count }))
+  return listPublishedTags(c.env.DB)
 }
 
 async function commentCount(c: C, postId: number): Promise<number> {

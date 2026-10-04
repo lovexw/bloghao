@@ -43,6 +43,7 @@ export function home(d: {
   notice?: string                    // 列表上方通知区（搜索结果/分类说明），服务端拼好的 HTML
   emptyText?: string                 // 空列表文案
   weibo?: { items: WeiboItemView[]; total: number } | null  // 首页微博入口卡数据（仅首页传入）
+  onThisDay?: OnThisDayItemView[] | null  // 历史上的今天（仅首页第一页且未筛选时传入），用 onThisDayCard 渲染
 }): string {
   return `<div class="my-page">
     ${d.posts.map(p => `
@@ -179,7 +180,9 @@ export const THEMES: Record<string, ThemeModule> = {
 | `tagLink(name)` / `categoryLink(c)` | 标签链接 `/tag/<encodeURIComponent(name)>` / 分类链接 `/category/<slug>` |
 | `weiboCards({settings,items,avatarHtml,allowComments,adminName})` | 微博卡片列表（头像 + 文字 + 话题高亮 + 图片网格 + 点赞 + 折叠评论），class `.wb-*` |
 | `weiboHomeEntry({items,total})` | 首页「微博入口卡」（最新随手记摘要 + 全部链接） |
-| `weiboPager(page,totalPages)` | 微博翻页（上一条 / 更早），class `.wb-pager*` |
+| `onThisDayCard(items)` | 首页「历史上的今天」时光机卡（`home()` 收到 `onThisDay` 时渲染） |
+| `weiboComposer({adminName})` | 微博页顶部发布框（登录管理员才传 `adminName`，访客页不渲染） |
+| `weiboPager(page,totalPages,topic?)` | 微博翻页（上一条 / 更早），class `.wb-pager*`；按话题筛选时传 `topic` 以在翻页链接中保留 |
 | `weiboImageGrid(images)` | 微博图片网格（1 大图 / 2·4 双列 / 其余三列） |
 | `weiboTopicBar(topics, active?)` | 微博话题条（`?topic=` 筛选用） |
 | `friendLinkCards(items)` / `friendLinkApply()` | 友链卡片列表 / 访客申请收录表单（含蜜罐），class `.fl-*` |

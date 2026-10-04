@@ -247,6 +247,8 @@ async function saveImage(
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
     if (!res.ok) return null
+    // 先看声明长度再读体：超大响应直接放弃（有些服务器不回 Content-Length，兜底仍靠读后的字节数检查）
+    if (Number(res.headers.get('content-length') || 0) > MAX_UPLOAD_BYTES) return null
     const buf = await res.arrayBuffer()
     if (buf.byteLength === 0 || buf.byteLength > MAX_UPLOAD_BYTES) return null
     // 类型只认文件魔数，不信任源站 Content-Type / URL 的 wx_fmt：
@@ -293,6 +295,10 @@ collectRoutes.post('/wechat', async (c) => {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
     if (!res.ok) return c.json({ error: `抓取失败（HTTP ${res.status}）` }, 502)
+    // 声明长度超限直接放弃（不回 Content-Length 的响应靠 MAX_HTML_BYTES 解析后兜底）
+    if (Number(res.headers.get('content-length') || 0) > MAX_HTML_BYTES) {
+      return c.json({ error: '页面过大，抓取失败' }, 502)
+    }
     html = await res.text()
   } catch {
     return c.json({ error: '网络错误，抓取失败' }, 502)

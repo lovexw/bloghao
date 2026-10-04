@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { scheduledBackup } from './backup'
 import { runScheduledPublish } from './scheduler'
 import { api } from './api'
-import { ensureSchema, getSettings, listPosts } from './db'
+import { ensureSchema, getSettings, listCategories, listPublishedTags, listPosts, listSitemapPosts } from './db'
 import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
 import { buildRss, buildSitemap } from './rss'
 import type { Env, SessionUser } from './types'
@@ -59,11 +59,15 @@ app.get('/rss.xml', async (c) => {
 
 app.get('/sitemap.xml', async (c) => {
   const settings = await getSettings(c.env.DB)
-  const { items } = await listPosts(c.env.DB, { status: 'published', limit: 1000 })
+  const [posts, categories, tags] = await Promise.all([
+    listSitemapPosts(c.env.DB),
+    listCategories(c.env.DB),
+    listPublishedTags(c.env.DB),
+  ])
   const siteUrl = (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')
   c.header('Content-Type', 'application/xml; charset=utf-8')
   c.header('Cache-Control', 'public, max-age=600')
-  return c.body(buildSitemap(settings, items, siteUrl))
+  return c.body(buildSitemap(settings, posts, siteUrl, categories, tags))
 })
 
 app.get('/robots.txt', (c) =>

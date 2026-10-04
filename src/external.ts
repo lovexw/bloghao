@@ -98,14 +98,14 @@ function decodeDataUrl(s: string): { buf: ArrayBuffer; mime: string } | null {
 
 export const externalRoutes = new Hono<{ Bindings: Env }>()
 
-/** Token 鉴权；通过则返回设置（空 Token = 接口关闭） */
-async function requireToken(c: { env: Env; req: { header: (k: string) => string | undefined; query: (k: string) => string | undefined } }) {
+/** Token 鉴权；通过则返回设置（空 Token = 接口关闭）。
+ *  只认 header：query 传 token 会进访问日志/代理日志，造成泄露面 */
+async function requireToken(c: { env: Env; req: { header: (k: string) => string | undefined } }) {
   const settings = await getSettings(c.env.DB)
   const expected = settings.externalToken || ''
   if (!expected) return null
   const auth = c.req.header('Authorization') || ''
-  const token =
-    auth.replace(/^Bearer\s+/i, '').trim() || (c.req.header('X-Auth-Token') || '').trim() || (c.req.query('token') || '').trim()
+  const token = auth.replace(/^Bearer\s+/i, '').trim() || (c.req.header('X-Auth-Token') || '').trim()
   if (!token || !safeEqual(token, expected)) return null
   return settings
 }
@@ -560,7 +560,9 @@ adminExternalRoutes.post('/telegram/webhook', async (c) => {
     secret = randomToken(16)
     await saveSettings(c.env.DB, { telegramWebhookSecret: secret })
   }
-  const webhookUrl = `${siteBase(settings, reqOrigin(c.req.url))}/api/telegram/webhook?secret=${secret}`
+  // URL 不再带 secret（会进 Telegram 与边缘访问日志）；校验统一走 setWebhook
+  // 的 secret_token 对应的官方请求头。仍兼容旧绑定 URL 里的 ?secret=
+  const webhookUrl = `${siteBase(settings, reqOrigin(c.req.url))}/api/telegram/webhook`
   const res = await tgApi(botToken, 'setWebhook', {
     url: webhookUrl,
     secret_token: secret,

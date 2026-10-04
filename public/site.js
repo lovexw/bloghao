@@ -101,6 +101,14 @@
   })
 
   /* ---------------- 点赞（文章 + 微博，localStorage 防重复，可再点取消） ---------------- */
+  // 刷新/回访时按 localStorage 回填已赞样式：否则按钮看着没赞过，再点一次反而变成取消赞
+  document.querySelectorAll('.like-btn').forEach(function (btn) {
+    var isWeibo = btn.getAttribute('data-type') === 'weibo'
+    var targetId = isWeibo ? btn.getAttribute('data-id') : btn.getAttribute('data-slug')
+    if (targetId && localStorage.getItem('bloghao-liked-' + (isWeibo ? 'wb-' + targetId : targetId)) === '1') {
+      btn.classList.add('liked')
+    }
+  })
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('.like-btn') : null
     if (!btn) return
@@ -645,6 +653,7 @@
   ;(function () {
     var lb = null
     var imgEl = null
+    var counterEl = null
     var group = [] // 同组图片 URL
     var idx = 0
     var scale = 1
@@ -667,6 +676,8 @@
       idx = (i + group.length) % group.length
       imgEl.src = group[idx]
       reset()
+      // 计数器统一在这里更新：键盘翻页（onKey）与触摸滑动都走 show，不会再漏
+      if (counterEl) counterEl.textContent = group.length > 1 ? idx + 1 + ' / ' + group.length : ''
     }
     function close() {
       if (!lb) return
@@ -674,6 +685,7 @@
       lb.remove()
       lb = null
       imgEl = null
+      counterEl = null
       group = []
       document.body.style.overflow = ''
     }
@@ -721,6 +733,7 @@
       lb.appendChild(btnClose)
       document.body.appendChild(lb)
       document.body.style.overflow = 'hidden'
+      counterEl = counter
       counter.textContent = group.length > 1 ? (idx + 1) + ' / ' + group.length : ''
       document.addEventListener('keydown', onKey, true)
 
@@ -784,7 +797,6 @@
           var dt = Date.now() - startPos.t
           if (group.length > 1 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) && dt < 600) {
             show(idx + (dx < 0 ? 1 : -1))
-            counter.textContent = (idx + 1) + ' / ' + group.length
             startPos = null
             return
           }

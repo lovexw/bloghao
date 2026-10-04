@@ -92,13 +92,18 @@ export async function purgeExpiredSessions(db: D1Database): Promise<void> {
 const buckets = new Map<string, { n: number; reset: number }>()
 export function rateLimit(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now()
+  // 淘汰在插入时执行：先清过期项；仍超容量则丢最旧的，保证 Map 有界
+  if (buckets.size >= 5000) {
+    for (const [k, v] of buckets) if (v.reset < now) buckets.delete(k)
+    while (buckets.size >= 5000) {
+      const oldest = buckets.keys().next().value
+      if (oldest === undefined) break
+      buckets.delete(oldest)
+    }
+  }
   const e = buckets.get(key)
   if (!e || e.reset < now) {
     buckets.set(key, { n: 1, reset: now + windowMs })
-    if (buckets.size > 5000) {
-      // 防止 Map 无限增长
-      for (const [k, v] of buckets) if (v.reset < now) buckets.delete(k)
-    }
     return true
   }
   if (e.n >= limit) return false

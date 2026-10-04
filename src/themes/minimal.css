@@ -539,3 +539,10 @@ main .gb-section { margin-top: 12px; }
 @media (max-width: 480px) {
   .otd-sub { display: none; }
 }
+
+/* 手机端触控目标：minimal 是细文本按钮，≤480px 时补足点击面积（≥32px 高） */
+@media (max-width: 480px) {
+  .mn-search-btn { padding: 8px 10px; }
+  .fs-chip { padding: 8px 6px; }
+  .wb-pager-btn { padding: 10px 14px; }
+}

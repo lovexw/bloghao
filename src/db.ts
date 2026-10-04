@@ -178,6 +178,29 @@ export async function listAllPublishedArchives(db: D1Database): Promise<{ slug: 
   return results ?? []
 }
 
+/** sitemap 用的轻量列表：slug + updated_at（不走 listPosts——它的 limit 被 clamp 到 100） */
+export async function listSitemapPosts(db: D1Database): Promise<{ slug: string; updated_at: number }[]> {
+  const { results } = await db
+    .prepare("SELECT slug, updated_at FROM posts WHERE status = 'published' ORDER BY updated_at DESC LIMIT 2000")
+    .all<{ slug: string; updated_at: number }>()
+  return results ?? []
+}
+
+/** 已发布文章用到的标签聚合（导航菜单/sitemap 用），按使用次数倒序 */
+export async function listPublishedTags(db: D1Database): Promise<{ name: string; count: number }[]> {
+  const { results } = await db
+    .prepare("SELECT tags FROM posts WHERE status = 'published' LIMIT 1000")
+    .all<{ tags: string }>()
+  const count = new Map<string, number>()
+  for (const r of results ?? []) {
+    for (const t of parseTags({ tags: r.tags } as PostRow)) count.set(t, (count.get(t) || 0) + 1)
+  }
+  return [...count.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 100)
+    .map(([name, count]) => ({ name, count }))
+}
+
 /* ---------------- 历史上的今天（首页时光机卡） ---------------- */
 
 export interface OnThisDayItem {

@@ -86,13 +86,24 @@ function modal(html, opts = {}) {
   const mask = document.createElement('div')
   mask.className = 'modal-mask'
   mask.innerHTML = `<div class="modal${opts.large ? ' modal-lg' : ''}" role="dialog">${html}</div>`
-  const close = () => mask.remove()
+  const close = () => {
+    document.removeEventListener('keydown', onKey)
+    mask.remove()
+  }
+  // Esc 关闭；打开时焦点落进弹窗（键盘/读屏可用），关闭时焦点归还触发元素
+  const onKey = (e) => {
+    if (e.key === 'Escape') close()
+  }
+  document.addEventListener('keydown', onKey)
+  const opener = document.activeElement
   mask.addEventListener('click', (e) => {
     if (e.target === mask) close()
   })
   mask.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close))
   document.body.appendChild(mask)
-  return { mask, close }
+  const focusable = mask.querySelector('input, textarea, select, button:not([disabled])')
+  if (focusable) focusable.focus()
+  return { mask, close: () => { close(); if (opener && opener.focus) opener.focus() } }
 }
 
 function confirmBox(text) {
@@ -135,7 +146,7 @@ function authView(mode) {
       <p>${isSetup ? '第一次使用，设置你的管理员账号' : esc(state.settings?.siteName || '')}</p>
     </div>
     <form id="auth-form">
-      <div class="auth-field"><label>用户名</label><input class="input" name="username" autocomplete="username" placeholder="2-24 位字母数字" required></div>
+      <div class="auth-field"><label>用户名</label><input class="input" name="username" autocomplete="username" placeholder="2-24 位字母、数字、_ 或 -" required></div>
       <div class="auth-field"><label>密码</label><input class="input" type="password" name="password" autocomplete="${isSetup ? 'new-password' : 'current-password'}" placeholder="${isSetup ? '至少 8 位' : '输入密码'}" required></div>
       ${isSetup ? '<div class="auth-field"><label>昵称（可选）</label><input class="input" name="displayName" placeholder="显示在文章作者位"></div>' : ''}
       <button class="btn btn-primary auth-btn" type="submit">${isSetup ? '创建并进入' : '登 录'}</button>
@@ -402,6 +413,12 @@ async function viewWeibo() {
     return handleApiErr(e)
   }
 
+  // 编辑态跨分页残留防护：正在编辑的条目不在本页（说明翻页了），
+  // 顶部发布器还停在编辑旧条目的状态，此时点保存会把旧内容写回去——直接清掉
+  if (wbEditing && !d.items.some((x) => x.id === wbEditing.id)) {
+    wbEditing = null
+    toast('所编辑的微博不在本页，已切回新建')
+  }
   const images = wbEditing ? [...wbEditing.images] : []
   const rows = d.items
     .map(
@@ -1200,7 +1217,7 @@ async function viewMedia() {
       const m = modal(`<div class="modal-head"><span>文件详情</span><button class="modal-close" data-close>×</button></div>
         <div class="modal-body">
           <div style="background:#f6f6f6;border-radius:8px;overflow:hidden;margin-bottom:14px;display:flex;align-items:center;justify-content:center;max-height:300px;">
-            <img src="${esc(item.dataset.url)}" style="max-width:100%;max-height:300px;" onerror="this.outerHTML='<video src=&quot;${esc(item.dataset.url)}&quot; controls style=&quot;max-width:100%&quot;></video>'">
+            <img src="${esc(item.dataset.url)}" style="max-width:100%;max-height:300px;">
           </div>
           <label class="auth-field" style="margin-bottom:10px;"><label>访问地址</label><input class="input" readonly value="${esc(item.dataset.url)}" onclick="this.select()"></label>
         </div>
@@ -1208,8 +1225,19 @@ async function viewMedia() {
           <button class="btn btn-danger" id="mi-del">删除</button>
           <button class="btn btn-primary" id="mi-copy">复制地址</button>
         </div>`)
+      // 图片加载失败说明是视频：换成 <video>（事件绑定，不在属性里拼 JS）
+      m.mask.querySelector('.modal-body img')?.addEventListener('error', (e) => {
+        const v = document.createElement('video')
+        v.src = item.dataset.url
+        v.controls = true
+        v.style.maxWidth = '100%'
+        e.currentTarget.replaceWith(v)
+      })
       m.mask.querySelector('#mi-copy').addEventListener('click', () => {
-        navigator.clipboard.writeText(location.origin + item.dataset.url).then(() => toast('已复制'))
+        navigator.clipboard
+          .writeText(location.origin + item.dataset.url)
+          .then(() => toast('已复制'))
+          .catch(() => toast('复制失败，请手动长按选择地址', true))
       })
       m.mask.querySelector('#mi-del').addEventListener('click', async () => {
         if (!(await confirmBox('删除后引用它的文章将无法显示图片，确定？'))) return
@@ -1501,7 +1529,10 @@ async function viewSettings() {
   })
   document.getElementById('btn-token-copy').addEventListener('click', () => {
     if (!tokenInput.value) return
-    navigator.clipboard.writeText(tokenInput.value).then(() => toast('已复制'))
+    navigator.clipboard
+      .writeText(tokenInput.value)
+      .then(() => toast('已复制'))
+      .catch(() => toast('复制失败，请手动选择复制', true))
   })
 
   document.getElementById('btn-tg-webhook').addEventListener('click', async () => {
@@ -1653,7 +1684,17 @@ async function navigate() {
 async function viewEditor(id) {
   // 编辑器是独立的全屏页面，不套 shell
   $app.innerHTML = '<div class="editor-page" id="editor-root"><div style="margin:auto;color:var(--sub);">加载编辑器…</div></div>'
-  await mountEditor(document.getElementById('editor-root'), id === 'new' ? null : Number(id))
+  try {
+    await mountEditor(document.getElementById('editor-root'), id === 'new' ? null : Number(id))
+  } catch (e) {
+    // 401 交给统一拦截回登录页；其余失败渲染明确的错误态，别把用户晾在「加载编辑器…」
+    if (e?.status === 401) throw e
+    console.error('编辑器加载失败', e)
+    $app.innerHTML = `<div class="editor-page"><div style="margin:auto;text-align:center;color:var(--sub);">
+      <div style="font-size:15px;margin-bottom:12px;">编辑器加载失败：${esc(e?.message || '未知错误')}</div>
+      <a class="btn btn-primary" href="#/posts">返回文章列表</a>
+    </div></div>`
+  }
 }
 
 async function boot() {
