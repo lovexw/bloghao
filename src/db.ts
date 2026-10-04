@@ -276,7 +276,8 @@ export async function relatedPosts(db: D1Database, post: PostRow, limit = 3): Pr
   const tags = parseTags(post)
   if (tags.length) {
     // 与 listPosts 的标签过滤同口径：带 JSON 引号精确匹配 + ESCAPE，防「猫」命中「波斯猫」/通配符注入
-    const likeBinds = tags.map(() => "tags LIKE ? ESCAPE '\\'")
+    // 注意必须 join(' OR ')：数组直接内插会以逗号连接，(a,b) 构成 row value，D1 直接报 row value misused
+    const likeBinds = tags.map(() => "tags LIKE ? ESCAPE '\\'").join(' OR ')
     const { results } = await db
       .prepare(
         `SELECT * FROM posts WHERE id != ? AND status = 'published' AND (${likeBinds}) ORDER BY views DESC LIMIT ?`
