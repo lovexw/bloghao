@@ -22,9 +22,20 @@
 - `link` 是蜜罐字段，正常客户端永远传空字符串/不传
 - 受限流（同 IP 10 分钟 5 条）与站点「开启留言 / 先审后展」设置约束
 - `nickname` ≤ 24 字，`content` ≤ 1000 字，均为纯文本存储
+- **作者回复（楼中楼）**：登录管理员携带 `parentId`（被回复的评论 id）即以作者身份回复，免昵称、免限流、绕过「关闭留言」开关、直接展示并带「作者」徽标；未登录携带 `parentId` 一律 403
+- 响应 `{ok:true}` 或 `{ok:true, pending:true}`（先审后展开启时，前端据此刻意不刷新）
 
 ### POST /api/public/like/:slug
 Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计数不会为负。
+
+### POST /api/public/like/weibo/:id
+微博点赞，同上。
+
+### GET /api/public/weibo/:id/comments
+微博的已展示评论（平铺 ASC，最多 200 条），元素含 `id/parent_id/is_admin/nickname/content/created_at`；前端按 `parent_id` 组装楼中楼。响应 `{comments, allowComments}`。
+
+### POST /api/public/weibo/:id/comments
+微博评论。规则同 `POST /api/public/comments`（蜜罐 / 限流 / 审核 / 管理员 `parentId` 回复），`nickname`/`content` 约束一致。
 
 ## 认证
 
@@ -86,9 +97,10 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### 评论
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/comments?status=all\|pending\|approved&page=1` | 列表（含文章标题/slug） |
+| GET | `/api/admin/comments?status=all\|pending\|approved&page=1` | 列表（文章与微博评论混合，含文章标题/slug、父评论昵称） |
 | PUT | `/api/admin/comments/:id` | Body `{status:"approved"\|"pending"}`（通过 / 隐藏） |
-| DELETE | `/api/admin/comments/:id` | 删除 |
+| POST | `/api/admin/comments/:id/replies` | Body `{content}`，以作者身份回复该评论（文章/微博通用），直接展示并带「作者」徽标 |
+| DELETE | `/api/admin/comments/:id` | 删除（连带其下的回复） |
 
 ### 设置 / 账号 / 工具
 | 方法 | 路径 | 说明 |

@@ -342,6 +342,8 @@ async function viewWeibo() {
         <div class="wb-row-meta">
           ${w.status === 'published' ? '<span class="chip chip-green">已发布</span>' : '<span class="chip chip-gray">草稿</span>'}
           ${w.imageList.length ? `<span>${w.imageList.length} 图</span><span>·</span>` : ''}
+          <span>${w.likes || 0} 赞 · ${w.commentCount || 0} 评</span>
+          <span>·</span>
           <span>${fmtDateTime(w.published_at || w.updated_at)}</span>
         </div>
       </div>
@@ -573,23 +575,33 @@ async function viewComments() {
     return handleApiErr(e)
   }
   const rows = d.items
-    .map(
-      (cm) => `<div class="comment-row">
+    .map((cm) => {
+      const target = cm.post_id
+        ? `<a class="comment-post" href="/post/${esc(cm.post_slug)}#comments" target="_blank">《${esc(cm.post_title)}》</a>`
+        : `<a class="comment-post" href="/weibo#wb-${cm.weibo_id}" target="_blank">微博</a>`
+      return `<div class="comment-row">
       <div class="comment-main">
         <div class="comment-meta">
           <span class="who">${esc(cm.nickname)}</span>
+          ${Number(cm.is_admin) ? '<span class="chip chip-green">作者</span>' : ''}
           ${cm.status === 'pending' ? '<span class="chip chip-warn">待审核</span>' : '<span class="chip chip-green">已展示</span>'}
-          <a class="comment-post" href="/post/${esc(cm.post_slug)}#comments" target="_blank">《${esc(cm.post_title)}》</a>
+          ${target}
+          ${cm.parent_nickname ? `<span class="chip chip-gray">回复 @${esc(cm.parent_nickname)}</span>` : ''}
           <span style="color:var(--sub);font-size:12px;">${fmtDateTime(cm.created_at)}</span>
         </div>
         <div class="comment-content">${esc(cm.content)}</div>
+        <div class="comment-reply" hidden>
+          <textarea class="textarea" rows="2" placeholder="以作者身份回复，前台会带「作者」徽标…"></textarea>
+          <div class="comment-reply-ops"><button class="btn btn-sm btn-primary" data-act="send-reply">发送回复</button></div>
+        </div>
       </div>
       <div class="comment-ops">
+        <button class="btn btn-sm" data-act="reply">回复</button>
         ${cm.status === 'pending' ? `<button class="btn btn-sm btn-primary" data-act="approve">通过</button>` : `<button class="btn btn-sm" data-act="hide">隐藏</button>`}
         <button class="btn btn-sm btn-danger" data-act="del">删除</button>
       </div>
     </div>`
-    )
+    })
     .join('')
 
   await shellView(
@@ -607,6 +619,24 @@ async function viewComments() {
   )
   Array.from($app.querySelectorAll('.comment-row')).forEach((row, i) => {
     const cm = d.items[i]
+    row.querySelector('[data-act=reply]')?.addEventListener('click', () => {
+      const box = row.querySelector('.comment-reply')
+      if (!box) return
+      box.hidden = !box.hidden
+      if (!box.hidden) box.querySelector('textarea').focus()
+    })
+    row.querySelector('[data-act=send-reply]')?.addEventListener('click', async () => {
+      const box = row.querySelector('.comment-reply')
+      const content = box.querySelector('textarea').value.trim()
+      if (!content) return toast('先写点回复内容', true)
+      try {
+        await api(`/admin/comments/${cm.id}/replies`, { method: 'POST', body: { content } })
+        toast('已回复')
+        viewComments()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
     row.querySelector('[data-act=approve]')?.addEventListener('click', async () => {
       await api(`/admin/comments/${cm.id}`, { method: 'PUT', body: { status: 'approved' } })
       toast('已展示')
@@ -618,7 +648,7 @@ async function viewComments() {
       viewComments()
     })
     row.querySelector('[data-act=del]')?.addEventListener('click', async () => {
-      if (!(await confirmBox('确定删除这条评论？'))) return
+      if (!(await confirmBox('删除这条评论？它的回复也会一并删除。'))) return
       await api(`/admin/comments/${cm.id}`, { method: 'DELETE' })
       toast('已删除')
       viewComments()

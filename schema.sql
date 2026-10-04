@@ -41,7 +41,10 @@ CREATE INDEX IF NOT EXISTS idx_posts_updated ON posts (updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS comments (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  post_id    INTEGER NOT NULL,
+  post_id    INTEGER NOT NULL,            -- 文章评论；微博评论固定为 0
+  weibo_id   INTEGER NOT NULL DEFAULT 0,  -- 微博评论；文章评论固定为 0
+  parent_id  INTEGER NOT NULL DEFAULT 0,  -- 楼中楼：父评论 id，0 = 顶层（作者回复用）
+  is_admin   INTEGER NOT NULL DEFAULT 0,  -- 1 = 作者（管理员）发言，前台加徽标
   nickname   TEXT    NOT NULL,
   email      TEXT    NOT NULL DEFAULT '',
   website    TEXT    NOT NULL DEFAULT '',
@@ -51,6 +54,8 @@ CREATE TABLE IF NOT EXISTS comments (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_comments_post ON comments (post_id, created_at);
+-- idx_comments_weibo 由 src/db.ts ensureSchema() 在运行时创建：
+-- 老库执行本文件时 weibo_id 列尚不存在（ALTER 由运行时补齐），在这里建索引会报错
 CREATE INDEX IF NOT EXISTS idx_comments_status ON comments (status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -74,6 +79,7 @@ CREATE TABLE IF NOT EXISTS weibo (
   content      TEXT    NOT NULL DEFAULT '',
   images       TEXT    NOT NULL DEFAULT '[]', -- JSON 数组，如 ["/images/u/202510/xxx.jpg"]
   status       TEXT    NOT NULL DEFAULT 'published', -- draft | published
+  likes        INTEGER NOT NULL DEFAULT 0,
   published_at INTEGER,
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL

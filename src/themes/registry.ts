@@ -33,6 +33,8 @@ export interface ThemeModule {
     page: number
     totalPages: number
     total: number
+    /** 站点「允许评论」开关：关闭时微博卡片只展示评论列表入口，不出表单 */
+    allowComments: boolean
   }): string
   post(d: {
     settings: Record<string, string>

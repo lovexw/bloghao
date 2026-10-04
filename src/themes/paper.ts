@@ -158,9 +158,10 @@ export function weibo(d: {
   page: number
   totalPages: number
   total: number
+  allowComments: boolean
 }): string {
   const s = d.settings
-  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: seal(s) })
+  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: seal(s), allowComments: d.allowComments })
   return `<div class="pp-page">
   ${siteNav({ cls: 'pp-snav', categories: d.categories, active: 'weibo' })}
   <header class="wb-page-head">

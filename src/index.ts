@@ -1,11 +1,24 @@
 import { Hono } from 'hono'
 import { api } from './api'
-import { getSettings, listPosts } from './db'
+import { ensureSchema, getSettings, listPosts } from './db'
 import { renderAbout, renderCategory, renderHome, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
 import { buildRss, buildSitemap } from './rss'
 import type { Env, SessionUser } from './types'
 
 const app = new Hono<{ Bindings: Env; Variables: { user: SessionUser | null } }>()
+
+// 老库缺列自动补齐（幂等），每个 isolate 只执行一次
+let schemaReady: Promise<void> | null = null
+app.use('*', async (c, next) => {
+  if (!schemaReady) {
+    schemaReady = ensureSchema(c.env.DB).catch((err) => {
+      schemaReady = null
+      throw err
+    })
+  }
+  await schemaReady
+  await next()
+})
 
 app.route('/api', api)
 

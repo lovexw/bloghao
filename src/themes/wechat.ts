@@ -199,9 +199,10 @@ export function weibo(d: {
   page: number
   totalPages: number
   total: number
+  allowComments: boolean
 }): string {
   const s = d.settings
-  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: avatar(s) })
+  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: avatar(s), allowComments: d.allowComments })
   return `<div class="wx-page">
   ${siteNav({ cls: 'wx-snav', categories: d.categories, active: 'weibo' })}
   <header class="wb-page-head">

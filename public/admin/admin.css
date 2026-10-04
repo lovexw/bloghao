@@ -233,6 +233,9 @@ input, textarea, select { font: inherit; color: inherit; }
 .comment-post { font-size: 12px; color: var(--sub); }
 .comment-post:hover { color: var(--accent); }
 .comment-content { font-size: 14px; margin-top: 5px; white-space: pre-wrap; word-break: break-word; }
+.comment-reply { margin-top: 10px; }
+.comment-reply .textarea { width: 100%; box-sizing: border-box; }
+.comment-reply-ops { display: flex; justify-content: flex-end; margin-top: 8px; }
 .comment-ops { flex: 0 0 auto; display: flex; gap: 4px; align-items: flex-start; }
 
 /* ---------- 媒体库 ---------- */

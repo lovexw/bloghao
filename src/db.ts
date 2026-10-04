@@ -285,6 +285,58 @@ export async function getWeiboById(db: D1Database, id: number): Promise<WeiboRow
   return db.prepare('SELECT * FROM weibo WHERE id = ?').bind(id).first<WeiboRow>()
 }
 
+/** 批量取一组微博的已审核评论数：{weiboId: count} */
+export async function weiboCommentCountMap(db: D1Database, weiboIds: number[]): Promise<Map<number, number>> {
+  if (!weiboIds.length) return new Map()
+  const ph = weiboIds.map(() => '?').join(',')
+  const { results } = await db
+    .prepare(`SELECT weibo_id, COUNT(*) AS n FROM comments WHERE weibo_id IN (${ph}) AND status = 'approved' GROUP BY weibo_id`)
+    .bind(...weiboIds)
+    .all<{ weibo_id: number; n: number }>()
+  const m = new Map<number, number>()
+  for (const r of results ?? []) m.set(r.weibo_id, r.n)
+  return m
+}
+
+/* ---------------- 轻量迁移 ----------------
+ * schema.sql 只对全新库生效（CREATE TABLE IF NOT EXISTS 不会补列），
+ * 老库升级靠这里：启动时检查缺列，自动 ALTER TABLE 补齐（每个 isolate 只跑一次）。
+ */
+const SCHEMA_COLUMNS: { table: string; column: string; ddl: string }[] = [
+  { table: 'weibo', column: 'likes', ddl: 'ALTER TABLE weibo ADD COLUMN likes INTEGER NOT NULL DEFAULT 0' },
+  { table: 'comments', column: 'weibo_id', ddl: 'ALTER TABLE comments ADD COLUMN weibo_id INTEGER NOT NULL DEFAULT 0' },
+  { table: 'comments', column: 'parent_id', ddl: 'ALTER TABLE comments ADD COLUMN parent_id INTEGER NOT NULL DEFAULT 0' },
+  { table: 'comments', column: 'is_admin', ddl: 'ALTER TABLE comments ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0' },
+]
+const SCHEMA_INDEXES = ['CREATE INDEX IF NOT EXISTS idx_comments_weibo ON comments (weibo_id, created_at)']
+
+async function tableColumns(db: D1Database, table: string): Promise<Set<string>> {
+  const { results } = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>()
+  return new Set((results ?? []).map((r) => r.name))
+}
+
+export async function ensureSchema(db: D1Database): Promise<void> {
+  const cols = new Map<string, Set<string>>()
+  for (const { table } of SCHEMA_COLUMNS) {
+    if (!cols.has(table)) cols.set(table, await tableColumns(db, table))
+  }
+  for (const { table, column, ddl } of SCHEMA_COLUMNS) {
+    if (cols.get(table)?.has(column)) continue
+    try {
+      await db.prepare(ddl).run()
+    } catch {
+      /* 并发 isolate 已加过列，忽略 duplicate column 错误 */
+    }
+  }
+  for (const ddl of SCHEMA_INDEXES) {
+    try {
+      await db.prepare(ddl).run()
+    } catch {
+      /* 索引已存在 */
+    }
+  }
+}
+
 export async function countUsers(db: D1Database): Promise<number> {
   const r = await db.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>()
   return r?.n ?? 0

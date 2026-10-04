@@ -129,6 +129,8 @@ export interface WeiboItemView {
   content: string
   images: string[]
   created_at: number
+  likes: number
+  commentCount: number
 }
 
 /** 微博时间：今年「10月3日 14:20」，往年带年份 */
@@ -151,11 +153,51 @@ export function weiboImageGrid(images: string[]): string {
   return `<div class="wb-imgs ${cls}">${imgs}</div>`
 }
 
-export function weiboCards(o: { settings: SettingsMap; items: WeiboItemView[]; avatarHtml: string }): string {
+/** 微博卡片底栏：点赞（同文章 like-btn，data-type=weibo）+ 评论数（点开卡片内折叠评论区） */
+export function weiboCardFoot(w: WeiboItemView): string {
+  const like = `<button class="wb-action like-btn" type="button" data-type="weibo" data-id="${w.id}" data-likes="${w.likes}" aria-label="点赞">
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.5 8.4 2.3 4.9 5.7 4.5c2-.2 3.9.8 5 2.5a5.7 5.7 0 0 1 5-2.5c3.4.4 5.2 3.9 3.7 7.2C19.5 16.1 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+  <b class="like-count" data-count>${w.likes}</b>
+</button>`
+  const cmt = `<button class="wb-action wb-cmt-toggle" type="button" data-wb="${w.id}" aria-label="评论" aria-expanded="false">
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+  <b class="wb-cmt-count" data-count>${w.commentCount}</b>
+</button>`
+  return `<footer class="wb-foot">${like}${cmt}</footer>`
+}
+
+/** 卡片内折叠评论区骨架：列表与表单内容由 site.js 按需填充 */
+export function weiboCommentPanel(w: WeiboItemView, allowComments: boolean): string {
+  return `<div class="wb-cmt" data-wb-cmt="${w.id}" hidden>
+  <div class="wb-cmt-list" data-role="list"><p class="wb-cmt-loading">加载中…</p></div>
+  ${
+    allowComments
+      ? `<form class="wb-cmt-form" data-role="form">
+  <div class="wb-cmt-row">
+    <input class="wb-cmt-input" name="nickname" maxlength="24" placeholder="昵称" required>
+    <input class="cmt-hp" name="link" tabindex="-1" autocomplete="off" aria-hidden="true">
+  </div>
+  <textarea class="wb-cmt-textarea" name="content" maxlength="1000" rows="2" placeholder="说点什么…" required></textarea>
+  <div class="wb-cmt-foot"><span class="wb-cmt-tip"></span><button class="wb-cmt-submit" type="submit">发送</button></div>
+</form>`
+      : ''
+  }
+</div>`
+}
+
+export function weiboCards(o: {
+  settings: SettingsMap
+  items: WeiboItemView[]
+  avatarHtml: string
+  allowComments?: boolean
+}): string {
   const name = o.settings.siteName || '微博'
+  const allowComments = o.allowComments !== false
   return o.items
-    .map(
-      (w) => `<article class="wb-card" id="wb-${w.id}">
+    .map((w) => {
+      const foot = weiboCardFoot(w)
+      const panel = weiboCommentPanel(w, allowComments)
+      return `<article class="wb-card" id="wb-${w.id}">
   <header class="wb-head">
     <span class="wb-avatar">${o.avatarHtml}</span>
     <div class="wb-who">
@@ -165,8 +207,10 @@ export function weiboCards(o: { settings: SettingsMap; items: WeiboItemView[]; a
   </header>
   ${w.content ? `<div class="wb-text">${esc(w.content)}</div>` : ''}
   ${weiboImageGrid(w.images)}
+  ${foot}
+  ${panel}
 </article>`
-    )
+    })
     .join('\n')
 }
 
@@ -217,35 +261,61 @@ export function pagerHtml(c: PagerContext): string {
   )}</nav>${jump}`
 }
 
-/** 留言区（评论列表 + 表单），语义化 class 交给主题 CSS 塑形 */
+/** 留言区（评论列表 + 表单），语义化 class 交给主题 CSS 塑形
+ * - 楼中楼：parent_id 指向顶层评论的回复缩进展示，作者发言带「作者」徽标
+ * - isAdmin：当前访客为管理员，渲染每条留言的「回复」按钮（site.js 接管交互）
+ */
 export function commentsHtml(o: {
   comments: CommentRow[]
   slug: string
   allowComments: boolean
   count: number
+  isAdmin?: boolean
   title?: string
+  tip?: string
 }): string {
-  const list = o.comments
-    .map(
-      (c) => `<li class="cmt-item" id="cmt-${c.id}">
+  const tops = o.comments.filter((c) => !c.parent_id)
+  const children = new Map<number, CommentRow[]>()
+  for (const c of o.comments) {
+    if (!c.parent_id) continue
+    const list = children.get(c.parent_id) || []
+    list.push(c)
+    children.set(c.parent_id, list)
+  }
+
+  // 孤儿回复（父评论被删）：按顶层展示，避免消失
+  const orphans = o.comments.filter((c) => c.parent_id && !o.comments.some((p) => p.id === c.parent_id))
+  for (const c of orphans) tops.push({ ...c, parent_id: 0 })
+
+  const renderItem = (c: CommentRow): string => {
+    const badge = c.is_admin ? '<span class="cmt-badge">作者</span>' : ''
+    const replyBtn = o.isAdmin
+      ? `<button class="cmt-reply-btn" type="button" data-reply="${c.id}" data-name="${esc(c.nickname)}">回复</button>`
+      : ''
+    const kids = children.get(c.id) || []
+    return `<li class="cmt-item" id="cmt-${c.id}">
   <div class="cmt-head">
-    <span class="cmt-name">${esc(c.nickname)}</span>
+    <span class="cmt-name">${esc(c.nickname)}${badge}</span>
     <span class="cmt-time">${fmtDateTime(c.created_at)}</span>
+    ${replyBtn}
   </div>
   <div class="cmt-body">${esc(c.content)}</div>
+  ${kids.length ? `<ul class="cmt-children">${kids.map(renderItem).join('')}</ul>` : ''}
 </li>`
-    )
-    .join('\n')
+  }
+
+  const list = tops.map(renderItem).join('\n')
 
   const form = o.allowComments
     ? `<form id="comment-form" class="cmt-form" data-slug="${esc(o.slug)}">
+  <input type="hidden" name="parentId" value="">
   <div class="cmt-form-row">
     <input class="cmt-input" name="nickname" maxlength="24" placeholder="昵称" required>
     <input class="cmt-input cmt-hp" name="link" tabindex="-1" autocomplete="off" aria-hidden="true">
   </div>
   <textarea class="cmt-textarea" name="content" maxlength="1000" rows="3" placeholder="写下你的想法…" required></textarea>
   <div class="cmt-form-foot">
-    <span class="cmt-tip">留言即刻展示，请友善交流</span>
+    <span class="cmt-tip">${esc(o.tip || '留言即刻展示，请友善交流')}</span>
     <button class="cmt-submit" type="submit">发送</button>
   </div>
 </form>`

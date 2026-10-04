@@ -11,6 +11,7 @@ import {
   listWeibo,
   parseTags,
   relatedPosts,
+  weiboCommentCountMap,
   weiboImageList,
 } from './db'
 import {
@@ -189,11 +190,12 @@ export async function renderPost(c: C): Promise<Response> {
     if (!isPreview || !user) return renderNotFound(c)
   }
 
-  const [comments, related, categories, categoryId] = await Promise.all([
+  const [comments, related, categories, categoryId, user] = await Promise.all([
     listApprovedComments(c.env.DB, row.id),
     relatedPosts(c.env.DB, row),
     navCategories(c),
     getPostCategoryId(c.env.DB, row.id),
+    getSessionUser(c.env.DB, c.req.raw),
   ])
   const categoryRow = categoryId ? await c.env.DB.prepare('SELECT name, slug FROM categories WHERE id = ?').bind(categoryId).first<{ name: string; slug: string }>() : null
 
@@ -208,6 +210,8 @@ export async function renderPost(c: C): Promise<Response> {
     slug: row.slug,
     allowComments: settings.allowComments === '1' && row.status === 'published',
     count: comments.length,
+    isAdmin: !!user,
+    tip: settings.moderateComments === '1' ? '提交后审核通过即展示' : undefined,
   })
 
   const html = theme.post({
@@ -276,13 +280,27 @@ export async function renderWeibo(c: C): Promise<Response> {
   if (r.page > r.totalPages && r.total > 0) {
     Object.assign(r, await listWeibo(c.env.DB, { status: 'published', page: r.totalPages, limit: perPage }))
   }
+  const cmtCounts = await weiboCommentCountMap(
+    c.env.DB,
+    r.items.map((w) => w.id)
+  )
   const items: WeiboItemView[] = r.items.map((w) => ({
     id: w.id,
     content: w.content,
     images: weiboImageList(w),
     created_at: w.published_at ?? w.created_at,
+    likes: w.likes,
+    commentCount: cmtCounts.get(w.id) || 0,
   }))
-  const html = theme.weibo({ settings, categories, items, page: r.page, totalPages: r.totalPages, total: r.total })
+  const html = theme.weibo({
+    settings,
+    categories,
+    items,
+    page: r.page,
+    totalPages: r.totalPages,
+    total: r.total,
+    allowComments: settings.allowComments === '1',
+  })
   c.header('Cache-Control', 'no-cache')
   return c.html(
     page({ settings, css: theme.css, title: '微博', description: `${settings.siteName}的随手记`, path: '/weibo', body: html })

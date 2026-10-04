@@ -47,6 +47,7 @@ export interface WeiboRow {
   content: string
   images: string
   status: PostStatus
+  likes: number
   published_at: number | null
   created_at: number
   updated_at: number
@@ -55,6 +56,9 @@ export interface WeiboRow {
 export interface CommentRow {
   id: number
   post_id: number
+  weibo_id: number
+  parent_id: number
+  is_admin: number
   nickname: string
   email: string
   website: string

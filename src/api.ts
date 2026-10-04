@@ -32,13 +32,14 @@ import {
   setPostCategory,
   uniqueCategorySlug,
   uniqueSlug,
+  weiboCommentCountMap,
   weiboImageList,
 } from './db'
 import { mdToHtml } from './markdown'
 import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
 import { THEMES } from './themes/registry'
-import type { Env, PostRow, SessionUser } from './types'
+import type { CommentRow, Env, PostRow, SessionUser } from './types'
 import { clampInt, excerpt, slugify } from './utils'
 
 type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
@@ -357,8 +358,9 @@ api.get('/admin/weibo', async (c) => {
     page: clampInt(c.req.query('page'), 1, 100000, 1),
     limit: clampInt(c.req.query('limit'), 1, 100, 20),
   })
+  const cmtCounts = await weiboCommentCountMap(c.env.DB, r.items.map((w) => w.id))
   return c.json({
-    items: r.items.map((w) => ({ ...w, imageList: weiboImageList(w) })),
+    items: r.items.map((w) => ({ ...w, imageList: weiboImageList(w), commentCount: cmtCounts.get(w.id) || 0 })),
     total: r.total,
     page: r.page,
     totalPages: r.totalPages,
@@ -395,7 +397,12 @@ api.put('/admin/weibo/:id', async (c) => {
 })
 
 api.delete('/admin/weibo/:id', async (c) => {
-  await c.env.DB.prepare('DELETE FROM weibo WHERE id = ?').bind(Number(c.req.param('id'))).run()
+  const id = Number(c.req.param('id'))
+  // 微博删除后其下的评论一并清除
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM comments WHERE weibo_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM weibo WHERE id = ?').bind(id),
+  ])
   return c.json({ ok: true })
 })
 
@@ -528,7 +535,11 @@ api.get('/admin/comments', async (c) => {
   const binds = where ? [status] : []
   const [listRes, countRes] = await Promise.all([
     c.env.DB.prepare(
-      `SELECT c.*, p.title AS post_title, p.slug AS post_slug FROM comments c JOIN posts p ON p.id = c.post_id ${where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`
+      `SELECT c.*, p.title AS post_title, p.slug AS post_slug, pc.nickname AS parent_nickname
+       FROM comments c
+       LEFT JOIN posts p ON p.id = c.post_id
+       LEFT JOIN comments pc ON pc.id = c.parent_id
+       ${where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`
     )
       .bind(...binds, limit, (page - 1) * limit)
       .all(),
@@ -537,6 +548,35 @@ api.get('/admin/comments', async (c) => {
       .first<{ n: number }>(),
   ])
   return c.json({ items: listRes.results ?? [], total: countRes?.n ?? 0, page })
+})
+
+/** 后台回复评论（文章/微博通用）：挂在同一条顶层评论下，直接展示并带「作者」徽标 */
+api.post('/admin/comments/:id/replies', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json<{ content?: string }>().catch(() => null)
+  const content = String(body?.content || '').trim().slice(0, 1000)
+  if (!content) return jsonError('回复内容不能为空')
+  const target = await c.env.DB
+    .prepare('SELECT * FROM comments WHERE id = ?')
+    .bind(id)
+    .first<CommentRow>()
+  if (!target) return jsonError('评论不存在', 404)
+  const user = c.get('user')
+  await c.env.DB.prepare(
+    'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)'
+  )
+    .bind(
+      target.post_id,
+      target.weibo_id,
+      target.parent_id || target.id,
+      (user.display_name || user.username).slice(0, 24),
+      content,
+      'approved',
+      '',
+      Date.now()
+    )
+    .run()
+  return c.json({ ok: true })
 })
 
 api.put('/admin/comments/:id', async (c) => {
@@ -548,7 +588,9 @@ api.put('/admin/comments/:id', async (c) => {
 })
 
 api.delete('/admin/comments/:id', async (c) => {
-  await c.env.DB.prepare('DELETE FROM comments WHERE id = ?').bind(Number(c.req.param('id'))).run()
+  const id = Number(c.req.param('id'))
+  // 回复（楼中楼）一并删除
+  await c.env.DB.prepare('DELETE FROM comments WHERE id = ? OR parent_id = ?').bind(id, id).run()
   return c.json({ ok: true })
 })
 
@@ -642,22 +684,51 @@ api.get('/public/posts', async (c) => {
 
 api.post('/public/comments', async (c) => {
   const settings = await getSettings(c.env.DB)
-  if (settings.allowComments !== '1') return jsonError('作者已关闭留言', 403)
+  const user = await getSessionUser(c.env.DB, c.req.raw)
+  if (!user && settings.allowComments !== '1') return jsonError('作者已关闭留言', 403)
   const ip = clientIp(c.req.raw)
-  if (!rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError('留言太频繁，休息一下吧', 429)
+  // 管理员回复不受留言频率限制
+  if (!user && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError('留言太频繁，休息一下吧', 429)
   const body = await c.req
-    .json<{ slug?: string; nickname?: string; content?: string; email?: string; website?: string; link?: string }>()
+    .json<{ slug?: string; nickname?: string; content?: string; email?: string; website?: string; parentId?: number; link?: string }>()
     .catch(() => null)
   // 蜜罐字段：正常用户不会填写，机器人会 —— 静默丢弃
   if (body?.link) return c.json({ ok: true })
   const slug = String(body?.slug || '').slice(0, 100)
-  const nickname = String(body?.nickname || '').trim().slice(0, 24)
   const content = String(body?.content || '').trim().slice(0, 1000)
-  if (!nickname || !content) return jsonError('昵称和留言内容不能为空')
+  if (!content) return jsonError('留言内容不能为空')
   const post = await getPostBySlug(c.env.DB, slug)
   if (!post || post.status !== 'published') return jsonError('文章不存在', 404)
+
+  const parentId = Number(body?.parentId) || 0
+  if (user) {
+    // 作者发言（回复或自己留言）：直接展示，带「作者」徽标
+    const parent = parentId
+      ? await c.env.DB.prepare('SELECT * FROM comments WHERE id = ? AND post_id = ?').bind(parentId, post.id).first<CommentRow>()
+      : null
+    if (parentId && !parent) return jsonError('要回复的留言不存在', 404)
+    await c.env.DB.prepare(
+      'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (?, 0, ?, 1, ?, ?, ?, ?, ?)'
+    )
+      .bind(
+        post.id,
+        parent ? parent.parent_id || parent.id : 0,
+        (user.display_name || user.username).slice(0, 24),
+        content,
+        'approved',
+        ip,
+        Date.now()
+      )
+      .run()
+    return c.json({ ok: true })
+  }
+
+  if (parentId) return jsonError('只有作者可以回复留言', 403)
+  const nickname = String(body?.nickname || '').trim().slice(0, 24)
+  if (!nickname) return jsonError('昵称和留言内容不能为空')
+  const pending = settings.moderateComments === '1'
   await c.env.DB.prepare(
-    'INSERT INTO comments (post_id, nickname, email, website, content, status, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, email, website, content, status, ip, created_at) VALUES (?, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)'
   )
     .bind(
       post.id,
@@ -665,12 +736,93 @@ api.post('/public/comments', async (c) => {
       String(body?.email || '').slice(0, 100),
       String(body?.website || '').slice(0, 200),
       content,
-      settings.moderateComments === '1' ? 'pending' : 'approved',
+      pending ? 'pending' : 'approved',
       ip,
       Date.now()
     )
     .run()
-  return c.json({ ok: true })
+  return c.json({ ok: true, pending })
+})
+
+/* ---------------- 微博互动（点赞 + 评论，公开） ---------------- */
+api.post('/public/like/weibo/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return jsonError('参数错误')
+  const body = await c.req.json<{ delta?: number }>().catch(() => null)
+  const delta = body?.delta === -1 ? -1 : 1
+  await c.env.DB.prepare(
+    'UPDATE weibo SET likes = CASE WHEN likes + ? < 0 THEN 0 ELSE likes + ? END WHERE id = ? AND status = \'published\''
+  )
+    .bind(delta, delta, id)
+    .run()
+  const row = await getWeiboById(c.env.DB, id)
+  return c.json({ ok: true, likes: row?.likes ?? 0 })
+})
+
+api.get('/public/weibo/:id/comments', async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return jsonError('参数错误')
+  const wb = await getWeiboById(c.env.DB, id)
+  if (!wb || wb.status !== 'published') return jsonError('这条微博不存在', 404)
+  const settings = await getSettings(c.env.DB)
+  const { results } = await c.env.DB
+    .prepare(
+      "SELECT id, parent_id, is_admin, nickname, content, created_at FROM comments WHERE weibo_id = ? AND status = 'approved' ORDER BY created_at ASC LIMIT 200"
+    )
+    .bind(id)
+    .all()
+  return c.json({ comments: results ?? [], allowComments: settings.allowComments === '1' })
+})
+
+api.post('/public/weibo/:id/comments', async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return jsonError('参数错误')
+  const wb = await getWeiboById(c.env.DB, id)
+  if (!wb || wb.status !== 'published') return jsonError('这条微博不存在', 404)
+  const settings = await getSettings(c.env.DB)
+  const user = await getSessionUser(c.env.DB, c.req.raw)
+  if (!user && settings.allowComments !== '1') return jsonError('作者已关闭评论', 403)
+  const ip = clientIp(c.req.raw)
+  if (!user && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError('评论太频繁，休息一下吧', 429)
+  const body = await c.req
+    .json<{ nickname?: string; content?: string; parentId?: number; link?: string }>()
+    .catch(() => null)
+  if (body?.link) return c.json({ ok: true })
+  const content = String(body?.content || '').trim().slice(0, 1000)
+  if (!content) return jsonError('评论内容不能为空')
+
+  const parentId = Number(body?.parentId) || 0
+  if (user) {
+    const parent = parentId
+      ? await c.env.DB.prepare('SELECT * FROM comments WHERE id = ? AND weibo_id = ?').bind(parentId, id).first<CommentRow>()
+      : null
+    if (parentId && !parent) return jsonError('要回复的评论不存在', 404)
+    await c.env.DB.prepare(
+      'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (0, ?, ?, 1, ?, ?, ?, ?, ?)'
+    )
+      .bind(
+        id,
+        parent ? parent.parent_id || parent.id : 0,
+        (user.display_name || user.username).slice(0, 24),
+        content,
+        'approved',
+        ip,
+        Date.now()
+      )
+      .run()
+    return c.json({ ok: true })
+  }
+
+  if (parentId) return jsonError('只有作者可以回复评论', 403)
+  const nickname = String(body?.nickname || '').trim().slice(0, 24)
+  if (!nickname) return jsonError('昵称和评论内容不能为空')
+  const pending = settings.moderateComments === '1'
+  await c.env.DB.prepare(
+    'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (0, ?, 0, 0, ?, ?, ?, ?, ?)'
+  )
+    .bind(id, nickname, content, pending ? 'pending' : 'approved', ip, Date.now())
+    .run()
+  return c.json({ ok: true, pending })
 })
 
 api.post('/public/like/:slug', async (c) => {

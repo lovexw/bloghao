@@ -291,6 +291,8 @@ a.wx-account:hover { opacity: 0.75; }
 .cmt-name { font-size: 14px; color: var(--wx-link); font-weight: 500; }
 .cmt-time { font-size: 12px; color: #bbb; flex: 0 0 auto; }
 .cmt-body { font-size: 15px; line-height: 1.7; margin-top: 5px; white-space: pre-wrap; word-break: break-word; }
+.cmt-children { list-style: none; margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--wx-line); }
+.cmt-badge { font-size: 11px; color: var(--wx-accent); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; margin-left: 6px; font-weight: 400; }
 .cmt-empty { color: #bbb; font-size: 14px; padding: 16px 0; }
 .cmt-form { margin-top: 18px; }
 .cmt-form-row { display: flex; gap: 10px; margin-bottom: 10px; }
@@ -369,6 +371,62 @@ a.wx-account:hover { opacity: 0.75; }
 .wb-pager-btn.is-disabled { opacity: 0.4; }
 .wb-pager-info { font-size: 12.5px; color: #b5aea1; font-variant-numeric: tabular-nums; }
 
+/* 微博卡片底栏：点赞 + 评论数 */
+.wb-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--wx-line); }
+.wb-foot .like-btn { padding: 5px 14px; font-size: 13px; background: transparent; }
+.wb-action {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: #8f887d; background: transparent;
+  border: 1px solid var(--wx-line); border-radius: 999px;
+  padding: 5px 14px; cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.wb-action:hover { color: var(--wx-accent); border-color: var(--wx-accent); }
+.wb-action b { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* 微博卡片内折叠评论区 */
+.wb-cmt { margin-top: 12px; border-top: 1px solid var(--wx-line); padding-top: 12px; }
+.wb-cmt-list, .wb-cmt-children { list-style: none; }
+.wb-cmt-children { margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--wx-line); }
+.wb-cmt-item { padding: 8px 0; }
+.wb-cmt-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.wb-cmt-name { font-size: 13px; color: var(--wx-link); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.wb-cmt-badge { font-size: 11px; color: var(--wx-accent); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; font-weight: 400; }
+.wb-cmt-time { font-size: 11.5px; color: #b5aea1; }
+.wb-cmt-body { font-size: 14px; line-height: 1.7; margin-top: 3px; white-space: pre-wrap; word-break: break-word; color: var(--wx-text); }
+.wb-cmt-empty, .wb-cmt-loading { color: #b5aea1; font-size: 13px; padding: 8px 0; }
+.wb-cmt-reply-btn, .cmt-reply-btn {
+  font-size: 12px; color: #8f887d; background: none; border: none; cursor: pointer;
+  padding: 0; margin-left: auto;
+}
+.wb-cmt-reply-btn:hover, .cmt-reply-btn:hover { color: var(--wx-accent); }
+.wb-cmt-reply-cancel, .cmt-reply-cancel {
+  font-size: 12px; color: var(--wx-accent); background: none; border: none; cursor: pointer;
+  padding: 0 0 0 6px; text-decoration: underline;
+}
+.wb-cmt-form { margin-top: 10px; }
+.wb-cmt-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.wb-cmt-input {
+  flex: 1; min-width: 0; font-size: 14px; color: var(--wx-text);
+  border: 1px solid var(--wx-line); border-radius: 8px; background: #fff;
+  padding: 7px 10px; outline: none;
+}
+.wb-cmt-input:focus { box-shadow: 0 0 0 2px rgba(178, 58, 41, 0.32); }
+.wb-cmt-textarea {
+  width: 100%; box-sizing: border-box; font-size: 14px; color: var(--wx-text);
+  border: 1px solid var(--wx-line); border-radius: 8px; background: #fff;
+  padding: 7px 10px; outline: none; resize: vertical;
+  font-family: inherit; line-height: 1.6;
+}
+.wb-cmt-textarea:focus { box-shadow: 0 0 0 2px rgba(178, 58, 41, 0.32); }
+.wb-cmt-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 10px; }
+.wb-cmt-tip { font-size: 12px; color: #b5aea1; }
+.wb-cmt-submit {
+  border: none; background: var(--wx-accent); color: #fff;
+  font-size: 13px; padding: 6px 16px; border-radius: 999px; cursor: pointer;
+}
+.wb-cmt-submit:disabled { opacity: 0.6; }
+
 /* ---------- Dark Mode ----------
  * 站长偏好：保持明亮风格，已关闭自动暗色切换。
  * 如需恢复，参考微信公众平台 Dark Mode 规范补一段
@@ -387,7 +445,7 @@ a.wx-account:hover { opacity: 0.75; }
   .wx-title { font-size: 21px; }
   .wx-action, .like-btn { padding: 9px 22px; }
   /* 输入框字号 ≥16px，避免 iOS Safari 聚焦时自动放大页面 */
-  .cmt-input, .cmt-textarea { font-size: 16px; }
+  .cmt-input, .cmt-textarea, .wb-cmt-input, .wb-cmt-textarea { font-size: 16px; }
   .rich table { display: block; width: max-content; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 @media (max-width: 480px) {
