@@ -89,6 +89,7 @@ const I = {
   comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2z"/></svg>',
+  fold: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"/></svg>',
 }
 
 const THEME_SWATCH = {
@@ -147,20 +148,21 @@ function authView(mode) {
 async function shellView(active, contentHTML) {
   const pending = state.pendingComments || 0
   const pendingLinks = state.pendingLinks || 0
-  $app.innerHTML = `<div class="shell">
+  const sideMini = localStorage.getItem('admin-side') === 'mini'
+  $app.innerHTML = `<div class="shell${sideMini ? ' side-mini' : ''}">
     <aside class="sidebar">
-      <div class="side-logo"><img src="/favicon.svg" alt="">博客号</div>
+      <div class="side-logo"><img src="/favicon.svg" alt=""><span>博客号</span><button class="side-fold" id="btn-side-fold" title="${sideMini ? '展开侧栏' : '收起侧栏'}">${I.fold}</button></div>
       <nav class="side-nav">
-        <a class="side-item side-item-home" href="/" target="_blank" rel="noopener">${I.home}<span>查看主页</span></a>
-        <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/">${I.home}<span>概览</span></a>
-        <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts">${I.post}<span>文章</span></a>
-        <a class="side-item${active === 'weibo' ? ' is-active' : ''}" href="#/weibo">${I.weibo}<span>微博</span></a>
-        <a class="side-item${active === 'links' ? ' is-active' : ''}" href="#/links">${I.link}<span>友链</span>${pendingLinks ? `<span class="side-badge">${pendingLinks}</span>` : ''}</a>
-        <a class="side-item${active === 'categories' ? ' is-active' : ''}" href="#/categories">${I.folder}<span>分类</span></a>
-        <a class="side-item${active === 'editor' ? ' is-active' : ''}" href="#/editor/new">${I.edit}<span>写作</span></a>
-        <a class="side-item${active === 'comments' ? ' is-active' : ''}" href="#/comments">${I.comment}<span>评论</span>${pending ? `<span class="side-badge">${pending}</span>` : ''}</a>
-        <a class="side-item${active === 'media' ? ' is-active' : ''}" href="#/media">${I.image}<span>媒体</span></a>
-        <a class="side-item${active === 'settings' ? ' is-active' : ''}" href="#/settings">${I.gear}<span>设置</span></a>
+        <a class="side-item side-item-home" href="/" target="_blank" rel="noopener" title="查看主页">${I.home}<span>查看主页</span></a>
+        <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/" title="概览">${I.home}<span>概览</span></a>
+        <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts" title="文章">${I.post}<span>文章</span></a>
+        <a class="side-item${active === 'weibo' ? ' is-active' : ''}" href="#/weibo" title="微博">${I.weibo}<span>微博</span></a>
+        <a class="side-item${active === 'links' ? ' is-active' : ''}" href="#/links" title="友链">${I.link}<span>友链</span>${pendingLinks ? `<span class="side-badge">${pendingLinks}</span>` : ''}</a>
+        <a class="side-item${active === 'categories' ? ' is-active' : ''}" href="#/categories" title="分类">${I.folder}<span>分类</span></a>
+        <a class="side-item${active === 'editor' ? ' is-active' : ''}" href="#/editor/new" title="写作">${I.edit}<span>写作</span></a>
+        <a class="side-item${active === 'comments' ? ' is-active' : ''}" href="#/comments" title="评论">${I.comment}<span>评论</span>${pending ? `<span class="side-badge">${pending}</span>` : ''}</a>
+        <a class="side-item${active === 'media' ? ' is-active' : ''}" href="#/media" title="媒体">${I.image}<span>媒体</span></a>
+        <a class="side-item${active === 'settings' ? ' is-active' : ''}" href="#/settings" title="设置">${I.gear}<span>设置</span></a>
       </nav>
       <div class="side-user">
         ${state.settings?.avatarUrl ? `<img class="side-user-avatar" src="${esc(state.settings.avatarUrl)}" alt="">` : `<span class="side-user-avatar">${esc((state.user.display_name || state.user.username).charAt(0).toUpperCase())}</span>`}
@@ -170,6 +172,11 @@ async function shellView(active, contentHTML) {
     </aside>
     <main class="main">${contentHTML}</main>
   </div>`
+  document.getElementById('btn-side-fold').addEventListener('click', (e) => {
+    const mini = $app.querySelector('.shell').classList.toggle('side-mini')
+    localStorage.setItem('admin-side', mini ? 'mini' : 'full')
+    e.currentTarget.title = mini ? '展开侧栏' : '收起侧栏'
+  })
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => {})
     state.user = null
@@ -667,21 +674,27 @@ function flModal(link) {
         <label class="auth-field"><label>网址</label><input class="input" id="fl-url" inputmode="url" placeholder="https://" value="${esc(link?.url || '')}"></label>
         <label class="auth-field"><label>简介（一两句话，可选）</label><input class="input" id="fl-desc" maxlength="120" value="${esc(link?.description || '')}"></label>
         <div class="auth-field">
-          <label>网站图标（可选，自动获取存到图床；留空则显示站名首字图标）</label>
+          <label>网站图标（可选：自动获取 / 上传图片 / 贴图片地址；留空则显示站名首字图标）</label>
           <div class="fav-row">
             <span id="fl-icon-slot">${flIconHtml(link?.icon || '', link?.name || '')}</span>
             <button class="btn btn-sm" id="fl-icon-fetch" type="button">自动获取</button>
+            <button class="btn btn-sm" id="fl-icon-upload" type="button">上传图片</button>
             <button class="btn btn-sm btn-ghost" id="fl-icon-clear" type="button">清除</button>
+            <input type="file" id="fl-icon-file" accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon,image/vnd.microsoft.icon" hidden>
           </div>
+          <input class="input" id="fl-icon-url" inputmode="url" placeholder="也可直接贴图片地址 https://…，或把复制的图片 Ctrl+V 粘进来" style="margin-top:8px;" value="${esc(link?.icon || '')}">
           <input type="hidden" id="fl-icon" value="${esc(link?.icon || '')}">
         </div>
         ${isEdit ? `<label class="auth-field"><label>排序（数字小的靠前）</label><input class="input" id="fl-sort" type="number" min="0" value="${link.sort ?? 0}"></label>` : ''}
       </div>
       <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="fl-save">保存</button></div>`)
 
+  const q = (sel) => m.mask.querySelector(sel)
   const renderIcon = (icon) => {
-    m.mask.querySelector('#fl-icon').value = icon
-    m.mask.querySelector('#fl-icon-slot').innerHTML = flIconHtml(icon, m.mask.querySelector('#fl-name').value)
+    icon = String(icon || '').trim()
+    q('#fl-icon').value = icon
+    q('#fl-icon-url').value = icon
+    q('#fl-icon-slot').innerHTML = flIconHtml(icon, q('#fl-name').value)
   }
   m.mask.querySelector('#fl-icon-fetch').addEventListener('click', async () => {
     const url = m.mask.querySelector('#fl-url').value.trim()
@@ -699,13 +712,60 @@ function flModal(link) {
     btn.textContent = '自动获取'
     btn.disabled = false
   })
+  // 手动贴图片地址：实时同步预览
+  q('#fl-icon-url').addEventListener('input', (e) => {
+    const icon = e.target.value.trim()
+    q('#fl-icon').value = icon
+    q('#fl-icon-slot').innerHTML = flIconHtml(icon, q('#fl-name').value)
+  })
+  // 本地上传图标，走 R2 图床
+  const iconFile = q('#fl-icon-file')
+  const iconUploadBtn = q('#fl-icon-upload')
+  iconUploadBtn.addEventListener('click', () => iconFile.click())
+  iconFile.addEventListener('change', async () => {
+    const file = iconFile.files[0]
+    if (!file) return
+    iconUploadBtn.textContent = '上传中…'
+    iconUploadBtn.disabled = true
+    try {
+      const d = await uploadFile(file, null)
+      renderIcon(d.url)
+      toast('图标已上传')
+    } catch (e) {
+      toast(e.message, true)
+    }
+    iconUploadBtn.textContent = '上传图片'
+    iconUploadBtn.disabled = false
+    iconFile.value = ''
+  })
+  // 在弹窗里直接粘贴截图 / 复制的图片，自动传图床
+  m.mask.addEventListener('paste', async (e) => {
+    const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'))
+    if (!file) return
+    e.preventDefault()
+    iconUploadBtn.textContent = '上传中…'
+    iconUploadBtn.disabled = true
+    try {
+      const d = await uploadFile(file, null)
+      renderIcon(d.url)
+      toast('图片已上传')
+    } catch (err) {
+      toast(err.message, true)
+    }
+    iconUploadBtn.textContent = '上传图片'
+    iconUploadBtn.disabled = false
+  })
   m.mask.querySelector('#fl-icon-clear').addEventListener('click', () => renderIcon(''))
   m.mask.querySelector('#fl-save').addEventListener('click', async () => {
+    const icon = m.mask.querySelector('#fl-icon').value.trim()
+    if (icon && !icon.startsWith('/images/') && !/^https?:\/\//i.test(icon)) {
+      return toast('图标地址要以 https:// 开头，或直接上传 / 粘贴图片', true)
+    }
     const body = {
       name: m.mask.querySelector('#fl-name').value.trim(),
       url: m.mask.querySelector('#fl-url').value.trim(),
       description: m.mask.querySelector('#fl-desc').value.trim(),
-      icon: m.mask.querySelector('#fl-icon').value,
+      icon,
       status: link ? link.status : 'approved',
       sort: isEdit ? Number(m.mask.querySelector('#fl-sort').value) || 0 : 0,
     }

@@ -952,16 +952,17 @@ export async function mountEditor(root, postId) {
       toast('已修复，可再次体检确认')
     })
   })
-  document.getElementById('ed-drawer-toggle').addEventListener('click', () => {
-    document.getElementById('ed-drawer').classList.toggle('is-hidden')
-  })
-  document.getElementById('ed-drawer-close').addEventListener('click', () => {
-    document.getElementById('ed-drawer').classList.add('is-hidden')
-  })
-  // 小屏下抽屉是覆盖层，编辑器打开时默认收起
-  if (window.matchMedia('(max-width: 860px)').matches) {
-    document.getElementById('ed-drawer').classList.add('is-hidden')
+  // 元信息抽屉：默认收起给写作让位，开关状态记住用户的选择；小屏是覆盖层，始终默认收起
+  const drawer = document.getElementById('ed-drawer')
+  const drawerBtn = document.getElementById('ed-drawer-toggle')
+  const applyDrawer = (hidden, remember) => {
+    drawer.classList.toggle('is-hidden', hidden)
+    drawerBtn.classList.toggle('is-active', !hidden)
+    if (remember) localStorage.setItem('ed-drawer', hidden ? 'hidden' : 'open')
   }
+  applyDrawer(window.matchMedia('(max-width: 860px)').matches || localStorage.getItem('ed-drawer') !== 'open', false)
+  drawerBtn.addEventListener('click', () => applyDrawer(!drawer.classList.contains('is-hidden'), true))
+  document.getElementById('ed-drawer-close').addEventListener('click', () => applyDrawer(true, true))
 
   /* ---------- 封面 ---------- */
   const coverBox = document.getElementById('ed-cover-box')

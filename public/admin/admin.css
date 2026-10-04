@@ -366,7 +366,7 @@ input, textarea, select { font: inherit; color: inherit; }
 .ed-drawer-close {
   position: absolute; top: 10px; right: 10px;
   width: 30px; height: 30px; border-radius: 50%;
-  display: none; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   background: #f2f2f2; color: var(--sub); font-size: 18px; line-height: 1;
 }
 .ed-drawer-close:hover { color: var(--ink); }
@@ -562,3 +562,32 @@ img.side-user-avatar { object-fit: cover; }
   content: ''; position: absolute; top: -2px; left: 12px; right: 12px;
   border-top: 1px dashed var(--line);
 }
+
+/* ---------- 侧栏收起（图标窄条，仅桌面端） ---------- */
+.side-fold {
+  margin-left: auto; width: 24px; height: 24px; border-radius: 6px;
+  color: var(--sub); display: flex; align-items: center; justify-content: center;
+}
+.side-fold:hover { background: #f0f1f2; color: var(--ink); }
+.side-fold svg { width: 15px; height: 15px; transition: transform 0.15s ease; }
+@media (min-width: 861px) {
+  .shell.side-mini .sidebar { width: 58px; flex-basis: 58px; }
+  .shell.side-mini .side-logo { justify-content: center; padding-left: 8px; padding-right: 8px; }
+  .shell.side-mini .side-logo span { display: none; }
+  .shell.side-mini .side-nav { padding: 6px 7px; }
+  .shell.side-mini .side-item { justify-content: center; padding-left: 0; padding-right: 0; }
+  .shell.side-mini .side-item span,
+  .shell.side-mini .side-badge { display: none; }
+  .shell.side-mini .side-fold { margin-left: 0; }
+  .shell.side-mini .side-fold svg { transform: rotate(180deg); }
+  .shell.side-mini .side-user { flex-direction: column; gap: 8px; padding: 12px 8px; }
+  .shell.side-mini .side-user-name,
+  .shell.side-mini .side-logout { display: none; }
+}
+@media (max-width: 860px) {
+  .side-fold { display: none; }
+}
+
+/* ---------- 编辑器：信息按钮高亮 = 抽屉展开中 ---------- */
+#ed-drawer-toggle.is-active { color: var(--accent); background: rgba(178, 58, 41, 0.08); }
+
