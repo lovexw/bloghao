@@ -22,7 +22,7 @@ export interface SessionUser {
   avatar: string
 }
 
-export type PostStatus = 'draft' | 'published'
+export type PostStatus = 'draft' | 'published' | 'scheduled'
 
 export interface PostRow {
   id: number
@@ -38,6 +38,8 @@ export interface PostRow {
   likes: number
   author_id: number | null
   published_at: number | null
+  /** 定时发布目标时间（毫秒）；仅 scheduled 状态有值 */
+  publish_at: number | null
   created_at: number
   updated_at: number
 }

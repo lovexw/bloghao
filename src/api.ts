@@ -204,7 +204,9 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
   const title = String(b.title ?? '').slice(0, 150).trim()
   const content = String(b.content ?? '')
   if (content.length > MAX_CONTENT_BYTES) return { tooBig: true as const }
-  const status = b.status === 'published' ? 'published' : 'draft'
+  const status = b.status === 'published' ? 'published' : b.status === 'scheduled' ? 'scheduled' : 'draft'
+  // 定时发布目标时间（毫秒）：不填或非法时由 PUT 沿用旧值；已过去的时间等价于「到点即发」
+  const publishAt = Number.isFinite(Number(b.publishAt)) && Number(b.publishAt) > 0 ? Math.floor(Number(b.publishAt)) : null
   const tags = Array.isArray(b.tags)
     ? b.tags
         .filter((t): t is string => typeof t === 'string')
@@ -226,12 +228,13 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
     pinned: b.pinned ? 1 : 0,
     slug: String(b.slug ?? '').trim().slice(0, 80),
     categoryId,
+    publishAt,
   }
 }
 
 api.get('/admin/posts', async (c) => {
   const statusParam = c.req.query('status')
-  const status = statusParam === 'published' || statusParam === 'draft' ? statusParam : 'all'
+  const status = statusParam === 'published' || statusParam === 'draft' || statusParam === 'scheduled' ? statusParam : 'all'
   const r = await listPosts(c.env.DB, {
     status,
     q: c.req.query('q') || undefined,
@@ -261,8 +264,8 @@ api.post('/admin/posts', async (c) => {
   const slug = await uniqueSlug(c.env.DB, base)
   const now = Date.now()
   const res = await c.env.DB.prepare(
-    `INSERT INTO posts (slug, title, content, summary, cover, tags, status, pinned, author_id, published_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO posts (slug, title, content, summary, cover, tags, status, pinned, author_id, published_at, publish_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       slug,
@@ -275,6 +278,7 @@ api.post('/admin/posts', async (c) => {
       p.pinned,
       c.get('user').id,
       p.status === 'published' ? now : null,
+      p.status === 'scheduled' ? (p.publishAt ?? null) : null,
       now,
       now
     )
@@ -305,11 +309,17 @@ api.put('/admin/posts/:id', async (c) => {
   const title = p.title || '无标题'
   const slug = p.slug && p.slug !== existing.slug ? await uniqueSlug(c.env.DB, p.slug, id) : existing.slug
   // 草稿也保留已有 published_at：采集插件会把原文发布时间写入草稿，
-  // 自动保存不能把它抹掉；发布时若草稿已有时间则沿用
+  // 自动保存不能把它抹掉；发布时若草稿已有时间则沿用。
+  // publish_at 只在 scheduled 状态下有意义：定时保存写入目标时间，
+  // 转发布/草稿时清空；scheduled 但没给时间则保留旧值（自动保存场景）
   const publishedAt =
     p.status === 'published' ? (existing.published_at ?? Date.now()) : existing.published_at
+  const publishAt =
+    p.status === 'scheduled'
+      ? (p.publishAt ?? existing.publish_at ?? null)
+      : null
   await c.env.DB.prepare(
-    `UPDATE posts SET slug = ?, title = ?, content = ?, summary = ?, cover = ?, tags = ?, status = ?, pinned = ?, published_at = ?, updated_at = ? WHERE id = ?`
+    `UPDATE posts SET slug = ?, title = ?, content = ?, summary = ?, cover = ?, tags = ?, status = ?, pinned = ?, published_at = ?, publish_at = ?, updated_at = ? WHERE id = ?`
   )
     .bind(
       slug,
@@ -321,6 +331,7 @@ api.put('/admin/posts/:id', async (c) => {
       p.status,
       p.pinned,
       publishedAt,
+      publishAt,
       Date.now(),
       id
     )
@@ -807,6 +818,27 @@ api.delete('/admin/uploads', async (c) => {
     c.env.DB.prepare('DELETE FROM uploads WHERE key = ?').bind(key).run(),
   ])
   return c.json({ ok: true })
+})
+
+/* ---------------- OG 分享卡图 ----------------
+ * 编辑器用 canvas 把标题+封面绘成 1200x630 PNG 上传到这里，R2 og/ 目录。
+ * 独立于普通上传：key 前缀 og/，删除文章卡图的入口在编辑器里。
+ */
+api.post('/admin/og-image', async (c) => {
+  if (!rateLimit(`upload:${clientIp(c.req.raw)}`, 60, 60_000)) return jsonError('上传太频繁，请稍后再试', 429)
+  const body = await c.req.parseBody().catch(() => null)
+  const file = body && typeof body === 'object' ? ((body as Record<string, unknown>)['file'] as unknown) : null
+  if (!(file instanceof File)) return jsonError('缺少文件字段 file')
+  if (file.type !== 'image/png') return jsonError('OG 卡图仅支持 PNG')
+  if (file.size > MAX_UPLOAD_BYTES) return jsonError('文件超过 25MB 限制')
+  const key = `og/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.png`
+  await c.env.IMAGES.put(key, await file.arrayBuffer(), {
+    httpMetadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000, immutable' },
+  })
+  await c.env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(key, 'og-card.png', 'image/png', file.size, Date.now())
+    .run()
+  return c.json({ ok: true, url: `/images/${key}`, key })
 })
 
 /* ---------------- 评论管理 ---------------- */

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { scheduledBackup } from './backup'
+import { runScheduledPublish } from './scheduler'
 import { api } from './api'
 import { ensureSchema, getSettings, listPosts } from './db'
 import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
@@ -75,7 +76,7 @@ app.get('/images/*', async (c) => {
   } catch {
     /* 保持原样 */
   }
-  if (!key.startsWith('u/')) return c.text('Not found', 404)
+  if (!key.startsWith('u/') && !key.startsWith('og/')) return c.text('Not found', 404)
   const obj = await c.env.IMAGES.get(key)
   if (!obj) return c.text('Not found', 404)
   if (obj.httpEtag && c.req.header('If-None-Match') === obj.httpEtag) {
@@ -100,8 +101,18 @@ app.onError((err, c) => {
   return c.text('服务开小差了，请稍后再试。', 500)
 })
 
-// fetch：站点与 API；scheduled：Cron Trigger 每晚备份（见 wrangler.jsonc triggers.crons）
+// fetch：站点与 API；scheduled：Cron Trigger——先扫定时发布（每分钟），
+// 每晚备份时间点顺带跑备份（见 wrangler.jsonc triggers.crons）
 export default {
   fetch: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx),
-  scheduled: scheduledBackup,
+  scheduled: (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    // 备份 cron 是 "30 16 * * *"（北京时间 00:30）；其余每分钟触发只做定时发布扫描
+    const isBackupCron = controller.cron === '30 16 * * *'
+    return ctx.waitUntil(
+      (async () => {
+        await runScheduledPublish(env)
+        if (isBackupCron) await scheduledBackup(controller, env)
+      })()
+    )
+  },
 }

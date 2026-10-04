@@ -26,6 +26,16 @@ function fmtDateTime(ts) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+/** 定时徽章用短格式：当年省略年份 */
+function fmtScheduleShort(ts) {
+  if (!ts) return '未设时间'
+  const d = new Date(ts)
+  const now = new Date()
+  const p = (x) => String(x).padStart(2, '0')
+  const ymd = `${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  return `${d.getFullYear() === now.getFullYear() ? '' : d.getFullYear() + '/'}${ymd} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 function fmtSize(bytes) {
   if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
   if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB'
@@ -246,11 +256,17 @@ async function viewPosts() {
   state.pendingComments = 0
 
   const rows = d.items
-    .map(
-      (p) => `<div class="post-row" data-id="${p.id}">
+    .map((p) => {
+      const chip =
+        p.status === 'published'
+          ? '<span class="chip chip-green">已发布</span>'
+          : p.status === 'scheduled'
+            ? `<span class="chip chip-warn">定时 ${fmtScheduleShort(p.publish_at)}</span>`
+            : '<span class="chip chip-gray">草稿</span>'
+      return `<div class="post-row" data-id="${p.id}">
       <div class="post-main">
         <div class="post-title"><a href="#/editor/${p.id}">${esc(p.title)}</a>
-          ${p.status === 'published' ? '<span class="chip chip-green">已发布</span>' : '<span class="chip chip-gray">草稿</span>'}
+          ${chip}
           ${p.pinned ? '<span class="chip chip-warn">置顶</span>' : ''}
         </div>
         <div class="post-meta">
@@ -268,7 +284,7 @@ async function viewPosts() {
         <button class="btn btn-ghost btn-sm btn-danger" data-act="del">删除</button>
       </div>
     </div>`
-    )
+    })
     .join('')
 
   await shellView(
@@ -279,8 +295,11 @@ async function viewPosts() {
     </div>
     <div class="toolbar">
       <div class="tabs">
-        ${['all', 'published', 'draft']
-          .map((t) => `<button class="tab${t === status ? ' is-active' : ''}" data-tab="${t}">${{ all: '全部', published: '已发布', draft: '草稿' }[t]}</button>`)
+        ${['all', 'published', 'scheduled', 'draft']
+          .map(
+            (t) =>
+              `<button class="tab${t === status ? ' is-active' : ''}" data-tab="${t}">${{ all: '全部', published: '已发布', scheduled: '定时', draft: '草稿' }[t]}</button>`
+          )
           .join('')}
       </div>
       <input class="input" id="search-input" placeholder="搜索标题 / 正文…" value="${esc(kw)}">
@@ -315,7 +334,11 @@ async function viewPosts() {
     })
     row.querySelector('[data-act=toggle]').addEventListener('click', async () => {
       const publish = post.status !== 'published'
-      await api(`/admin/posts/${id}`, { method: 'PUT', body: { ...post, status: publish ? 'published' : 'draft' } })
+      // 定时文章点「发布」立即发出并清掉定时时间
+      await api(`/admin/posts/${id}`, {
+        method: 'PUT',
+        body: { ...post, status: publish ? 'published' : 'draft', publishAt: publish ? null : post.publishAt ?? null },
+      })
       toast(publish ? '已发布 🎉' : '已转为草稿')
       viewPosts()
     })
@@ -429,7 +452,7 @@ async function viewWeibo() {
     for (const f of imgs.slice(0, room)) {
       try {
         addImgBtn.textContent = `上传中 ${f.name.slice(0, 12)}…`
-        const r = await uploadFile(f, null)
+        const r = await uploadFile(await compressImage(f), null)
         images.push(r.url)
         renderImgs()
       } catch (e) {
@@ -728,7 +751,7 @@ function flModal(link) {
     iconUploadBtn.textContent = '上传中…'
     iconUploadBtn.disabled = true
     try {
-      const d = await uploadFile(file, null)
+      const d = await uploadFile(await compressImage(file), null)
       renderIcon(d.url)
       toast('图标已上传')
     } catch (e) {
@@ -746,7 +769,7 @@ function flModal(link) {
     iconUploadBtn.textContent = '上传中…'
     iconUploadBtn.disabled = true
     try {
-      const d = await uploadFile(file, null)
+      const d = await uploadFile(await compressImage(file), null)
       renderIcon(d.url)
       toast('图片已上传')
     } catch (err) {
@@ -1067,7 +1090,7 @@ async function viewMedia() {
     input.onchange = async () => {
       if (!input.files[0]) return
       try {
-        await uploadFile(input.files[0], null)
+        await uploadFile(await compressImage(input.files[0]), null)
         toast('上传成功')
         viewMedia()
       } catch (e) {
@@ -1279,7 +1302,7 @@ async function viewSettings() {
     input.onchange = async () => {
       if (!input.files[0]) return
       try {
-        const d = await uploadFile(input.files[0])
+        const d = await uploadFile(await compressImage(input.files[0]))
         document.getElementById('st-avatarUrl').value = d.url
         renderAvatarSlot(d.url)
         toast('头像已上传，记得点「保存全部」生效')
@@ -1302,7 +1325,7 @@ async function viewSettings() {
     input.onchange = async () => {
       if (!input.files[0]) return
       try {
-        const d = await uploadFile(input.files[0])
+        const d = await uploadFile(await compressImage(input.files[0]))
         document.getElementById('st-faviconUrl').value = d.url
         renderFavSlot(d.url)
         toast('图标已上传，记得点「保存全部」生效')
@@ -1421,7 +1444,41 @@ async function viewSettings() {
   })
 }
 
-/* ---------------- 上传（带进度） ---------------- */
+/* ---------------- 上传（带进度） ----------------
+ * 上传前自动压缩（与编辑器同参数）：JPEG/PNG/WebP 超 300KB 或超 2000px 时压成 JPEG（PNG 透明保 PNG）；
+ * GIF 动图会压丢帧，原样直传。失败回退原文件。 */
+const IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 300 * 1024, QUALITY: 0.82 }
+
+function hasAlphaSampled(bmp) {
+  const cv = document.createElement('canvas')
+  cv.width = cv.height = 1
+  const d = cv.getContext('2d').drawImage(bmp, 0, 0, 1, 1).getImageData(0, 0, 1, 1).data
+  return d[3] < 250
+}
+
+async function compressImage(file) {
+  try {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= IMG_COMPRESS.MIN_BYTES) return file
+    const bmp = await createImageBitmap(file)
+    const scale = Math.min(1, IMG_COMPRESS.MAX_DIM / Math.max(bmp.width, bmp.height))
+    const toJpeg = file.type !== 'image/png' || !hasAlphaSampled(bmp)
+    if (scale >= 1 && !toJpeg) return file
+    const w = Math.max(1, Math.round(bmp.width * scale))
+    const h = Math.max(1, Math.round(bmp.height * scale))
+    const cv = document.createElement('canvas')
+    cv.width = w
+    cv.height = h
+    cv.getContext('2d').drawImage(bmp, 0, 0, w, h)
+    const blob = await new Promise((r) => cv.toBlob(r, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY))
+    bmp.close?.()
+    if (!blob || blob.size >= file.size) return file
+    const name = (file.name || 'image').replace(/\.[^.]+$/, '') + (toJpeg ? '.jpg' : '.png')
+    return new File([blob], name, { type: toJpeg ? 'image/jpeg' : 'image/png' })
+  } catch {
+    return file
+  }
+}
+
 function uploadFile(file, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()

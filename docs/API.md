@@ -78,7 +78,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### 文章
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/posts?status=all\|published\|draft&q=关键词&page=1&limit=20` | 列表（不含 content；元素附 `tagList`、`categoryName`） |
+| GET | `/api/admin/posts?status=all\|published\|scheduled\|draft&q=关键词&page=1&limit=20` | 列表（不含 content；元素附 `tagList`、`categoryName`） |
 | POST | `/api/admin/posts` | 新建 |
 | GET | `/api/admin/posts/:id` | 详情（含 content、categoryId） |
 | PUT | `/api/admin/posts/:id` | 更新（autosave 用；已发布时间不会被草稿保存抹掉） |
@@ -96,13 +96,14 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
   "cover": "/images/u/202610/xxx.jpg",
   "tags": ["生活", "Cloudflare"],
   "categoryId": 1,
-  "status": "draft | published",
+  "status": "draft | published | scheduled",
+  "publishAt": 1791121500000,
   "pinned": false,
   "slug": "留空自动生成，可自定义"
 }
 ```
 
-约束：title ≤ 150 字；content ≤ 1MB；tags ≤ 8 个、每个 ≤ 20 字；cover 必须以 `/` 或 `http(s)://` 开头；`categoryId` 为 null/空表示未分类，不存在分类 id 时被忽略。
+约束：title ≤ 150 字；content ≤ 1MB；tags ≤ 8 个、每个 ≤ 20 字；cover 必须以 `/` 或 `http(s)://` 开头；`categoryId` 为 null/空表示未分类，不存在分类 id 时被忽略。`status:"scheduled"` 时 `publishAt` 为毫秒时间戳（到点由每分钟 Cron 翻成 published 并把 `published_at` 设为该时刻，同时推 Telegram；转 published/draft 时 `publishAt` 自动清空）。
 
 ### 微博（随手记）
 | 方法 | 路径 | 说明 |
@@ -165,7 +166,8 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### 上传 / 媒体
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/admin/upload` | multipart，字段名 `file`；图片 JPG/PNG/WebP/GIF（favicon 另允许 ICO）、视频 MP4/WebM；≤ 25MB；限频 60 次/分钟/IP；返回 `{url:"/images/u/...", key, mime, size}` |
+| POST | `/api/admin/upload` | multipart，字段名 `file`；图片 JPG/PNG/WebP/GIF（favicon 另允许 ICO）、视频 MP4/WebM；≤ 25MB；限频 60 次/分钟/IP；返回 `{url:"/images/u/...", key, mime, size}`（前端上传前自动压缩大图，API 直传不压缩） |
+| POST | `/api/admin/og-image` | multipart，字段名 `file`；仅 PNG（编辑器 canvas 生成的 1200×630 分享卡图），存 R2 `og/` 目录；返回 `{url:"/images/og/...", key}` |
 | GET | `/api/admin/uploads?page=1` | 媒体列表（每页 24） |
 | DELETE | `/api/admin/uploads?key=u/202610/xxx.png` | 从 R2 与索引中删除 |
 

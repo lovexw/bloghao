@@ -62,7 +62,7 @@ export function parseTags(row: Pick<PostRow, 'tags'>): string[] {
 export type PostSort = 'latest' | 'views' | 'likes' | 'comments' | 'random'
 
 export interface ListPostsOptions {
-  status?: 'published' | 'draft' | 'all'
+  status?: 'published' | 'draft' | 'scheduled' | 'all'
   q?: string
   tag?: string
   categorySlug?: string
@@ -484,6 +484,7 @@ export async function getFriendLinkById(db: D1Database, id: number): Promise<Fri
  * 老库升级靠这里：启动时检查缺列，自动 ALTER TABLE 补齐（每个 isolate 只跑一次）。
  */
 const SCHEMA_COLUMNS: { table: string; column: string; ddl: string }[] = [
+  { table: 'posts', column: 'publish_at', ddl: 'ALTER TABLE posts ADD COLUMN publish_at INTEGER' },
   { table: 'weibo', column: 'likes', ddl: 'ALTER TABLE weibo ADD COLUMN likes INTEGER NOT NULL DEFAULT 0' },
   { table: 'weibo', column: 'topics', ddl: "ALTER TABLE weibo ADD COLUMN topics TEXT NOT NULL DEFAULT '[]'" },
   { table: 'weibo', column: 'pinned', ddl: 'ALTER TABLE weibo ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0' },

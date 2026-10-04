@@ -38,7 +38,7 @@ import {
   type CategoryLink,
   type WeiboItemView,
 } from './render'
-import { sanitizeHtml } from './sanitize'
+import { extractOgImage, sanitizeHtml } from './sanitize'
 import { getTheme, THEMES } from './themes/registry'
 import type { Env, PostRow, SessionUser, SettingsMap } from './types'
 import { clampInt, esc, excerpt, readingMinutes } from './utils'
@@ -292,13 +292,15 @@ export async function renderPost(c: C): Promise<Response> {
     related: related.map((p) => toHomePost(p, parseTags(p))),
   })
   c.header('Cache-Control', 'no-cache')
+  // 分享卡图优先：编辑器生成的 OG 卡图 > 封面图
+  const ogImage = extractOgImage(sanitizeHtml(row.content)) || row.cover || undefined
   return c.html(
     page({
       settings,
       css: theme.css,
       title: row.title,
       description: row.summary || excerpt(row.content, 120),
-      ogImage: row.cover || undefined,
+      ogImage,
       path: `/post/${row.slug}`,
       body: html,
       preview: isPreview,

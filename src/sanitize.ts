@@ -18,6 +18,16 @@ const DROP_WITH_CONTENT = new Set([
   'base', 'frame', 'frameset', 'applet', 'template', 'dialog', 'audio',
 ])
 
+/** meta 例外：编辑器生成的 OG 分享卡图标记（<meta data-og-image="/images/...">），存进正文供前台输出 og:image */
+const OG_META_RE = /^\s*<meta[^>]*\bdata-og-image=(?:"[^"]+"|'[^']+'|[^\s>]+)[^>]*\/?>\s*$/i
+
+/** 从 OG meta 里取卡图 URL；必须是站内相对路径，拒绝任何外链/协议 */
+function ogImageUrl(raw: string): string | null {
+  const m = /data-og-image=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(raw)
+  const v = (m?.[1] ?? m?.[2] ?? m?.[3] ?? '').trim()
+  return v.startsWith('/images/') && !v.includes('"') && !/[\s<>]/.test(v) ? v : null
+}
+
 const ALLOWED_TAGS = new Set([
   'p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'blockquote', 'pre', 'code', 'kbd', 'samp',
@@ -168,6 +178,14 @@ export function sanitizeHtml(input: string): string {
     const selfClosed = m[4] === '/'
 
     if (DROP_WITH_CONTENT.has(name)) {
+      // 例外：OG 卡图 meta（必须整段只有一个 meta 且 URL 是站内 /images/ 路径）原样放行
+      if (name === 'meta' && !isClose && OG_META_RE.test(m[0])) {
+        const url = ogImageUrl(attrsRaw)
+        if (url) {
+          out += `<meta data-og-image="${escAttr(url)}" content="${escAttr(url)}">`
+          continue
+        }
+      }
       if (!isClose && !selfClosed) {
         // 丢弃到对应结束标签为止；未闭合则丢弃其后全部内容（对 script/style 是正确行为）
         const rest = input.slice(last)
@@ -193,4 +211,10 @@ export function sanitizeHtml(input: string): string {
 /** 净化纯文本（评论区等场景不涉及 HTML，直接转义） */
 export function escapeText(s: string): string {
   return escAttr(s)
+}
+
+/** 取正文里的 OG 分享卡图 URL（sanitize 后的 content 只会有合法的站内 /images/ 路径） */
+export function extractOgImage(contentHtml: string): string | null {
+  const m = /<meta[^>]+data-og-image="([^"]+)"/i.exec(contentHtml)
+  return m?.[1] ?? null
 }

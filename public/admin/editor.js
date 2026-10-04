@@ -33,6 +33,137 @@ async function api(path, opts = {}) {
   return data
 }
 
+/* ---------- 上传前图片压缩（编辑器/封面/OG 与前台发布器共用逻辑，两端各自落地） ----------
+ * JPEG/PNG/WebP 且大于阈值时：最长边压到 MAX_DIM、JPEG 质量 0.82 转 JPEG；
+ * GIF（动图会压丢帧）与小于阈值的图原样返回。失败时返回原文件，不阻塞上传。 */
+const IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 300 * 1024, QUALITY: 0.82 }
+
+async function compressImage(file) {
+  try {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= IMG_COMPRESS.MIN_BYTES) return file
+    const bmp = await createImageBitmap(file)
+    const scale = Math.min(1, IMG_COMPRESS.MAX_DIM / Math.max(bmp.width, bmp.height))
+    // PNG 透明图不转 JPEG（会糊成黑底），仅超尺寸时缩到 PNG；其余统一 JPEG
+    const toJpeg = file.type !== 'image/png' || !hasAlpha(bmp)
+    if (scale >= 1 && !toJpeg) return file
+    const w = Math.max(1, Math.round(bmp.width * scale))
+    const h = Math.max(1, Math.round(bmp.height * scale))
+    const cv = document.createElement('canvas')
+    cv.width = w
+    cv.height = h
+    cv.getContext('2d').drawImage(bmp, 0, 0, w, h)
+    const blob = await new Promise((r) => cv.toBlob(r, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY))
+    bmp.close?.()
+    if (!blob || blob.size >= file.size) return file
+    const name = (file.name || 'image').replace(/\.[^.]+$/, '') + (toJpeg ? '.jpg' : '.png')
+    return new File([blob], name, { type: toJpeg ? 'image/jpeg' : 'image/png' })
+  } catch {
+    return file
+  }
+}
+
+function hasAlpha(bmp) {
+  // 抽样画到 1x1 看平均透明度：不透明 PNG 转 JPEG 更划算
+  const cv = document.createElement('canvas')
+  cv.width = cv.height = 1
+  const d = cv.getContext('2d').drawImage(bmp, 0, 0, 1, 1).getImageData(0, 0, 1, 1).data
+  return d[3] < 250
+}
+
+/* ---------- OG 分享卡图：标题 + 底图绘成 1200x630 PNG ----------
+ * 底图取封面/正文首图，没有则用主题色渐变兜底；标题自动换行居中。 */
+const OG_W = 1200
+const OG_H = 630
+
+function drawOgCard(title, imgUrl) {
+  return new Promise((resolve) => {
+    const cv = document.createElement('canvas')
+    cv.width = OG_W
+    cv.height = OG_H
+    const ctx = cv.getContext('2d')
+    const finish = () => {
+      // 文字阴影 + 三行截断
+      const lines = wrapOgTitle(ctx, title, OG_W - 160, 3)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.shadowColor = 'rgba(0,0,0,.55)'
+      ctx.shadowBlur = 18
+      ctx.fillStyle = '#fff'
+      ctx.font = '700 64px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif'
+      const lh = 84
+      const startY = OG_H / 2 - ((lines.length - 1) * lh) / 2
+      lines.forEach((t, i) => ctx.fillText(t, OG_W / 2, startY + i * lh))
+      cv.toBlob((b) => resolve(b ? new File([b], 'og-card.png', { type: 'image/png' }) : null), 'image/png')
+    }
+    if (!imgUrl) {
+      const g = ctx.createLinearGradient(0, 0, OG_W, OG_H)
+      g.addColorStop(0, '#2f3a4f')
+      g.addColorStop(1, '#12151c')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, OG_W, OG_H)
+      finish()
+      return
+    }
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      // cover 式铺满：按比例裁剪
+      const s = Math.max(OG_W / img.naturalWidth, OG_H / img.naturalHeight)
+      const w = img.naturalWidth * s
+      const h = img.naturalHeight * s
+      ctx.drawImage(img, (OG_W - w) / 2, (OG_H - h) / 2, w, h)
+      ctx.fillStyle = 'rgba(0,0,0,.38)'
+      ctx.fillRect(0, 0, OG_W, OG_H)
+      finish()
+    }
+    img.onerror = () => {
+      const g = ctx.createLinearGradient(0, 0, OG_W, OG_H)
+      g.addColorStop(0, '#2f3a4f')
+      g.addColorStop(1, '#12151c')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, OG_W, OG_H)
+      finish()
+    }
+    img.src = imgUrl
+  })
+}
+
+function wrapOgTitle(ctx, text, maxWidth, maxLines) {
+  const chars = String(text || '').split('')
+  const lines = []
+  let line = ''
+  ctx.font = '700 64px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif'
+  for (const ch of chars) {
+    if (ch === '\n') {
+      lines.push(line)
+      line = ''
+      if (lines.length === maxLines) break
+      continue
+    }
+    if (ctx.measureText(line + ch).width > maxWidth && line) {
+      lines.push(line)
+      line = ch
+      if (lines.length === maxLines) break
+    } else {
+      line += ch
+    }
+  }
+  if (lines.length < maxLines && line) lines.push(line)
+  if (lines.length === maxLines && (line || chars.length > lines.join('').length)) {
+    lines[maxLines - 1] = lines[maxLines - 1].replace(/.{1}$/, '') + '…'
+  }
+  return lines.filter(Boolean)
+}
+
+async function uploadOgCard(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch('/api/admin/og-image', { method: 'POST', body: fd })
+  const d = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(d.error || 'OG 卡图上传失败')
+  return d.url
+}
+
 function toast(msg, isErr = false) {
   const slot = document.getElementById('toast-slot')
   const el = document.createElement('div')
@@ -297,10 +428,14 @@ export async function mountEditor(root, postId) {
     status: 'draft',
     pinned: false,
     published_at: null,
+    publish_at: null,
+    og_image: '',
   }
   if (postId) {
     const d = await api(`/admin/posts/${postId}`)
     Object.assign(post, d.post, { tags: d.post.tagList || [], categoryId: d.post.categoryId ?? null })
+    // og_image 不入库：编辑器里以上传后写进正文的 meta 为准，此处从 cover 派生展示
+    post.og_image = post.og_image || ''
   }
 
   let mdMode = false
@@ -394,6 +529,20 @@ export async function mountEditor(root, postId) {
         <div><div class="switch-label">置顶文章</div><div class="switch-sub">在首页列表置顶展示</div></div>
         <label class="switch"><input type="checkbox" id="ed-pinned" ${post.pinned ? 'checked' : ''}><span class="track"></span></label>
       </div>
+      <div class="switch-row" id="ed-schedule-row">
+        <div><div class="switch-label">定时发布</div><div class="switch-sub">到点自动发布并推送 Telegram</div></div>
+        <label class="switch"><input type="checkbox" id="ed-scheduled" ${post.status === 'scheduled' ? 'checked' : ''}><span class="track"></span></label>
+      </div>
+      <div id="ed-schedule-picker" style="display:none;">
+        <input class="input" type="datetime-local" id="ed-publish-at" step="60">
+        <div style="font-size:12px;color:var(--sub);margin-top:6px;">北京时间，精确到分钟；到点后 1 分钟内自动发布</div>
+      </div>
+
+      <div class="drawer-title">分享卡图</div>
+      <div id="ed-og-box">
+        ${post.cover && !post.og_image ? `<div style="font-size:12px;color:var(--sub);line-height:1.7;">分享到微信/TG 时默认用封面图，可生成带标题的专属卡图</div>` : post.og_image ? `<img src="${esc(post.og_image)}" style="width:100%;border-radius:8px;border:1px solid var(--line);" id="ed-og-img"><button class="btn btn-ghost btn-sm" id="ed-og-remove" style="margin-top:6px;">移除卡图</button>` : `<button class="btn btn-sm" id="ed-og-gen" style="width:100%;">生成分享卡图</button>`}
+      </div>
+
       <div style="font-size:12px;color:var(--sub);margin-top:16px;line-height:1.8;">
         发布时间：${post.published_at ? new Date(post.published_at).toLocaleString('zh-CN') : '未发布'}<br>
         图片粘贴后自动上传 R2，外链图片不受影响。
@@ -476,7 +625,8 @@ export async function mountEditor(root, postId) {
   async function uploadAndInsert(file) {
     saveState.textContent = `上传中 ${file.name}…`
     try {
-      const d = await uploadFile(file, (p) => (saveState.textContent = `上传中 ${p}%`))
+      const out = await compressImage(file)
+      const d = await uploadFile(out, (p) => (saveState.textContent = `上传中 ${p}%`))
       const w = await probeWidth(d.url)
       const name = (file.name || '').replace(/\.[^.]+$/, '')
       if (file.type.startsWith('video/')) {
@@ -536,6 +686,7 @@ export async function mountEditor(root, postId) {
       pinned: document.getElementById('ed-pinned').checked,
       slug: document.getElementById('ed-slug').value.trim(),
       status: post.status,
+      publishAt: post.publish_at,
       ...extra,
     }
   }
@@ -572,8 +723,10 @@ export async function mountEditor(root, postId) {
       clearTimeout(saveTimer)
       const t = new Date()
       saveState.textContent = `已保存 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
-      pill.textContent = post.status === 'published' ? '已发布' : '草稿'
-      pill.className = `ed-status-pill chip ${post.status === 'published' ? 'chip-green' : 'chip-gray'}`
+      const pillText = post.status === 'published' ? '已发布' : post.status === 'scheduled' ? `定时 ${fmtSchedule(post.publish_at)}` : '草稿'
+      pill.textContent = pillText
+      pill.className = `ed-status-pill chip ${post.status === 'published' ? 'chip-green' : post.status === 'scheduled' ? 'chip-warn' : 'chip-gray'}`
+      document.getElementById('ed-publish').textContent = post.status === 'published' ? '更新' : '发布'
       return post
     } catch (e) {
       saveState.textContent = '保存失败，点击重试'
@@ -590,25 +743,58 @@ export async function mountEditor(root, postId) {
     return post
   }
 
+  /** 定时时间展示：缺年（当年）只显示 月-日 时:分 */
+  function fmtSchedule(ts) {
+    if (!ts) return '未设时间'
+    const d = new Date(ts)
+    const now = new Date()
+    const sameYear = d.getFullYear() === now.getFullYear()
+    const p = (n) => String(n).padStart(2, '0')
+    return `${sameYear ? '' : d.getFullYear() + '/'}${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+
   async function publish() {
     if (!titleEl.value.trim()) {
       titleEl.focus()
       return toast('发布前先取个标题吧', true)
     }
     if (mdMode) await exitMdMode()
-    post.status = 'published'
+    // 勾了定时：保存为 scheduled，到点由 cron 自动发布
+    const wantScheduled = document.getElementById('ed-scheduled')?.checked
+    const atInput = document.getElementById('ed-publish-at')
+    if (wantScheduled) {
+      if (!atInput || !atInput.value) {
+        document.getElementById('ed-schedule-row')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        atInput?.focus()
+        return toast('定了时要选一个发布时间', true)
+      }
+      const ts = new Date(atInput.value).getTime()
+      if (!Number.isFinite(ts)) return toast('发布时间格式不对', true)
+      if (ts < Date.now() - 60_000) return toast('发布时间已经过去了，选个未来的时间吧', true)
+      post.status = 'scheduled'
+      post.publish_at = ts
+    } else {
+      post.status = 'published'
+      post.publish_at = null
+    }
     try {
-      await save({ status: 'published' })
+      await save()
       document.getElementById('ed-publish').textContent = '更新'
-      toast('发布成功 🎉 点击「预览」查看文章')
+      toast(
+        post.status === 'scheduled'
+          ? `已定时：${fmtSchedule(post.publish_at)} 自动发布并推送 Telegram ⏰`
+          : '发布成功 🎉 点击「预览」查看文章'
+      )
     } catch (e) {
-      post.status = 'draft'
+      post.status = wantScheduled ? 'draft' : 'scheduled'
+      post.publish_at = wantScheduled ? post.publish_at : null
       toast(e.message, true)
     }
   }
 
   async function unpublish() {
     post.status = 'draft'
+    post.publish_at = null
     await save({ status: 'draft' }).catch(() => (post.status = 'published'))
     document.getElementById('ed-publish').textContent = '发布'
     toast('已转为草稿')
@@ -752,7 +938,8 @@ export async function mountEditor(root, postId) {
       progress.classList.add('on')
       for (const f of list) {
         try {
-          const d = await uploadFile(f, (p) => (bar.style.width = p + '%'))
+          const out = await compressImage(f)
+          const d = await uploadFile(out, (p) => (bar.style.width = p + '%'))
           const w = await probeWidth(d.url)
           m.close()
           restoreSelection()
@@ -831,6 +1018,95 @@ export async function mountEditor(root, postId) {
   })
   ;['ed-summary', 'ed-slug'].forEach((id) => document.getElementById(id).addEventListener('input', markDirty))
   document.getElementById('ed-pinned').addEventListener('change', markDirty)
+
+  /* ---------- 定时发布 ---------- */
+  const scheduleSwitch = document.getElementById('ed-scheduled')
+  const schedulePicker = document.getElementById('ed-schedule-picker')
+  const publishAtInput = document.getElementById('ed-publish-at')
+  // datetime-local 值 ↔ 毫秒：按本地时区（即北京时间）换算
+  const toLocalInput = (ts) => {
+    if (!ts) return ''
+    const d = new Date(ts)
+    const p = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+  if (post.status === 'scheduled' && post.publish_at) publishAtInput.value = toLocalInput(post.publish_at)
+  scheduleSwitch.addEventListener('change', () => {
+    schedulePicker.style.display = scheduleSwitch.checked ? '' : 'none'
+    if (scheduleSwitch.checked && !publishAtInput.value) {
+      const d = new Date(Date.now() + 3600_000)
+      d.setSeconds(0, 0)
+      publishAtInput.value = toLocalInput(d.getTime())
+    }
+    markDirty()
+  })
+  publishAtInput.addEventListener('input', () => {
+    const ts = publishAtInput.value ? new Date(publishAtInput.value).getTime() : null
+    post.publish_at = Number.isFinite(ts) ? ts : null
+    markDirty()
+  })
+  schedulePicker.style.display = scheduleSwitch.checked ? '' : 'none'
+
+  /* ---------- OG 分享卡图：标题+封面绘成 1200x630 PNG 上传，URL 写进正文 <meta og-image> ---------- */
+  const ogBox = document.getElementById('ed-og-box')
+  async function renderOgBox(url) {
+    if (!url) {
+      ogBox.innerHTML = `<button class="btn btn-sm" id="ed-og-gen" style="width:100%;">生成分享卡图</button>`
+      bindOgGen()
+      return
+    }
+    ogBox.innerHTML = `<img src="${esc(url)}" style="width:100%;border-radius:8px;border:1px solid var(--line);" id="ed-og-img"><button class="btn btn-ghost btn-sm" id="ed-og-remove" style="margin-top:6px;">移除卡图</button>`
+    ogBox.querySelector('#ed-og-remove').addEventListener('click', async () => {
+      // 从正文里摘掉 meta 标记，保存后前台回退到封面图
+      editor.innerHTML = editor.innerHTML.replace(/<meta[^>]+data-og-image[^>]*>/gi, '')
+      await save(false).catch(() => null)
+      await renderOgBox('')
+      toast('已移除，分享时回退到封面图')
+    })
+  }
+  function bindOgGen() {
+    const gen = ogBox.querySelector('#ed-og-gen')
+    if (!gen) return
+    gen.addEventListener('click', async () => {
+      if (dirty || !post.id) await save(false).catch(() => null)
+      const title = titleEl.value.trim() || '无标题'
+      const firstImg = (() => {
+        const m = editor.innerHTML.match(/<img[^>]+src="([^"]+)"/i)
+        return m ? m[1] : ''
+      })()
+      gen.disabled = true
+      gen.textContent = '生成中…'
+      try {
+        const file = await drawOgCard(title, post.cover || firstImg)
+        if (!file) throw new Error('画卡图失败，换张封面试试')
+        const url = await uploadOgCard(file)
+        // 正文头部插 <meta data-og-image>：sanitize 会放行带 data-* 的 meta，前台读它输出 og:image
+        editor.innerHTML = editor.innerHTML.replace(/<meta[^>]+data-og-image[^>]*>/gi, '')
+        editor.insertAdjacentHTML(
+          'afterbegin',
+          `<meta data-og-image="${esc(url)}" content="${esc(url)}">`
+        )
+        post.og_image = url
+        await save(false)
+        await renderOgBox(url)
+        toast('卡图已生成并保存 ✅')
+      } catch (e) {
+        toast(e.message, true)
+      } finally {
+        gen.disabled = false
+        gen.textContent = '生成分享卡图'
+      }
+    })
+  }
+  // 已有卡图时（重进编辑器）从正文 meta 恢复展示
+  if (!post.og_image) {
+    const m = editor.innerHTML.match(/<meta[^>]+data-og-image="([^"]+)"/i)
+    if (m) {
+      post.og_image = m[1]
+      renderOgBox(post.og_image)
+    }
+  }
+  bindOgGen()
 
   editor.addEventListener('paste', async (e) => {
     const cd = e.clipboardData
@@ -979,7 +1255,8 @@ export async function mountEditor(root, postId) {
     input.onchange = async () => {
       if (!input.files[0]) return
       try {
-        const d = await uploadFile(input.files[0], null)
+        const out = await compressImage(input.files[0])
+        const d = await uploadFile(out, null)
         post.cover = d.url
         coverBox.innerHTML = `<img src="${esc(post.cover)}"><button class="cover-remove" id="ed-cover-remove" title="移除封面">×</button>`
         coverBox.querySelector('#ed-cover-remove').addEventListener('click', (ev) => {
