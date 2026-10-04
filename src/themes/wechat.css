@@ -484,7 +484,7 @@ a.wx-account:hover { opacity: 0.75; }
   .wx-masthead .wx-avatar { width: 56px; height: 56px; flex-basis: 56px; font-size: 24px; margin-bottom: 14px; box-shadow: 0 4px 14px rgba(178, 58, 41, 0.18); }
   .wx-masthead-name { font-size: 22px; }
   .wx-masthead-desc { font-size: 13.5px; }
-  .wx-search { margin-top: 18px; }
+  .wx-search { margin-top: 24px; }
   .wx-search-input { padding-right: 68px; }
   .wx-search-btn { padding: 6px 13px; }
   .wx-page { padding-left: 16px; padding-right: 16px; padding-bottom: calc(44px + env(safe-area-inset-bottom)); }
@@ -548,7 +548,7 @@ a.wx-account:hover { opacity: 0.75; }
 .wx-notice { padding: 16px 0 0; }
 
 /* ---------- 刊头搜索框（微博卡与文章列表之间） ---------- */
-.wx-search { position: relative; max-width: 380px; margin: 18px auto 0; }
+.wx-search { position: relative; max-width: 380px; margin: 28px auto 0; }
 .wx-search-ico {
   position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
   width: 15px; height: 15px;
@@ -576,7 +576,7 @@ a.wx-account:hover { opacity: 0.75; }
 /* ---------- 列表排序筛选（搜索框下方） ---------- */
 .fs-bar {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
-  gap: 8px; max-width: 460px; margin: 16px auto 4px;
+  gap: 8px; max-width: 460px; margin: 20px auto 8px;
 }
 .fs-label { font-size: 12px; color: #b5aea1; letter-spacing: 0.08em; }
 .fs-chip {
