@@ -314,4 +314,40 @@
         }
       })
   })
+
+  /* ---------------- 友链申请收录（/links 页表单） ---------------- */
+  document.addEventListener('submit', function (e) {
+    var form = e.target
+    if (!form || !form.classList || !form.classList.contains('fl-form')) return
+    e.preventDefault()
+    var name = form.querySelector('[name=name]')
+    var url = form.querySelector('[name=url]')
+    var desc = form.querySelector('[name=description]')
+    var link = form.querySelector('[name=link]')
+    var tip = form.querySelector('.fl-tip')
+    var btn = form.querySelector('.fl-submit')
+    if (!name.value.trim() || !url.value.trim()) return
+    var label = btn.textContent
+    btn.textContent = '提交中…'
+    btn.disabled = true
+    postJSON('/api/public/links/apply', {
+      name: name.value.trim(),
+      url: url.value.trim(),
+      description: desc ? desc.value.trim() : '',
+      link: link ? link.value : '',
+    })
+      .then(function () {
+        name.value = ''
+        url.value = ''
+        if (desc) desc.value = ''
+        if (tip) tip.textContent = '已提交，站长审核通过后就会展示在这里 🎉'
+      })
+      .catch(function (err) {
+        if (tip) tip.textContent = (err && err.message) || '提交失败，请重试'
+      })
+      .finally(function () {
+        btn.textContent = label
+        btn.disabled = false
+      })
+  })
 })()

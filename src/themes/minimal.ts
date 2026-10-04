@@ -3,6 +3,8 @@ import {
   categoryLink,
   esc,
   fmtDate,
+  friendLinkApply,
+  friendLinkCards,
   likesBtn,
   pagerHtml,
   siteNav,
@@ -12,6 +14,7 @@ import {
   weiboPager,
   weiboTopicBar,
   type CategoryLink,
+  type FriendLinkView,
   type HomePostView,
   type TagCount,
   type WeiboItemView,
@@ -176,6 +179,32 @@ export function weibo(d: {
     ${cards || '<p class="wb-empty">Nothing here yet.</p>'}
   </main>
   ${weiboPager(d.page, d.totalPages)}
+  <footer class="mn-footer">
+    <span>${esc(s.footerText || '')}</span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
+</div>`
+}
+
+/** 友情链接页：友链卡片 + 申请收录 */
+export function links(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  items: FriendLinkView[]
+  total: number
+}): string {
+  const s = d.settings
+  return `<div class="mn-wrap">
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'links' })}
+  <header class="mn-header">
+    <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
+    <nav class="mn-nav"><a class="mn-nav-link is-active" href="/links">友链</a><a class="mn-nav-link" href="/about">关于</a></nav>
+  </header>
+  <main class="fl-grid">
+    ${friendLinkCards(d.items) || '<p class="wb-empty">No links yet.</p>'}
+  </main>
+  ${friendLinkApply()}
   <footer class="mn-footer">
     <span>${esc(s.footerText || '')}</span>
     <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>

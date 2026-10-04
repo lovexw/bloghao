@@ -369,3 +369,57 @@ img { max-width: 100%; height: auto; }
 .wb-topic-chip i { font-style: normal; font-size: 11px; opacity: 0.65; font-variant-numeric: tabular-nums; }
 .wb-topic-chip:hover { color: var(--mn-ink); border-color: var(--mn-ink); }
 .wb-topic-chip.is-active { color: #fff; background: var(--mn-ink); border-color: var(--mn-ink); }
+
+/* ---------- 友情链接 ---------- */
+.fl-grid { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fl-card {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  border: 1px solid var(--mn-line); border-radius: 2px;
+  padding: 14px 16px;
+  transition: border-color 0.15s ease;
+}
+.fl-card:hover { border-color: var(--mn-ink); }
+.fl-ico {
+  flex: 0 0 36px; width: 36px; height: 36px;
+  border-radius: 2px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: #f5f5f5;
+}
+.fl-ico img { width: 100%; height: 100%; object-fit: contain; }
+.fl-ico-letter { font-size: 16px; font-weight: 700; color: #fff; background: var(--mn-ink); }
+.fl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.fl-name {
+  font-size: 14px; font-weight: 600; color: var(--mn-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fl-card:hover .fl-name { text-decoration: underline; text-underline-offset: 3px; }
+.fl-desc {
+  font-size: 12.5px; color: var(--mn-sub); line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fl-apply { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--mn-line); }
+.fl-apply-title { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mn-ink); }
+.fl-apply-sub { font-size: 13px; color: var(--mn-sub); margin-top: 6px; }
+.fl-form { margin-top: 14px; }
+.fl-form-row { display: flex; gap: 8px; }
+.fl-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--mn-ink);
+  border: 1px solid var(--mn-line); border-radius: 2px; background: transparent;
+  padding: 8px 10px; outline: none;
+}
+.fl-input:focus { border-color: var(--mn-ink); }
+.fl-textarea {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; color: var(--mn-ink);
+  border: 1px solid var(--mn-line); border-radius: 2px; background: transparent;
+  padding: 8px 10px; outline: none; resize: vertical; line-height: 1.6; margin-top: 8px;
+}
+.fl-textarea:focus { border-color: var(--mn-ink); }
+.fl-form-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 10px; }
+.fl-tip { font-size: 12px; color: var(--mn-sub); }
+.fl-submit { background: var(--mn-ink); color: #fff; border: none; font-size: 13px; padding: 6px 18px; cursor: pointer; }
+.fl-submit:disabled { opacity: 0.6; }
+
+@media (max-width: 480px) {
+  .fl-grid { grid-template-columns: 1fr; }
+  .fl-input, .fl-textarea { font-size: 16px; }
+}

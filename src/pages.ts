@@ -7,6 +7,7 @@ import {
   getSettings,
   listApprovedComments,
   listCategories,
+  listFriendLinks,
   listPosts,
   listWeibo,
   listWeiboTopics,
@@ -17,6 +18,8 @@ import {
 } from './db'
 import {
   commentsHtml,
+  friendLinkApply,
+  friendLinkCards,
   page,
   pagerHtml,
   toHomePost,
@@ -353,6 +356,36 @@ export async function renderWeibo(c: C): Promise<Response> {
   c.header('Cache-Control', 'no-cache')
   return c.html(
     page({ settings, css: theme.css, title: '微博', description: `${settings.siteName}的随手记`, path: '/weibo', body: html })
+  )
+}
+
+/** 友情链接页（/links）：已收录的友链卡片 + 访客申请收录表单 */
+export async function renderLinks(c: C): Promise<Response> {
+  baseHeaders(c)
+  const settings = await getSettings(c.env.DB)
+  const theme = getTheme(settings.theme)
+  const [links, categories, tags] = await Promise.all([
+    listFriendLinks(c.env.DB, { status: 'approved' }),
+    navCategories(c),
+    navTags(c),
+  ])
+  const html = theme.links({
+    settings,
+    categories,
+    tags,
+    items: links.items.map((l) => ({ name: l.name, url: l.url, description: l.description, icon: l.icon })),
+    total: links.total,
+  })
+  c.header('Cache-Control', 'no-cache')
+  return c.html(
+    page({
+      settings,
+      css: theme.css,
+      title: '友情链接',
+      description: `${settings.siteName}的朋友站点，也欢迎申请收录`,
+      path: '/links',
+      body: html,
+    })
   )
 }
 

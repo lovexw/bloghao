@@ -104,6 +104,22 @@ CREATE TABLE IF NOT EXISTS uploads (
   created_at INTEGER NOT NULL
 );
 
+-- 友情链接：站长维护，访客也可申请收录（source=user，默认 pending 待审）
+CREATE TABLE IF NOT EXISTS friend_links (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT    NOT NULL,
+  url         TEXT    NOT NULL,
+  description TEXT    NOT NULL DEFAULT '',
+  icon        TEXT    NOT NULL DEFAULT '',          -- 图标地址（站内 /images/ 或 http(s) 外链），空则前台用站名首字图标
+  status      TEXT    NOT NULL DEFAULT 'pending',   -- approved | pending
+  sort        INTEGER NOT NULL DEFAULT 0,           -- 数字小的靠前
+  source      TEXT    NOT NULL DEFAULT 'admin',     -- admin | user
+  ip          TEXT    NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_friend_links_status ON friend_links (status, sort, id);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''

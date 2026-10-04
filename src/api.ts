@@ -16,6 +16,7 @@ import {
   categoryNameMap,
   DEFAULT_SETTINGS,
   getCategoryById,
+  getFriendLinkById,
   getPostById,
   getPostBySlug,
   getPostCategoryId,
@@ -23,6 +24,7 @@ import {
   getWeiboById,
   listApprovedComments,
   listCategories,
+  listFriendLinks,
   listPosts,
   listWeibo,
   listWeiboTopics,
@@ -38,11 +40,12 @@ import {
   weiboTopicList,
 } from './db'
 import { mdToHtml } from './markdown'
+import { collectRoutes } from './collect'
 import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
-import { clampInt, excerpt, extractWeiboTopics, jsonItemLikePattern, slugify } from './utils'
+import { clampInt, excerpt, extractWeiboTopics, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
 
 type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
@@ -151,9 +154,12 @@ api.use('/admin/*', async (c, next) => {
   await next()
 })
 
+/* 采集插件（公众号文章 → 草稿），见 src/collect.ts */
+api.route('/admin/collect', collectRoutes)
+
 api.get('/admin/stats', async (c) => {
   const db = c.env.DB
-  const [pub, drafts, pending, uploads, recent] = await Promise.all([
+  const [pub, drafts, pending, uploads, recent, pendingLinks] = await Promise.all([
     db
       .prepare("SELECT COUNT(*) AS n, COALESCE(SUM(views),0) AS v, COALESCE(SUM(likes),0) AS l FROM posts WHERE status = 'published'")
       .first<{ n: number; v: number; l: number }>(),
@@ -161,6 +167,7 @@ api.get('/admin/stats', async (c) => {
     db.prepare("SELECT COUNT(*) AS n FROM comments WHERE status = 'pending'").first<{ n: number }>(),
     db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(size),0) AS s FROM uploads').first<{ n: number; s: number }>(),
     db.prepare("SELECT * FROM posts WHERE status = 'published' ORDER BY published_at DESC LIMIT 5").all<PostRow>(),
+    db.prepare("SELECT COUNT(*) AS n FROM friend_links WHERE status = 'pending'").first<{ n: number }>(),
   ])
   return c.json({
     posts: pub?.n ?? 0,
@@ -168,6 +175,7 @@ api.get('/admin/stats', async (c) => {
     likes: pub?.l ?? 0,
     drafts: drafts?.n ?? 0,
     pendingComments: pending?.n ?? 0,
+    pendingLinks: pendingLinks?.n ?? 0,
     uploads: { count: uploads?.n ?? 0, bytes: uploads?.s ?? 0 },
     recent: (recent.results ?? []).map((r) => ({
       id: r.id,
@@ -289,8 +297,10 @@ api.put('/admin/posts/:id', async (c) => {
   if ('tooBig' in p) return jsonError('正文过长（上限约 1MB）')
   const title = p.title || '无标题'
   const slug = p.slug && p.slug !== existing.slug ? await uniqueSlug(c.env.DB, p.slug, id) : existing.slug
+  // 草稿也保留已有 published_at：采集插件会把原文发布时间写入草稿，
+  // 自动保存不能把它抹掉；发布时若草稿已有时间则沿用
   const publishedAt =
-    p.status === 'published' ? (existing.published_at ?? Date.now()) : null
+    p.status === 'published' ? (existing.published_at ?? Date.now()) : existing.published_at
   await c.env.DB.prepare(
     `UPDATE posts SET slug = ?, title = ?, content = ?, summary = ?, cover = ?, tags = ?, status = ?, pinned = ?, published_at = ?, updated_at = ? WHERE id = ?`
   )
@@ -437,6 +447,206 @@ api.delete('/admin/weibo/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM comments WHERE weibo_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM weibo WHERE id = ?').bind(id),
   ])
+  return c.json({ ok: true })
+})
+
+/* ---------------- 友情链接管理 ---------------- */
+const LINK_ICON_MIMES: Record<string, string> = {
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+}
+const LINK_ICON_MAX_BYTES = 300 * 1024
+const ICON_FETCH_UA = 'Mozilla/5.0 (compatible; BlogHaoBot/1.0; +https://github.com/lovexw/bloghao-blog)'
+
+/** 校验友链图标地址：只收站内 /images/ 与 http(s) 外链，防 javascript: 注入 */
+function normalizeLinkIcon(input: unknown): string {
+  const s = String(input ?? '').trim().slice(0, 500)
+  return s.startsWith('/images/') || /^https?:\/\//i.test(s) ? s : ''
+}
+
+async function readLinkPayload(c: { req: { json: () => Promise<unknown> } }) {
+  const raw = await c.req.json().catch(() => null)
+  if (!raw || typeof raw !== 'object') return null
+  const b = raw as Record<string, unknown>
+  return {
+    name: String(b.name ?? '').trim().slice(0, 40),
+    url: normalizeLinkUrl(String(b.url ?? '')),
+    description: String(b.description ?? '').trim().slice(0, 120),
+    icon: normalizeLinkIcon(b.icon),
+    status: b.status === 'pending' ? 'pending' : 'approved',
+    sort: clampInt(b.sort, 0, 9999, 0),
+  }
+}
+
+/** 把抓到的 favicon 存进 R2 图床，返回站内地址；类型/大小不对或抓取失败返回空串 */
+async function storeLinkIcon(env: Env, iconUrl: string, host: string): Promise<string> {
+  try {
+    const res = await fetch(iconUrl, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(6000),
+      headers: { 'user-agent': ICON_FETCH_UA },
+    })
+    if (!res.ok) return ''
+    const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+    const ext = LINK_ICON_MIMES[mime]
+    if (!ext) return ''
+    const buf = await res.arrayBuffer()
+    if (!buf.byteLength || buf.byteLength > LINK_ICON_MAX_BYTES) return ''
+    const key = `u/fav/${host.replace(/[^a-z0-9.-]/gi, '')}.${ext}`
+    await env.IMAGES.put(key, buf, {
+      httpMetadata: { contentType: mime, cacheControl: 'public, max-age=604800' },
+    })
+    return `/images/${key}`
+  } catch {
+    return ''
+  }
+}
+
+/** 到目标站抓图标：先试 /favicon.ico，再解析首页 <link rel="…icon…"> 兜底 */
+async function fetchLinkIcon(env: Env, siteUrl: string): Promise<string> {
+  let origin = ''
+  let host = ''
+  try {
+    const u = new URL(siteUrl)
+    origin = u.origin
+    host = u.host
+  } catch {
+    return ''
+  }
+  const direct = await storeLinkIcon(env, `${origin}/favicon.ico`, host)
+  if (direct) return direct
+  try {
+    const res = await fetch(origin + '/', {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(6000),
+      headers: { 'user-agent': ICON_FETCH_UA, accept: 'text/html' },
+    })
+    if (res.ok) {
+      const html = (await res.text()).slice(0, 200_000)
+      const tag = html.match(/<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*>/i)?.[0]
+      const href = tag?.match(/href=["']([^"']+)["']/i)?.[1]
+      if (href) return storeLinkIcon(env, new URL(href, res.url || origin).toString(), host)
+    }
+  } catch {
+    /* 超时 / 网络不通，按拿不到处理 */
+  }
+  return ''
+}
+
+api.get('/admin/links', async (c) => {
+  const statusParam = c.req.query('status')
+  const status = statusParam === 'approved' || statusParam === 'pending' ? statusParam : 'all'
+  const r = await listFriendLinks(c.env.DB, { status })
+  return c.json({
+    // 不回传提交者 ip
+    items: r.items.map((l) => ({
+      id: l.id,
+      name: l.name,
+      url: l.url,
+      description: l.description,
+      icon: l.icon,
+      status: l.status,
+      sort: l.sort,
+      source: l.source,
+      created_at: l.created_at,
+      updated_at: l.updated_at,
+    })),
+    total: r.total,
+    pending: r.pending,
+  })
+})
+
+api.post('/admin/links', async (c) => {
+  const p = await readLinkPayload(c)
+  if (!p) return jsonError('请求格式错误')
+  if (!p.name || !p.url) return jsonError('站名和网址不能为空')
+  const now = Date.now()
+  const res = await c.env.DB.prepare(
+    "INSERT INTO friend_links (name, url, description, icon, status, sort, source, ip, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'admin', '', ?, ?)"
+  )
+    .bind(p.name, p.url, p.description, p.icon, p.status, p.sort, now, now)
+    .run()
+  return c.json({ ok: true, link: await getFriendLinkById(c.env.DB, Number(res.meta.last_row_id)) })
+})
+
+api.post('/admin/links/fetch-icon', async (c) => {
+  const body = await c.req.json<{ url?: string }>().catch(() => null)
+  const url = normalizeLinkUrl(String(body?.url ?? ''))
+  if (!url) return jsonError('网址格式不对，填一下要抓图标的站点地址')
+  const icon = await fetchLinkIcon(c.env, url)
+  if (!icon) return jsonError('没能取到该站的图标，可以手动填图标地址')
+  return c.json({ ok: true, icon })
+})
+
+/** 收录（pending → approved）；没图标的转到后台异步抓，不卡响应 */
+api.post('/admin/links/:id/approve', async (c) => {
+  const id = Number(c.req.param('id'))
+  const existing = await getFriendLinkById(c.env.DB, id)
+  if (!existing) return jsonError('友链不存在', 404)
+  await c.env.DB.prepare("UPDATE friend_links SET status = 'approved', updated_at = ? WHERE id = ?")
+    .bind(Date.now(), id)
+    .run()
+  if (!existing.icon) {
+    c.executionCtx.waitUntil(
+      fetchLinkIcon(c.env, existing.url).then((icon) =>
+        icon
+          ? c.env.DB.prepare('UPDATE friend_links SET icon = ?, updated_at = ? WHERE id = ?').bind(icon, Date.now(), id).run()
+          : undefined
+      )
+    )
+  }
+  return c.json({ ok: true })
+})
+
+api.post('/admin/links/:id/refresh-icon', async (c) => {
+  const id = Number(c.req.param('id'))
+  const existing = await getFriendLinkById(c.env.DB, id)
+  if (!existing) return jsonError('友链不存在', 404)
+  const icon = await fetchLinkIcon(c.env, existing.url)
+  if (!icon) return jsonError('没能取到该站的图标，可在编辑里手动填图标地址')
+  await c.env.DB.prepare('UPDATE friend_links SET icon = ?, updated_at = ? WHERE id = ?').bind(icon, Date.now(), id).run()
+  return c.json({ ok: true, icon })
+})
+
+/** 上移 / 下移：按当前顺序交换后整体回写 sort = 下标（幂等，不怕历史脏数据） */
+api.post('/admin/links/reorder', async (c) => {
+  const body = await c.req.json<{ id?: number; dir?: string }>().catch(() => null)
+  const id = Number(body?.id)
+  const dir = body?.dir === 'down' ? 'down' : 'up'
+  const items = (await listFriendLinks(c.env.DB, { status: 'approved' })).items
+  const idx = items.findIndex((l) => l.id === id)
+  if (idx < 0) return jsonError('友链不存在', 404)
+  const to = dir === 'up' ? idx - 1 : idx + 1
+  if (to < 0 || to >= items.length) return c.json({ ok: true })
+  ;[items[idx], items[to]] = [items[to], items[idx]]
+  await c.env.DB.batch(
+    items.map((l, i) => c.env.DB.prepare('UPDATE friend_links SET sort = ? WHERE id = ?').bind(i, l.id))
+  )
+  return c.json({ ok: true })
+})
+
+api.put('/admin/links/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const existing = await getFriendLinkById(c.env.DB, id)
+  if (!existing) return jsonError('友链不存在', 404)
+  const p = await readLinkPayload(c)
+  if (!p) return jsonError('请求格式错误')
+  if (!p.name || !p.url) return jsonError('站名和网址不能为空')
+  await c.env.DB.prepare(
+    'UPDATE friend_links SET name = ?, url = ?, description = ?, icon = ?, status = ?, sort = ?, updated_at = ? WHERE id = ?'
+  )
+    .bind(p.name, p.url, p.description, p.icon, p.status, p.sort, Date.now(), id)
+    .run()
+  return c.json({ ok: true, link: await getFriendLinkById(c.env.DB, id) })
+})
+
+api.delete('/admin/links/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  await c.env.DB.prepare('DELETE FROM friend_links WHERE id = ?').bind(id).run()
   return c.json({ ok: true })
 })
 
@@ -911,6 +1121,29 @@ api.post('/public/like/:slug', async (c) => {
     .run()
   const row = await getPostBySlug(c.env.DB, slug)
   return c.json({ ok: true, likes: row?.likes ?? 0 })
+})
+
+/* ---------------- 友链申请（公开，进入待审核） ---------------- */
+api.post('/public/links/apply', async (c) => {
+  const ip = clientIp(c.req.raw)
+  if (!rateLimit(`flapply:${ip}`, 3, 10 * 60_000)) return jsonError('提交太频繁了，请稍后再试', 429)
+  const body = await c.req
+    .json<{ name?: string; url?: string; description?: string; link?: string }>()
+    .catch(() => null)
+  // 蜜罐字段：正常用户不会填写，机器人会 —— 静默丢弃
+  if (body?.link) return c.json({ ok: true })
+  const name = String(body?.name || '').trim().slice(0, 40)
+  const url = normalizeLinkUrl(String(body?.url || ''))
+  const description = String(body?.description || '').trim().slice(0, 120)
+  if (!name || !url) return jsonError('站名和网址不能为空')
+  const dup = await c.env.DB.prepare('SELECT id FROM friend_links WHERE url = ?').bind(url).first<{ id: number }>()
+  if (dup) return jsonError('这个网址已经在友链列表里啦')
+  await c.env.DB.prepare(
+    "INSERT INTO friend_links (name, url, description, icon, status, sort, source, ip, created_at, updated_at) VALUES (?, ?, ?, '', 'pending', 0, 'user', ?, ?, ?)"
+  )
+    .bind(name, url, description, ip, Date.now(), Date.now())
+    .run()
+  return c.json({ ok: true })
 })
 
 api.get('/meta/themes', (c) =>

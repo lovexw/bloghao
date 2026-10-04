@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { api } from './api'
 import { ensureSchema, getSettings, listPosts } from './db'
-import { renderAbout, renderCategory, renderHome, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
+import { renderAbout, renderCategory, renderHome, renderLinks, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
 import { buildRss, buildSitemap } from './rss'
 import type { Env, SessionUser } from './types'
 
@@ -29,6 +29,7 @@ app.get('/category/:slug', renderCategory)
 app.get('/post/:slug', renderPost)
 app.get('/about', renderAbout)
 app.get('/weibo', renderWeibo)
+app.get('/links', renderLinks)
 app.get('/search', renderSearch)
 
 // 随机来一篇：从已发布文章里随机挑一篇跳过去

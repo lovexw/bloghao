@@ -102,3 +102,17 @@ export function extractWeiboTopics(content: string): string[] {
 export function jsonItemLikePattern(name: string): string {
   return `%${JSON.stringify(name).replace(/[%_\\]/g, (m) => '\\' + m)}%`
 }
+
+/** 友链网址规整：补全 https:// 前缀，只接受 http(s)，失败返回空串 */
+export function normalizeLinkUrl(input: string): string {
+  let s = input.trim().slice(0, 500)
+  if (!s) return ''
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s
+  try {
+    const u = new URL(s)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return ''
+    return u.toString()
+  } catch {
+    return ''
+  }
+}

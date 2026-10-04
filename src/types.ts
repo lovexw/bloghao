@@ -87,4 +87,18 @@ export interface CategoryRow {
   created_at: number
 }
 
+export interface FriendLinkRow {
+  id: number
+  name: string
+  url: string
+  description: string
+  icon: string
+  status: 'approved' | 'pending'
+  sort: number
+  source: 'admin' | 'user'
+  ip: string
+  created_at: number
+  updated_at: number
+}
+
 export type SettingsMap = Record<string, string>

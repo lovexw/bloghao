@@ -3,6 +3,8 @@ import {
   categoryLink,
   esc,
   fmtDate,
+  friendLinkApply,
+  friendLinkCards,
   likesBtn,
   pagerHtml,
   siteNav,
@@ -12,6 +14,7 @@ import {
   weiboPager,
   weiboTopicBar,
   type CategoryLink,
+  type FriendLinkView,
   type HomePostView,
   type TagCount,
   type WeiboItemView,
@@ -185,6 +188,36 @@ export function weibo(d: {
     ${cards || '<p class="md-empty wb-empty">夜航微博还是空的。</p>'}
   </main>
   ${weiboPager(d.page, d.totalPages)}
+  <footer class="md-footer">
+    <span>${esc(s.footerText || '')}</span>
+    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
+  </footer>
+</div>`
+}
+
+/** 友情链接页：友链卡片 + 申请收录 */
+export function links(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  items: FriendLinkView[]
+  total: number
+}): string {
+  const s = d.settings
+  return `<div class="md-wrap">
+  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, active: 'links' })}
+  <header class="md-header">
+    <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
+    <nav class="md-nav"><a class="md-nav-link is-active" href="/links">links</a><a class="md-nav-link" href="/about">关于</a></nav>
+  </header>
+  <section class="md-hero md-hero-slim">
+    <h1>友情链接</h1>
+    <p>${d.total > 0 ? `朋友站点 · 共 ${d.total} 个` : '和朋友交换链接的地方'}</p>
+  </section>
+  <main class="fl-grid">
+    ${friendLinkCards(d.items) || '<p class="md-empty wb-empty">夜航的友链页还是空的。</p>'}
+  </main>
+  ${friendLinkApply()}
   <footer class="md-footer">
     <span>${esc(s.footerText || '')}</span>
     <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>

@@ -78,10 +78,10 @@ export interface TagCount {
 }
 
 /**
- * 全站顶部导航：首页 + 微博 + 分类话题（details 折叠菜单）+ 随机。
+ * 全站顶部导航：首页 + 微博 + 分类话题（details 折叠菜单）+ 友情链接 + 随机。
  * cls 传主题前缀（如 wx-snav），结构统一、样式交由主题 CSS 塑形。
  * 分类与标签收进同一折叠菜单（标签可能很多，菜单内部滚动），
- * active 传 'home' / 'weibo' / 分类 slug / 'tag:标签名'。
+ * active 传 'home' / 'weibo' / 'links' / 分类 slug / 'tag:标签名'。
  */
 export function siteNav(o: {
   cls: string
@@ -114,8 +114,58 @@ export function siteNav(o: {
   ${item('/', '首页', o.active === 'home')}
   ${item('/weibo', '微博', o.active === 'weibo')}
   ${drop}
+  ${item('/links', '友情链接', o.active === 'links')}
   ${item('/random', '随机')}
 </nav>`
+}
+
+/* ---------------- 友情链接（共享构建器） ----------------
+ * 卡片 / 申请收录表单结构全主题共用（语义化 .fl-* class），视觉由主题 CSS 塑形。
+ */
+export interface FriendLinkView {
+  name: string
+  url: string
+  description: string
+  /** 图标地址（站内 /images/ 或外链），空则退回站名首字图标 */
+  icon: string
+}
+
+/** 友链卡片：有图标用图标，没有用站名首字 */
+export function friendLinkCards(items: FriendLinkView[]): string {
+  return items
+    .map((l) => {
+      const ico = l.icon
+        ? `<span class="fl-ico"><img src="${esc(l.icon)}" loading="lazy" alt=""></span>`
+        : `<span class="fl-ico fl-ico-letter" aria-hidden="true">${esc((l.name || '链').trim().charAt(0))}</span>`
+      return `<a class="fl-card" href="${esc(l.url)}" target="_blank" rel="noopener">
+  ${ico}
+  <span class="fl-main">
+    <span class="fl-name">${esc(l.name)}</span>
+    ${l.description ? `<span class="fl-desc">${esc(l.description)}</span>` : ''}
+  </span>
+</a>`
+    })
+    .join('\n')
+}
+
+/** 申请收录表单：提交交给 site.js（POST /api/public/links/apply，进待审核） */
+export function friendLinkApply(): string {
+  return `<section class="fl-apply" id="fl-apply">
+  <h2 class="fl-apply-title">申请收录</h2>
+  <p class="fl-apply-sub">想和本站交个朋友？留下你的站点，审核通过后就会出现在上面。</p>
+  <form class="fl-form">
+    <div class="fl-form-row">
+      <input class="fl-input" name="name" maxlength="40" placeholder="站点名称" required aria-label="站点名称">
+      <input class="fl-input" name="url" type="url" inputmode="url" maxlength="500" placeholder="https:// 你的网址" required aria-label="站点网址">
+    </div>
+    <textarea class="fl-textarea" name="description" maxlength="120" rows="2" placeholder="一两句介绍你的网站（可选）" aria-label="站点介绍"></textarea>
+    <input class="cmt-hp" name="link" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <div class="fl-form-foot">
+      <span class="fl-tip">提交后由站长审核</span>
+      <button class="fl-submit" type="submit">提交申请</button>
+    </div>
+  </form>
+</section>`
 }
 
 /**

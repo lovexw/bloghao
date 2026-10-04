@@ -3,6 +3,8 @@ import {
   categoryLink,
   esc,
   fmtDate,
+  friendLinkApply,
+  friendLinkCards,
   likesBtn,
   pagerHtml,
   siteNav,
@@ -12,6 +14,7 @@ import {
   weiboPager,
   weiboTopicBar,
   type CategoryLink,
+  type FriendLinkView,
   type HomePostView,
   type TagCount,
   type WeiboItemView,
@@ -184,6 +187,29 @@ export function weibo(d: {
   </main>
   ${weiboPager(d.page, d.totalPages)}
   <footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 友情链接页：友链卡片 + 申请收录 */
+export function links(d: {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  items: FriendLinkView[]
+  total: number
+}): string {
+  const s = d.settings
+  return `<div class="pp-page">
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, active: 'links' })}
+  <header class="wb-page-head">
+    <h1 class="wb-page-title">友情链接</h1>
+    <p class="wb-page-sub">${d.total > 0 ? `朋友站点 · 共 ${d.total} 个` : '和朋友交换链接的地方'}</p>
+  </header>
+  <main class="fl-grid">
+    ${friendLinkCards(d.items) || '<p class="wb-empty">纸上暂无友链，去后台添加，或在下方申请收录。</p>'}
+  </main>
+  ${friendLinkApply()}
+  <footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links"><a href="/">回主页</a><a href="/weibo">微博</a><a href="/about">关于</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span></footer>
 </div>`
 }
 

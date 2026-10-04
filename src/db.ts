@@ -1,4 +1,4 @@
-import type { CategoryRow, CommentRow, PostRow, SettingsMap, WeiboRow } from './types'
+import type { CategoryRow, CommentRow, FriendLinkRow, PostRow, SettingsMap, WeiboRow } from './types'
 import { clampInt, jsonItemLikePattern, WEIBO_MAX_TOPICS } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
@@ -339,6 +339,32 @@ export async function weiboCommentCountMap(db: D1Database, weiboIds: number[]): 
   return m
 }
 
+/* ---------------- 友情链接 ---------------- */
+
+export interface ListFriendLinksResult {
+  items: FriendLinkRow[]
+  total: number
+  pending: number
+}
+
+/** 友链列表：sort 升序、同序号按创建先后；pending 为待审核数（后台角标用） */
+export async function listFriendLinks(db: D1Database, opts: { status?: 'approved' | 'pending' | 'all' } = {}): Promise<ListFriendLinksResult> {
+  const where = opts.status && opts.status !== 'all' ? 'WHERE status = ?' : ''
+  const [listRes, pendingRes] = await Promise.all([
+    db
+      .prepare(`SELECT * FROM friend_links ${where} ORDER BY sort ASC, id ASC LIMIT 500`)
+      .bind(...(where ? [opts.status] : []))
+      .all<FriendLinkRow>(),
+    db.prepare("SELECT COUNT(*) AS n FROM friend_links WHERE status = 'pending'").first<{ n: number }>(),
+  ])
+  const items = listRes.results ?? []
+  return { items, total: items.length, pending: pendingRes?.n ?? 0 }
+}
+
+export async function getFriendLinkById(db: D1Database, id: number): Promise<FriendLinkRow | null> {
+  return db.prepare('SELECT * FROM friend_links WHERE id = ?').bind(id).first<FriendLinkRow>()
+}
+
 /* ---------------- 轻量迁移 ----------------
  * schema.sql 只对全新库生效（CREATE TABLE IF NOT EXISTS 不会补列），
  * 老库升级靠这里：启动时检查缺列，自动 ALTER TABLE 补齐（每个 isolate 只跑一次）。
@@ -357,8 +383,24 @@ const SCHEMA_TABLES = [
     name       TEXT    NOT NULL UNIQUE,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS friend_links (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    url         TEXT    NOT NULL,
+    description TEXT    NOT NULL DEFAULT '',
+    icon        TEXT    NOT NULL DEFAULT '',
+    status      TEXT    NOT NULL DEFAULT 'pending',
+    sort        INTEGER NOT NULL DEFAULT 0,
+    source      TEXT    NOT NULL DEFAULT 'admin',
+    ip          TEXT    NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  )`,
 ]
-const SCHEMA_INDEXES = ['CREATE INDEX IF NOT EXISTS idx_comments_weibo ON comments (weibo_id, created_at)']
+const SCHEMA_INDEXES = [
+  'CREATE INDEX IF NOT EXISTS idx_comments_weibo ON comments (weibo_id, created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_friend_links_status ON friend_links (status, sort, id)',
+]
 
 async function tableColumns(db: D1Database, table: string): Promise<Set<string>> {
   const { results } = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>()

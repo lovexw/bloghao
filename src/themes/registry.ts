@@ -47,6 +47,15 @@ export interface ThemeModule {
     /** 已发布微博的话题聚合（话题条数据），为空不渲染话题条 */
     topics?: { name: string; count: number }[]
   }): string
+  links(d: {
+    settings: Record<string, string>
+    categories: import('../render').CategoryLink[]
+    /** 顶部导航「分类话题」菜单的标签 */
+    tags?: import('../render').TagCount[]
+    /** 已收录的友链 */
+    items: import('../render').FriendLinkView[]
+    total: number
+  }): string
   post(d: {
     settings: Record<string, string>
     post: {

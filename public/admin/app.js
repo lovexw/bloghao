@@ -84,6 +84,7 @@ const I = {
   post: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 4h9l4 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5M9 13h7M9 17h5"/></svg>',
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a1 1 0 0 1 1-1h5l2 2.5h9a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg>',
   weibo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3v4l4.5-4H21a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><path d="M8 9h9M8 13h6"/></svg>',
+  link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l11-11-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg>',
   comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
@@ -145,6 +146,7 @@ function authView(mode) {
 /* ---------------- 布局骨架 ---------------- */
 async function shellView(active, contentHTML) {
   const pending = state.pendingComments || 0
+  const pendingLinks = state.pendingLinks || 0
   $app.innerHTML = `<div class="shell">
     <aside class="sidebar">
       <div class="side-logo"><img src="/favicon.svg" alt="">博客号</div>
@@ -153,6 +155,7 @@ async function shellView(active, contentHTML) {
         <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/">${I.home}<span>概览</span></a>
         <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts">${I.post}<span>文章</span></a>
         <a class="side-item${active === 'weibo' ? ' is-active' : ''}" href="#/weibo">${I.weibo}<span>微博</span></a>
+        <a class="side-item${active === 'links' ? ' is-active' : ''}" href="#/links">${I.link}<span>友链</span>${pendingLinks ? `<span class="side-badge">${pendingLinks}</span>` : ''}</a>
         <a class="side-item${active === 'categories' ? ' is-active' : ''}" href="#/categories">${I.folder}<span>分类</span></a>
         <a class="side-item${active === 'editor' ? ' is-active' : ''}" href="#/editor/new">${I.edit}<span>写作</span></a>
         <a class="side-item${active === 'comments' ? ' is-active' : ''}" href="#/comments">${I.comment}<span>评论</span>${pending ? `<span class="side-badge">${pending}</span>` : ''}</a>
@@ -184,6 +187,7 @@ async function viewHome() {
     return handleApiErr(e)
   }
   state.pendingComments = s.pendingComments
+  state.pendingLinks = s.pendingLinks
   const recent = s.recent
     .map(
       (r) => `<div class="recent-item">
@@ -528,6 +532,193 @@ async function viewWeibo() {
       toast('已删除')
       viewWeibo()
     })
+  })
+}
+
+/* ---------------- 友情链接 ---------------- */
+
+/** 友链图标预览：有图标用图，没有用站名首字 */
+function flIconHtml(icon, name) {
+  if (icon) return `<span class="fl-ico"><img src="${esc(icon)}" alt=""></span>`
+  const ch = (name || '链').trim().charAt(0) || '链'
+  return `<span class="fl-ico fl-ico-letter" aria-hidden="true">${esc(ch)}</span>`
+}
+
+async function viewLinks() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || '')
+  const status = q.get('status') === 'pending' ? 'pending' : 'approved'
+  let d
+  try {
+    d = await api(`/admin/links?status=${status}`)
+  } catch (e) {
+    return handleApiErr(e)
+  }
+  state.pendingComments = 0
+  state.pendingLinks = d.pending
+
+  const rows = d.items
+    .map(
+      (l) => `<div class="fl-row" data-id="${l.id}">
+      ${flIconHtml(l.icon, l.name)}
+      <div class="fl-main">
+        <div class="fl-row-name"><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>
+          ${l.source === 'user' ? '<span class="chip chip-gray">访客申请</span>' : ''}
+          ${status === 'pending' ? '<span class="chip chip-warn">待审核</span>' : ''}
+        </div>
+        <div class="fl-row-url">${esc(l.url)}</div>
+        ${l.description ? `<div class="fl-row-desc">${esc(l.description)}</div>` : ''}
+      </div>
+      <div class="post-ops">
+        ${status === 'approved'
+          ? `<button class="btn btn-ghost btn-sm" data-act="up" title="上移">↑</button>
+        <button class="btn btn-ghost btn-sm" data-act="down" title="下移">↓</button>
+        <button class="btn btn-ghost btn-sm" data-act="icon" title="自动获取网站图标">图标</button>
+        <button class="btn btn-ghost btn-sm" data-act="hide">隐藏</button>`
+          : `<button class="btn btn-sm btn-primary" data-act="approve">通过</button>`}
+        <button class="btn btn-ghost btn-sm" data-act="edit">编辑</button>
+        <button class="btn btn-ghost btn-sm btn-danger" data-act="del">删除</button>
+      </div>
+    </div>`
+    )
+    .join('')
+
+  await shellView(
+    'links',
+    `<div class="page-head">
+      <div><div class="page-title">友链</div><div class="page-sub">朋友站点互相推荐，展示在前台「友情链接」页</div></div>
+      <a class="btn" href="/links" target="_blank">查看页面</a>
+    </div>
+    <div class="toolbar">
+      <div class="tabs">
+        ${['approved', 'pending']
+          .map((t) => `<button class="tab${t === status ? ' is-active' : ''}" data-tab="${t}">${{ approved: '已收录', pending: '待审核' }[t]}</button>`)
+          .join('')}
+      </div>
+      <button class="btn btn-primary" id="fl-add" style="margin-left:auto;">添加友链</button>
+    </div>
+    <div class="panel">${rows || (status === 'pending' ? '<div class="empty-box">没有待审核的申请</div>' : '<div class="empty-box">还没有友链，点右上角「添加友链」</div>')}</div>`
+  )
+
+  $app.querySelectorAll('[data-tab]').forEach((b) =>
+    b.addEventListener('click', () => (location.hash = `#/links?status=${b.dataset.tab}`))
+  )
+  document.getElementById('fl-add').addEventListener('click', () => flModal(null))
+
+  async function flMove(id, dir) {
+    try {
+      await api('/admin/links/reorder', { method: 'POST', body: { id, dir } })
+      viewLinks()
+    } catch (e) {
+      toast(e.message, true)
+    }
+  }
+
+  $app.querySelectorAll('.fl-row').forEach((row) => {
+    const id = Number(row.dataset.id)
+    const link = d.items.find((x) => x.id === id)
+    row.querySelector('[data-act=edit]')?.addEventListener('click', () => flModal(link))
+    row.querySelector('[data-act=approve]')?.addEventListener('click', async () => {
+      try {
+        await api(`/admin/links/${id}/approve`, { method: 'POST' })
+        toast(link.icon ? '已收录 🎉' : '已收录 🎉 正在后台获取图标')
+        viewLinks()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
+    row.querySelector('[data-act=icon]')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget
+      btn.textContent = '获取中…'
+      try {
+        await api(`/admin/links/${id}/refresh-icon`, { method: 'POST' })
+        toast('图标已更新')
+        viewLinks()
+      } catch (err) {
+        toast(err.message, true)
+        btn.textContent = '图标'
+      }
+    })
+    row.querySelector('[data-act=up]')?.addEventListener('click', () => flMove(id, 'up'))
+    row.querySelector('[data-act=down]')?.addEventListener('click', () => flMove(id, 'down'))
+    row.querySelector('[data-act=hide]')?.addEventListener('click', async () => {
+      try {
+        await api(`/admin/links/${id}`, { method: 'PUT', body: { ...link, status: 'pending' } })
+        toast('已移回待审核')
+        viewLinks()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
+    row.querySelector('[data-act=del]')?.addEventListener('click', async () => {
+      if (!(await confirmBox(`确定删除友链「${link.name}」？`))) return
+      await api(`/admin/links/${id}`, { method: 'DELETE' })
+      toast('已删除')
+      viewLinks()
+    })
+  })
+}
+
+/** 添加 / 编辑友链弹窗；link 传 null 是新增 */
+function flModal(link) {
+  const isEdit = !!link
+  const m = modal(`<div class="modal-head"><span>${isEdit ? '编辑友链' : '添加友链'}</span><button class="modal-close" data-close>×</button></div>
+      <div class="modal-body">
+        <label class="auth-field"><label>站点名称</label><input class="input" id="fl-name" maxlength="40" value="${esc(link?.name || '')}"></label>
+        <label class="auth-field"><label>网址</label><input class="input" id="fl-url" inputmode="url" placeholder="https://" value="${esc(link?.url || '')}"></label>
+        <label class="auth-field"><label>简介（一两句话，可选）</label><input class="input" id="fl-desc" maxlength="120" value="${esc(link?.description || '')}"></label>
+        <div class="auth-field">
+          <label>网站图标（可选，自动获取存到图床；留空则显示站名首字图标）</label>
+          <div class="fav-row">
+            <span id="fl-icon-slot">${flIconHtml(link?.icon || '', link?.name || '')}</span>
+            <button class="btn btn-sm" id="fl-icon-fetch" type="button">自动获取</button>
+            <button class="btn btn-sm btn-ghost" id="fl-icon-clear" type="button">清除</button>
+          </div>
+          <input type="hidden" id="fl-icon" value="${esc(link?.icon || '')}">
+        </div>
+        ${isEdit ? `<label class="auth-field"><label>排序（数字小的靠前）</label><input class="input" id="fl-sort" type="number" min="0" value="${link.sort ?? 0}"></label>` : ''}
+      </div>
+      <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="fl-save">保存</button></div>`)
+
+  const renderIcon = (icon) => {
+    m.mask.querySelector('#fl-icon').value = icon
+    m.mask.querySelector('#fl-icon-slot').innerHTML = flIconHtml(icon, m.mask.querySelector('#fl-name').value)
+  }
+  m.mask.querySelector('#fl-icon-fetch').addEventListener('click', async () => {
+    const url = m.mask.querySelector('#fl-url').value.trim()
+    if (!url) return toast('先填网址，再自动获取图标', true)
+    const btn = m.mask.querySelector('#fl-icon-fetch')
+    btn.textContent = '获取中…'
+    btn.disabled = true
+    try {
+      const r = await api('/admin/links/fetch-icon', { method: 'POST', body: { url } })
+      renderIcon(r.icon)
+      toast('图标已获取')
+    } catch (e) {
+      toast(e.message, true)
+    }
+    btn.textContent = '自动获取'
+    btn.disabled = false
+  })
+  m.mask.querySelector('#fl-icon-clear').addEventListener('click', () => renderIcon(''))
+  m.mask.querySelector('#fl-save').addEventListener('click', async () => {
+    const body = {
+      name: m.mask.querySelector('#fl-name').value.trim(),
+      url: m.mask.querySelector('#fl-url').value.trim(),
+      description: m.mask.querySelector('#fl-desc').value.trim(),
+      icon: m.mask.querySelector('#fl-icon').value,
+      status: link ? link.status : 'approved',
+      sort: isEdit ? Number(m.mask.querySelector('#fl-sort').value) || 0 : 0,
+    }
+    if (!body.name || !body.url) return toast('站名和网址不能为空', true)
+    try {
+      if (isEdit) await api(`/admin/links/${link.id}`, { method: 'PUT', body })
+      else await api('/admin/links', { method: 'POST', body })
+      toast('已保存')
+      m.close()
+      viewLinks()
+    } catch (e) {
+      toast(e.message, true)
+    }
   })
 }
 
@@ -1101,6 +1292,7 @@ async function navigate() {
     if (name === 'home') await viewHome()
     else if (name === 'posts') await viewPosts()
     else if (name === 'weibo') await viewWeibo()
+    else if (name === 'links') await viewLinks()
     else if (name === 'categories') await viewCategories()
     else if (name === 'comments') await viewComments()
     else if (name === 'media') await viewMedia()

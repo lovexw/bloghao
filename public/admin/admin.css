@@ -537,6 +537,23 @@ img.side-user-avatar { object-fit: cover; }
 }
 .tag-manage-del:hover { background: rgba(230, 67, 64, 0.12); color: var(--danger); }
 
+/* ---------- 友情链接管理 ---------- */
+.fl-row { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid #f2f2f2; flex-wrap: wrap; }
+.fl-row:last-child { border-bottom: none; }
+.fl-row .fl-ico {
+  width: 36px; height: 36px; flex: 0 0 36px;
+  border-radius: 8px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: #f6f2ec; border: 1px solid var(--line);
+}
+.fl-row .fl-ico img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.fl-ico-letter { font-size: 15px; font-weight: 600; color: var(--accent); }
+.fl-main { flex: 1 1 220px; min-width: 0; }
+.fl-row-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fl-row-name a:hover { color: var(--accent); }
+.fl-row-url { font-size: 12px; color: var(--sub); word-break: break-all; }
+.fl-row-desc { font-size: 12.5px; color: var(--sub); margin-top: 2px; }
+
 /* ---------- 侧栏：查看主页（外链）与后台页之间的分隔 ---------- */
 .side-item-home { color: var(--sub); }
 .side-item-home svg { opacity: 0.75; }
