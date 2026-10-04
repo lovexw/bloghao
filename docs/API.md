@@ -12,8 +12,10 @@
 ### GET /api/public/posts?page=1&limit=10&tag=生活
 已发布文章分页（摘要视图），返回 `{items, total, page, totalPages}`，`items` 元素含 `slug/title/summary/cover/tags/published_at/views/likes/pinned`。
 
+> 列表排序（最新/最多阅读/最多点赞/最多留言/随机）目前只由 SSR 页面（首页 / 分类 / 搜索）使用，本接口固定按最新（置顶优先）返回。
+
 ### POST /api/public/comments
-留言。Body：
+文章留言。Body：
 
 ```json
 { "slug": "hello-bloghao", "nickname": "路人甲", "content": "写得真好", "link": "" }
@@ -37,6 +39,17 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### POST /api/public/weibo/:id/comments
 微博评论。规则同 `POST /api/public/comments`（蜜罐 / 限流 / 审核 / 管理员 `parentId` 回复），`nickname`/`content` 约束一致。
 
+### POST /api/public/links/apply
+友链申请（访客提交，进入待审核）。Body：
+
+```json
+{ "name": "朋友的博客", "url": "blog.example.com", "description": "一句话介绍", "link": "" }
+```
+
+- `link` 为蜜罐字段；同 IP 10 分钟限 3 次
+- `url` 自动补全 `https://` 前缀并做 URL 规整，非法返回错误；同名网址去重
+- `name` ≤ 40 字，`description` ≤ 120 字；成功入库 `status='pending'`、`source='user'`
+
 ## 认证
 
 ### GET /api/auth/state
@@ -57,18 +70,18 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ## 管理接口（需登录）
 
 ### GET /api/admin/stats
-概览统计：`{posts, views, likes, drafts, pendingComments, uploads:{count,bytes}, recent:[…]}`
+概览统计：`{posts, views, likes, drafts, pendingComments, pendingLinks, uploads:{count,bytes}, recent:[…]}`
 
 ### 文章
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/posts?status=all\|published\|draft&q=关键词&page=1&limit=20` | 列表（不含 content） |
+| GET | `/api/admin/posts?status=all\|published\|draft&q=关键词&page=1&limit=20` | 列表（不含 content；元素附 `tagList`、`categoryName`） |
 | POST | `/api/admin/posts` | 新建 |
-| GET | `/api/admin/posts/:id` | 详情（含 content） |
-| PUT | `/api/admin/posts/:id` | 更新（autosave 用） |
+| GET | `/api/admin/posts/:id` | 详情（含 content、categoryId） |
+| PUT | `/api/admin/posts/:id` | 更新（autosave 用；已发布时间不会被草稿保存抹掉） |
 | POST | `/api/admin/posts/:id/pin` | Body `{pinned:true/false}` |
-| DELETE | `/api/admin/posts/:id` | 删除（连带评论） |
-| GET | `/api/admin/tags` | 全站标签聚合（编辑器补全用） |
+| DELETE | `/api/admin/posts/:id` | 删除（连带评论与分类关联） |
+| GET | `/api/admin/tags` | 全站标签聚合（编辑器补全用，见下方「标签」） |
 
 文章 Body 字段：
 
@@ -79,34 +92,93 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
   "summary": "摘要，可空",
   "cover": "/images/u/202610/xxx.jpg",
   "tags": ["生活", "Cloudflare"],
+  "categoryId": 1,
   "status": "draft | published",
   "pinned": false,
   "slug": "留空自动生成，可自定义"
 }
 ```
 
-约束：title ≤ 150 字；content ≤ 1MB；tags ≤ 8 个、每个 ≤ 20 字；cover 必须以 `/` 或 `http(s)://` 开头。
+约束：title ≤ 150 字；content ≤ 1MB；tags ≤ 8 个、每个 ≤ 20 字；cover 必须以 `/` 或 `http(s)://` 开头；`categoryId` 为 null/空表示未分类，不存在分类 id 时被忽略。
+
+### 微博（随手记）
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/weibo?status=all\|published\|draft&page=1&limit=20` | 列表（置顶优先；元素附 `imageList`、`topicList`、`commentCount`） |
+| POST | `/api/admin/weibo` | 新建（发布或存草稿） |
+| PUT | `/api/admin/weibo/:id` | 更新（转回草稿会自动取消置顶） |
+| POST | `/api/admin/weibo/:id/pin` | Body `{pinned:true/false}` |
+| DELETE | `/api/admin/weibo/:id` | 删除（连带其下评论） |
+
+微博 Body 字段：
+
+```json
+{
+  "content": "文字内容，可含 #话题#",
+  "images": ["/images/u/202610/xxx.jpg"],
+  "status": "published | draft"
+}
+```
+
+约束：`content` ≤ 5000 字；`images` ≤ 9 张、只接受站内 `/images/` 与 `http(s)` 外链；`content` 与 `images` 不能同时为空；**话题不接受直传**——服务端从正文 `#话题#`（兼容 `#话题` 与 `#层级/标签`）自动提取；置顶最多 3 条，草稿不能置顶。
+
+### 友情链接
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/links?status=all\|approved\|pending` | 列表（不回传提交者 ip；附 `pending` 计数、`source: admin\|user`） |
+| POST | `/api/admin/links` | 手动添加（默认 `status:'approved'`） |
+| POST | `/api/admin/links/fetch-icon` | Body `{url}`，抓取目标站 favicon 存 R2 → `{icon:"/images/u/fav/…"}` |
+| POST | `/api/admin/links/:id/approve` | 收录（pending → approved）；无图标时后台异步补抓，不卡响应 |
+| POST | `/api/admin/links/:id/refresh-icon` | 重新抓取图标 |
+| POST | `/api/admin/links/reorder` | Body `{id, dir:"up"\|"down"}`，按当前顺序交换后整体回写 sort |
+| PUT | `/api/admin/links/:id` | 编辑（含改状态：传 `status:'pending'` 即「隐藏」） |
+| DELETE | `/api/admin/links/:id` | 删除 |
+
+链接 Body 字段与约束：
+
+```json
+{ "name": "站名", "url": "https://…", "description": "简介", "icon": "/images/u/fav/… 或 https://…", "status": "approved | pending", "sort": 0 }
+```
+
+`name` ≤ 40 字；`url` 自动补全 `https://` 并规整；`description` ≤ 120 字；`icon` 只接受站内 `/images/` 与 `http(s)` 外链（防 `javascript:` 注入），留空前台用站名首字图标；服务端抓取图标时仅收 ICO/PNG/JPG/WebP/GIF、单文件 ≤ 300KB、超时 6 秒。
+
+### 分类
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/categories` | 列表（附 `post_count` 文章计数） |
+| POST | `/api/admin/categories` | Body `{name, slug?, sort?}`；slug 留空用名称，支持字母/数字/中文/短横线 |
+| PUT | `/api/admin/categories/:id` | 编辑（名称与 slug 均不可重复） |
+| DELETE | `/api/admin/categories/:id` | 删除（关联文章变为未分类，文章不受影响） |
+
+`name` ≤ 20 字。单分类模型：一篇文章最多属于一个分类（`post_categories.post_id` 为主键）。
+
+### 标签
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/tags` | 文章实际用到的标签 + 分类页预建标签（count 0），按使用次数排序，最多 200 个 |
+| POST | `/api/admin/tags` | Body `{name}`，预建标签（≤ 20 字，不可重名） |
+| DELETE | `/api/admin/tags/:name` | 删除标签，并从所有文章的 tags 中移除 |
 
 ### 上传 / 媒体
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/admin/upload` | multipart，字段名 `file`；图片 JPG/PNG/WebP/GIF、视频 MP4/WebM；≤ 25MB；返回 `{url:"/images/u/...", key, mime, size}` |
+| POST | `/api/admin/upload` | multipart，字段名 `file`；图片 JPG/PNG/WebP/GIF（favicon 另允许 ICO）、视频 MP4/WebM；≤ 25MB；限频 60 次/分钟/IP；返回 `{url:"/images/u/...", key, mime, size}` |
 | GET | `/api/admin/uploads?page=1` | 媒体列表（每页 24） |
 | DELETE | `/api/admin/uploads?key=u/202610/xxx.png` | 从 R2 与索引中删除 |
 
 ### 评论
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/comments?status=all\|pending\|approved&page=1` | 列表（文章与微博评论混合，含文章标题/slug、父评论昵称） |
+| GET | `/api/admin/comments?status=all\|pending\|approved&type=all\|post\|weibo&page=1` | 列表（`type` 拆分文章评论与微博评论；附文章标题/slug、微博内容、父评论昵称） |
 | PUT | `/api/admin/comments/:id` | Body `{status:"approved"\|"pending"}`（通过 / 隐藏） |
-| POST | `/api/admin/comments/:id/replies` | Body `{content}`，以作者身份回复该评论（文章/微博通用），直接展示并带「作者」徽标 |
+| POST | `/api/admin/comments/:id/replies` | Body `{content}`，以作者身份回复该评论（文章/微博通用），挂在同一顶层评论下，直接展示并带「作者」徽标 |
 | DELETE | `/api/admin/comments/:id` | 删除（连带其下的回复） |
 
 ### 设置 / 账号 / 工具
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, theme, allowComments, moderateComments, postsPerPage, about`；`theme` 必须是已注册主题 id |
-| PUT | `/api/admin/password` | Body `{oldPassword, newPassword}` |
+| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, theme, allowComments, moderateComments, postsPerPage, about`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl` 只接受站内 `/images/` 与 `http(s)` 外链 |
+| PUT | `/api/admin/password` | Body `{oldPassword, newPassword}`（8-64 位） |
 | POST | `/api/admin/tools/md` | Body `{md}` → `{html}`，Markdown 渲染 |
 | POST | `/api/admin/tools/sanitize` | Body `{html}` → `{html}`，白名单净化（粘贴用） |
 

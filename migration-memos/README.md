@@ -127,7 +127,9 @@
 ## 未尽事项（接手清单）
 
 1. ~~阶段二图片落 R2~~ ✅ 已完成（2026-10-04，107 图 + 1 视频全部落 R2 并替换 URL）。
-2. （可选）域名决策：blog.xiaowuleyi.com 当前指向旧博客，是否切到 xwblog 由站主定。
+2. ~~域名决策：blog.xiaowuleyi.com 当前指向旧博客，是否切到 xwblog 由站主定~~ ✅ 已完成（2026-10-04：
+   站主已把 `blog.xiaowuleyi.com` 绑定到本仓库的 xwblog Worker，该域名即 xwblog 正式访问地址；
+   说明文档 README/GUIDE/DEPLOY 已同步以此为站点地址）。
 3. （可选）Memos 层级标签扁平化（如 `#比特币/认知` → `#认知`），现按原样保留。
 4. （可选）如果旧站有 PRIVATE/ARCHIVED memo：未认证导出只含 PUBLIC。如需全量，去旧站设置生成 Access Token，
    加 `Authorization: Bearer <token>` 头重跑 `export.mjs`（注意：私密内容是否公开导入需站主确认）。
