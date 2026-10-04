@@ -71,21 +71,51 @@ export function categoryLink(c: CategoryLink): string {
   return `/category/${encodeURIComponent(c.slug)}`
 }
 
+/** 顶部导航「分类话题」菜单用的标签视图（带使用计数） */
+export interface TagCount {
+  name: string
+  count: number
+}
+
 /**
- * 全站顶部导航：首页 + 分类 + 搜索 + 随机。
+ * 全站顶部导航：首页 + 微博 + 分类话题（details 折叠菜单）+ 随机。
  * cls 传主题前缀（如 wx-snav），结构统一、样式交由主题 CSS 塑形。
+ * 分类与标签收进同一折叠菜单（标签可能很多，菜单内部滚动），
+ * active 传 'home' / 'weibo' / 分类 slug / 'tag:标签名'。
  */
-export function siteNav(o: { cls: string; categories: CategoryLink[]; active?: string }): string {
+export function siteNav(o: {
+  cls: string
+  categories: CategoryLink[]
+  tags?: TagCount[]
+  active?: string
+}): string {
   const item = (href: string, label: string, active = false) =>
     `<a class="${o.cls}-link${active ? ' is-active' : ''}" href="${href}">${esc(label)}</a>`
-  const links = [
-    item('/', '首页', o.active === 'home'),
-    item('/weibo', '微博', o.active === 'weibo'),
-    ...o.categories.map((cat) => item(categoryLink(cat), cat.name, o.active === cat.slug)),
-    item('/search', '搜索', o.active === 'search'),
-    item('/random', '随机', false),
-  ]
-  return `<nav class="${o.cls}" aria-label="站点导航">${links.join('')}</nav>`
+  const chip = (href: string, label: string, count: number | undefined, active = false) =>
+    `<a class="${o.cls}-chip${active ? ' is-active' : ''}" href="${href}">${esc(label)}${
+      count != null ? `<i>${count}</i>` : ''
+    }</a>`
+  const cats = o.categories.map((c) => chip(categoryLink(c), c.name, undefined, o.active === c.slug))
+  const tags = (o.tags || []).map((t) => chip(tagLink(t.name), t.name, t.count, o.active === `tag:${t.name}`))
+  const menu =
+    cats.length || tags.length
+      ? `<div class="${o.cls}-menu">
+  ${cats.length ? `<div class="${o.cls}-group"><span class="${o.cls}-label">分类</span><div class="${o.cls}-chips">${cats.join('')}</div></div>` : ''}
+  ${tags.length ? `<div class="${o.cls}-group"><span class="${o.cls}-label">话题</span><div class="${o.cls}-chips">${tags.join('')}</div></div>` : ''}
+</div>`
+      : ''
+  const drop = menu
+    ? `<details class="${o.cls}-dd snav-dd">
+  <summary class="${o.cls}-link">分类话题<svg class="${o.cls}-caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+  ${menu}
+</details>`
+    : ''
+  return `<nav class="${o.cls}" aria-label="站点导航">
+  ${item('/', '首页', o.active === 'home')}
+  ${item('/weibo', '微博', o.active === 'weibo')}
+  ${drop}
+  ${item('/random', '随机')}
+</nav>`
 }
 
 /**
@@ -188,17 +218,26 @@ export function weiboCardFoot(w: WeiboItemView): string {
   return `<footer class="wb-foot">${like}${cmt}</footer>`
 }
 
-/** 卡片内折叠评论区骨架：列表与表单内容由 site.js 按需填充 */
-export function weiboCommentPanel(w: WeiboItemView, allowComments: boolean): string {
+/** 管理员登录时的发言身份行（文章/微博评论表单共用，免填昵称） */
+function adminIdentity(name: string): string {
+  return `<p class="cmt-as">以作者 <b>${esc(name)}</b> 的身份发言</p><input class="cmt-hp" name="link" tabindex="-1" autocomplete="off" aria-hidden="true">`
+}
+
+/** 卡片内折叠评论区骨架：列表与表单内容由 site.js 按需填充；adminName 传入时表单免填昵称 */
+export function weiboCommentPanel(w: WeiboItemView, allowComments: boolean, adminName?: string): string {
   return `<div class="wb-cmt" data-wb-cmt="${w.id}" hidden>
   <div class="wb-cmt-list" data-role="list"><p class="wb-cmt-loading">加载中…</p></div>
   ${
     allowComments
-      ? `<form class="wb-cmt-form" data-role="form">
-  <div class="wb-cmt-row">
+      ? `<form class="wb-cmt-form${adminName ? ' is-admin' : ''}" data-role="form">
+  ${
+    adminName
+      ? adminIdentity(adminName)
+      : `<div class="wb-cmt-row">
     <input class="wb-cmt-input" name="nickname" maxlength="24" placeholder="昵称" required>
     <input class="cmt-hp" name="link" tabindex="-1" autocomplete="off" aria-hidden="true">
-  </div>
+  </div>`
+  }
   <textarea class="wb-cmt-textarea" name="content" maxlength="1000" rows="2" placeholder="说点什么…" required></textarea>
   <div class="wb-cmt-foot"><span class="wb-cmt-tip"></span><button class="wb-cmt-submit" type="submit">发送</button></div>
 </form>`
@@ -212,13 +251,15 @@ export function weiboCards(o: {
   items: WeiboItemView[]
   avatarHtml: string
   allowComments?: boolean
+  /** 登录管理员昵称：评论表单免填昵称，以作者身份发言 */
+  adminName?: string
 }): string {
   const name = o.settings.siteName || '微博'
   const allowComments = o.allowComments !== false
   return o.items
     .map((w) => {
       const foot = weiboCardFoot(w)
-      const panel = weiboCommentPanel(w, allowComments)
+      const panel = weiboCommentPanel(w, allowComments, o.adminName)
       return `<article class="wb-card${w.pinned ? ' is-pinned' : ''}" id="wb-${w.id}">
   <header class="wb-head">
     <span class="wb-avatar">${o.avatarHtml}</span>
@@ -324,6 +365,8 @@ export function commentsHtml(o: {
   allowComments: boolean
   count: number
   isAdmin?: boolean
+  /** 登录管理员昵称：表单免填昵称，以作者身份发言 */
+  adminName?: string
   title?: string
   tip?: string
 }): string {
@@ -360,12 +403,16 @@ export function commentsHtml(o: {
   const list = tops.map(renderItem).join('\n')
 
   const form = o.allowComments
-    ? `<form id="comment-form" class="cmt-form" data-slug="${esc(o.slug)}">
+    ? `<form id="comment-form" class="cmt-form${o.adminName ? ' is-admin' : ''}" data-slug="${esc(o.slug)}">
   <input type="hidden" name="parentId" value="">
-  <div class="cmt-form-row">
+  ${
+    o.adminName
+      ? adminIdentity(o.adminName)
+      : `<div class="cmt-form-row">
     <input class="cmt-input" name="nickname" maxlength="24" placeholder="昵称" required>
     <input class="cmt-input cmt-hp" name="link" tabindex="-1" autocomplete="off" aria-hidden="true">
-  </div>
+  </div>`
+  }
   <textarea class="cmt-textarea" name="content" maxlength="1000" rows="3" placeholder="写下你的想法…" required></textarea>
   <div class="cmt-form-foot">
     <span class="cmt-tip">${esc(o.tip || '留言即刻展示，请友善交流')}</span>

@@ -43,19 +43,19 @@ function baseHeaders(c: C) {
   c.header('X-Frame-Options', 'SAMEORIGIN')
 }
 
-/** 已发布文章的聚热门标签（首页导航用） */
-async function hotTags(c: C): Promise<string[]> {
+/** 顶部导航「分类话题」菜单用：已发布文章的标签（按使用次数排序，计数展示） */
+async function navTags(c: C): Promise<{ name: string; count: number }[]> {
   const { results } = await c.env.DB.prepare(
-    "SELECT tags FROM posts WHERE status = 'published' ORDER BY published_at DESC LIMIT 200"
+    "SELECT tags FROM posts WHERE status = 'published' LIMIT 1000"
   ).all<{ tags: string }>()
   const count = new Map<string, number>()
   for (const r of results ?? []) {
     for (const t of parseTags({ tags: r.tags } as PostRow)) count.set(t, (count.get(t) || 0) + 1)
   }
   return [...count.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([t]) => t)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 100)
+    .map(([name, count]) => ({ name, count }))
 }
 
 async function commentCount(c: C, postId: number): Promise<number> {
@@ -100,8 +100,7 @@ async function renderList(
   const perPage = clampInt(settings.postsPerPage, 1, 50, 10)
 
   // 搜索模式不分页，直接取前 50 条
-  const [r, tags, categories, category, wb] = await Promise.all([
-    listPosts(c.env.DB, {
+  const [r, tags, categories, category, wb] = await Promise.all([    listPosts(c.env.DB, {
       status: 'published',
       tag: opts.mode === 'home' ? tag : undefined,
       q: opts.mode === 'search' ? q || undefined : undefined,
@@ -109,7 +108,7 @@ async function renderList(
       page: opts.mode === 'search' ? 1 : pageNum,
       limit: opts.mode === 'search' ? 50 : perPage,
     }),
-    hotTags(c),
+    navTags(c),
     navCategories(c),
     categorySlug ? getCategoryBySlug(c.env.DB, categorySlug) : Promise.resolve(null),
     // 首页微博入口卡：最新两条随手记
@@ -174,11 +173,17 @@ async function renderList(
     total: r.total,
     tag: opts.mode === 'home' ? tag : undefined,
     q: opts.mode === 'search' ? q : undefined,
-    hotTags: tags,
+    tags,
     categories,
     weibo,
     navActive:
-      opts.mode === 'home' ? (tag ? '' : 'home') : opts.mode === 'category' ? categorySlug : 'search',
+      opts.mode === 'home'
+        ? tag
+          ? `tag:${tag}`
+          : 'home'
+        : opts.mode === 'category'
+          ? categorySlug
+          : 'search',
     notice,
     emptyText,
   })
@@ -210,12 +215,13 @@ export async function renderPost(c: C): Promise<Response> {
     if (!isPreview || !user) return renderNotFound(c)
   }
 
-  const [comments, related, categories, categoryId, user] = await Promise.all([
+  const [comments, related, categories, categoryId, user, tags] = await Promise.all([
     listApprovedComments(c.env.DB, row.id),
     relatedPosts(c.env.DB, row),
     navCategories(c),
     getPostCategoryId(c.env.DB, row.id),
     getSessionUser(c.env.DB, c.req.raw),
+    navTags(c),
   ])
   const categoryRow = categoryId ? await c.env.DB.prepare('SELECT name, slug FROM categories WHERE id = ?').bind(categoryId).first<{ name: string; slug: string }>() : null
 
@@ -231,7 +237,9 @@ export async function renderPost(c: C): Promise<Response> {
     allowComments: settings.allowComments === '1' && row.status === 'published',
     count: comments.length,
     isAdmin: !!user,
-    tip: settings.moderateComments === '1' ? '提交后审核通过即展示' : undefined,
+    // 管理员登录：表单免填昵称，以作者身份发言
+    adminName: user ? (user.display_name || user.username || '').slice(0, 24) : undefined,
+    tip: settings.moderateComments === '1' && !user ? '提交后审核通过即展示' : undefined,
   })
 
   const html = theme.post({
@@ -251,6 +259,7 @@ export async function renderPost(c: C): Promise<Response> {
     },
     category: categoryRow ? { name: categoryRow.name, slug: categoryRow.slug } : null,
     categories,
+    tags,
     comments: { html: commentsBlock, count: comments.length },
     related: related.map((p) => toHomePost(p, parseTags(p))),
   })
@@ -273,11 +282,12 @@ export async function renderAbout(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
-  const categories = await navCategories(c)
+  const [categories, tags] = await Promise.all([navCategories(c), navTags(c)])
   const html = theme.about({
     settings,
     contentHtml: sanitizeHtml(settings.about || '<p>作者很懒，什么都没写。</p>'),
     categories,
+    tags,
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
@@ -293,7 +303,7 @@ export async function renderWeibo(c: C): Promise<Response> {
   const url = new URL(c.req.url)
   const perPage = 15
   const topic = (url.searchParams.get('topic') || '').trim().slice(0, 24)
-  const [r, categories, topics] = await Promise.all([
+  const [r, categories, topics, user, tags] = await Promise.all([
     listWeibo(c.env.DB, {
       status: 'published',
       page: clampInt(url.searchParams.get('page'), 1, 100000, 1),
@@ -303,6 +313,8 @@ export async function renderWeibo(c: C): Promise<Response> {
     }),
     navCategories(c),
     listWeiboTopics(c.env.DB),
+    getSessionUser(c.env.DB, c.req.raw),
+    navTags(c),
   ])
   // 页码越界时回到最后一页重取一次
   if (r.page > r.totalPages && r.total > 0) {
@@ -327,11 +339,14 @@ export async function renderWeibo(c: C): Promise<Response> {
   const html = theme.weibo({
     settings,
     categories,
+    tags,
     items,
     page: r.page,
     totalPages: r.totalPages,
     total: r.total,
     allowComments: settings.allowComments === '1',
+    // 管理员登录：卡片内评论表单免填昵称，以作者身份发言
+    adminName: user ? (user.display_name || user.username || '').slice(0, 24) : undefined,
     topic: topic || undefined,
     topics,
   })

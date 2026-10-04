@@ -57,10 +57,6 @@ img { max-width: 100%; height: auto; }
 }
 .wx-masthead-name { font-size: 26px; font-weight: 700; letter-spacing: 0.02em; color: #1a1a1a; }
 .wx-masthead-desc { font-size: 14px; color: #8f887d; line-height: 1.7; margin-top: 10px; }
-.wx-nav { margin-top: 22px; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 24px; }
-.wx-nav-link { font-size: 13.5px; color: #8f887d; padding: 2px 0; transition: color 0.2s ease; }
-.wx-nav-link:hover { color: var(--wx-accent); }
-.wx-nav-link.is-active { color: var(--wx-accent); font-weight: 600; }
 
 /* 文章列表：日期外置 + 细线分隔的编辑部式排版 */
 .wx-feed { min-height: 120px; }
@@ -296,6 +292,9 @@ a.wx-account:hover { opacity: 0.75; }
 .cmt-empty { color: #bbb; font-size: 14px; padding: 16px 0; }
 .cmt-form { margin-top: 18px; }
 .cmt-form-row { display: flex; gap: 10px; margin-bottom: 10px; }
+/* 管理员登录后的发言身份行（文章/微博评论表单共用），替代昵称输入框 */
+.cmt-as { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; color: #b5aea1; }
+.cmt-as b { color: var(--wx-text); font-weight: 600; }
 .cmt-input {
   flex: 1; font: inherit; font-size: 14px;
   border: none; background: #f3f3f3;
@@ -488,8 +487,6 @@ a.wx-account:hover { opacity: 0.75; }
   .wx-search { margin-top: 18px; }
   .wx-search-input { padding-right: 68px; }
   .wx-search-btn { padding: 6px 13px; }
-  .wx-nav { margin-top: 16px; gap: 4px 18px; }
-  .wx-nav-link { font-size: 13px; }
   .wx-page { padding-left: 16px; padding-right: 16px; padding-bottom: calc(44px + env(safe-area-inset-bottom)); }
   .wx-article { padding-left: 12px; padding-right: 12px; }
   .wx-post { column-gap: 14px; }
@@ -502,15 +499,44 @@ a.wx-account:hover { opacity: 0.75; }
   .wb-imgs-1 img { max-height: 360px; }
 }
 
-/* ---------- 顶部站点导航（首页/分类/搜索/随机） ---------- */
+/* ---------- 顶部站点导航（首页/微博/分类话题/随机） ---------- */
 .wx-snav {
   display: flex; align-items: center; gap: 16px;
   padding: 10px 2px 8px; border-bottom: 1px solid var(--wx-line);
-  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
 }
-.wx-snav::-webkit-scrollbar { display: none; }
 .wx-snav-link { font-size: 13px; color: var(--wx-sub); white-space: nowrap; transition: color 0.2s ease; }
 .wx-snav-link:hover, .wx-snav-link.is-active { color: var(--wx-accent); }
+
+/* 「分类话题」折叠菜单：details/summary 原生折叠，site.js 只负责点外部收起 */
+.wx-snav-dd { position: relative; }
+.wx-snav-dd summary { list-style: none; cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 4px; }
+.wx-snav-dd summary::-webkit-details-marker { display: none; }
+.wx-snav-caret { width: 10px; height: 10px; transition: transform 0.2s ease; }
+.wx-snav-dd[open] .wx-snav-caret { transform: rotate(180deg); }
+.wx-snav-dd[open] summary { color: var(--wx-accent); }
+.wx-snav-menu {
+  position: absolute; top: calc(100% + 12px); left: -8px; z-index: 60;
+  min-width: 260px; max-width: min(340px, calc(100vw - 48px));
+  max-height: min(60vh, 420px); overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 14px 16px 16px;
+  background: var(--wx-card); border: 1px solid var(--wx-line); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(51, 51, 51, 0.12);
+  scrollbar-width: thin; scrollbar-color: #d8d0c2 transparent;
+}
+.wx-snav-menu::-webkit-scrollbar { width: 6px; }
+.wx-snav-menu::-webkit-scrollbar-thumb { background: #d8d0c2; border-radius: 3px; }
+.wx-snav-menu::-webkit-scrollbar-track { background: transparent; }
+.wx-snav-label { display: block; font-size: 11px; color: var(--wx-sub); letter-spacing: 0.12em; margin-bottom: 8px; }
+.wx-snav-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.wx-snav-chip {
+  font-size: 12px; line-height: 1; color: var(--wx-text); white-space: nowrap;
+  padding: 6px 11px; border: 1px solid var(--wx-line); border-radius: 999px; background: var(--wx-bg);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.wx-snav-chip i { font-style: normal; font-size: 11px; opacity: 0.55; margin-left: 3px; font-variant-numeric: tabular-nums; }
+.wx-snav-chip:hover { color: var(--wx-accent); border-color: var(--wx-accent); }
+.wx-snav-chip.is-active { color: #fff; background: var(--wx-accent); border-color: var(--wx-accent); }
 .wx-notice { padding: 16px 0 0; }
 
 /* ---------- 刊头搜索框（标签导航上方） ---------- */

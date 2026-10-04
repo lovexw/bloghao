@@ -30,7 +30,7 @@ export function home(d: {
   page: number; totalPages: number; total: number
   tag?: string                       // /tag/xxx 筛选时当前标签
   q?: string                         // /search 页当前关键词（刊头搜索框回填用）
-  hotTags: string[]                  // 热门标签（做导航用）
+  tags: TagCount[]                   // 顶部导航「分类话题」菜单的标签（带计数，已按热度排序）
 }): string {
   return `<div class="my-page">
     ${d.posts.map(p => `
@@ -69,6 +69,7 @@ export function about(d: { settings: Record<string, string>; contentHtml: string
 export function weibo(d: {
   settings: Record<string, string>
   categories: CategoryLink[]         // 顶部站点导航数据
+  tags?: TagCount[]                  // 顶部导航「分类话题」菜单的标签
   items: WeiboItemView[]             // 微博列表 { id, content, images, created_at }
   page: number; totalPages: number; total: number
 }): string {
@@ -106,16 +107,19 @@ export const THEMES: Record<string, ThemeModule> = {
 | `commentsHtml({...})` | 完整留言区（列表 + 表单 + 蜜罐），语义化 class：`.cmt-*` |
 | `likesBtn(slug, likes)` | 点赞按钮，配 `public/site.js` 自动工作，class `.like-btn` |
 | `tagLink(name)` | 标签链接 `/tag/<encodeURIComponent(name)>` |
-| `weiboCards({settings,items,avatarHtml})` | 微博卡片列表（头像 + 文字 + 图片网格），class `.wb-*` |
+| `siteNav({cls,categories,tags,active})` | 顶部站点导航（首页 / 微博 / 「分类话题」details 折叠菜单 / 随机）。菜单面板（`.{cls}-menu/-chips/-caret` 等）由你的 CSS 塑形，参考任一现有主题的同名段落 |
+| `weiboCards({settings,items,avatarHtml,adminName})` | 微博卡片列表（头像 + 文字 + 图片网格 + 折叠评论），class `.wb-*` |
 | `weiboPager(page,totalPages)` | 微博翻页（上一条 / 更早），class `.wb-pager*` |
 | `weiboImageGrid(images)` | 微博图片网格（1 大图 / 2·4 双列 / 其余三列） |
 
 ## 交互约定
 
-公开页只挂了一个 `public/site.js`（约 80 行），自动处理两类交互，主题不需要写任何 JS：
+公开页只挂了一个 `public/site.js`，主题不需要写任何 JS，自动处理：
 
-1. 点击 `.like-btn` → 调 `/api/public/like/:slug`，更新计数与 `.liked` 状态（localStorage 去重）
-2. 提交 `#comment-form` → 调 `/api/public/comments`，成功后刷新页面
+1. 点击 `.like-btn` → 调 `/api/public/like/:slug`（或微博的 `/api/public/like/weibo/:id`），更新计数与 `.liked` 状态（localStorage 去重）
+2. 提交 `#comment-form` / `.wb-cmt-form` → 调对应评论接口，成功后刷新或就地刷新列表；管理员登录态由服务端渲染进表单（免填昵称）
+3. 微博卡片评论区的展开 / 折叠与楼中楼回复按钮
+4. 顶部「分类话题」折叠菜单：点击菜单外或按 Esc 收起
 
 想加更多交互？在你的主题 CSS 之外追加一个 JS 文件放 `public/`，并在 `src/render.ts` 的 `page()` 里加一行 `<script src="/你的.js" defer></script>`（CSP 已允许同源脚本）。
 

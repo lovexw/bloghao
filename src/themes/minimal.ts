@@ -1,7 +1,6 @@
 import type { SettingsMap } from '../types'
 import {
   categoryLink,
-  commentsHtml,
   esc,
   fmtDate,
   likesBtn,
@@ -14,6 +13,7 @@ import {
   weiboTopicBar,
   type CategoryLink,
   type HomePostView,
+  type TagCount,
   type WeiboItemView,
 } from '../render'
 import css from './minimal.css'
@@ -41,7 +41,7 @@ export function home(d: {
   total: number
   tag?: string
   q?: string
-  hotTags: string[]
+  tags: TagCount[]
   categories: CategoryLink[]
   navActive?: string
   notice?: string
@@ -60,16 +60,11 @@ export function home(d: {
 </a>`
     )
     .join('\n')
-  const nav = d.hotTags
-    .slice(0, 6)
-    .map((t) => `<a class="mn-nav-link${t === d.tag ? ' is-active' : ''}" href="${tagLink(t)}">${esc(t)}</a>`)
-    .join('')
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, active: d.navActive })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
     <nav class="mn-nav">
-      ${nav}
       <a class="mn-nav-link" href="/about">关于</a>
     </nav>
   </header>
@@ -104,6 +99,7 @@ export function post(d: {
   }
   category: CategoryLink | null
   categories: CategoryLink[]
+  tags?: TagCount[]
   comments: { html: string; count: number }
   related: HomePostView[]
 }): string {
@@ -114,7 +110,7 @@ export function post(d: {
         .join('')}</aside>`
     : ''
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags })}
   <header class="mn-header">
     <a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a>
   </header>
@@ -134,9 +130,9 @@ export function post(d: {
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[] }): string {
+export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[]; tags?: TagCount[] }): string {
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags })}
   <header class="mn-header"><a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a></header>
   <article class="mn-article">
     <h1 class="mn-title">关于</h1>
@@ -150,19 +146,27 @@ export function about(d: { settings: SettingsMap; contentHtml: string; categorie
 export function weibo(d: {
   settings: SettingsMap
   categories: CategoryLink[]
+  tags?: TagCount[]
   items: WeiboItemView[]
   page: number
   totalPages: number
   total: number
   allowComments: boolean
+  adminName?: string
   topic?: string
   topics?: { name: string; count: number }[]
 }): string {
   const s = d.settings
   const topicBar = weiboTopicBar(d.topics || [], d.topic)
-  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: avatar(s), allowComments: d.allowComments })
+  const cards = weiboCards({
+    settings: s,
+    items: d.items,
+    avatarHtml: avatar(s),
+    allowComments: d.allowComments,
+    adminName: d.adminName,
+  })
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, active: 'weibo' })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'weibo' })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
     <nav class="mn-nav"><a class="mn-nav-link is-active" href="/weibo">微博</a><a class="mn-nav-link" href="/about">关于</a></nav>

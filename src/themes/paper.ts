@@ -1,7 +1,6 @@
 import type { SettingsMap } from '../types'
 import {
   categoryLink,
-  commentsHtml,
   esc,
   fmtDate,
   likesBtn,
@@ -14,6 +13,7 @@ import {
   weiboTopicBar,
   type CategoryLink,
   type HomePostView,
+  type TagCount,
   type WeiboItemView,
 } from '../render'
 import css from './paper.css'
@@ -45,7 +45,7 @@ export function home(d: {
   total: number
   tag?: string
   q?: string
-  hotTags: string[]
+  tags: TagCount[]
   categories: CategoryLink[]
   navActive?: string
   notice?: string
@@ -70,20 +70,14 @@ export function home(d: {
     )
     .join('\n')
 
-  const tags = d.hotTags
-    .slice(0, 8)
-    .map((t) => `<a class="pp-nav-tag${t === d.tag ? ' is-active' : ''}" href="${tagLink(t)}">${esc(t)}</a>`)
-    .join('')
-
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, active: d.navActive })}
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
   <header class="pp-masthead">
     ${seal(s)}
     <h1 class="pp-site-name">${esc(s.siteName)}</h1>
     <p class="pp-site-desc">${esc(s.siteDescription)}</p>
   </header>
   ${searchForm(d.q)}
-  ${tags ? `<nav class="pp-nav">${tags}</nav>` : ''}
   ${d.notice ? `<div class="pp-notice">${d.notice}</div>` : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
   <main class="pp-list">
@@ -112,6 +106,7 @@ export function post(d: {
   }
   category: CategoryLink | null
   categories: CategoryLink[]
+  tags?: TagCount[]
   comments: { html: string; count: number }
   related: HomePostView[]
 }): string {
@@ -122,7 +117,7 @@ export function post(d: {
         .join('')}</section>`
     : ''
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories })}
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags })}
   <article class="pp-article">
     <h1 class="pp-title">${esc(p.title)}</h1>
     <div class="pp-meta"><time>${fmtDate(p.published_at)}</time><span>·</span><span>${p.readingMinutes} 分钟读完</span><span>·</span><span>${p.views} 次阅读</span></div>
@@ -143,9 +138,9 @@ export function post(d: {
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[] }): string {
+export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[]; tags?: TagCount[] }): string {
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories })}
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags })}
   <article class="pp-article">
     <h1 class="pp-title">关于</h1>
     <div class="pp-body rich">${d.contentHtml}</div>
@@ -158,19 +153,27 @@ export function about(d: { settings: SettingsMap; contentHtml: string; categorie
 export function weibo(d: {
   settings: SettingsMap
   categories: CategoryLink[]
+  tags?: TagCount[]
   items: WeiboItemView[]
   page: number
   totalPages: number
   total: number
   allowComments: boolean
+  adminName?: string
   topic?: string
   topics?: { name: string; count: number }[]
 }): string {
   const s = d.settings
   const topicBar = weiboTopicBar(d.topics || [], d.topic)
-  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: seal(s), allowComments: d.allowComments })
+  const cards = weiboCards({
+    settings: s,
+    items: d.items,
+    avatarHtml: seal(s),
+    allowComments: d.allowComments,
+    adminName: d.adminName,
+  })
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, active: 'weibo' })}
+  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, active: 'weibo' })}
   <header class="wb-page-head">
     <h1 class="wb-page-title">微博</h1>
     <p class="wb-page-sub">${d.topic ? `话题 #${esc(d.topic)} · 共 ${d.total} 则` : d.total > 0 ? `随手记 · 共 ${d.total} 则` : '随手记，想写就写'}</p>

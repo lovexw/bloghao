@@ -43,10 +43,6 @@ img { max-width: 100%; height: auto; }
 .pp-site-name { font-size: 30px; font-weight: 700; letter-spacing: 0.12em; }
 .pp-site-desc { font-size: 14px; color: var(--pp-sub); margin-top: 10px; letter-spacing: 0.08em; }
 
-.pp-nav { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; padding: 14px 0; border-bottom: 1px solid var(--pp-line); }
-.pp-nav-tag { font-size: 13px; color: var(--pp-sub); transition: color 0.2s ease; letter-spacing: 0.05em; }
-.pp-nav-tag:hover, .pp-nav-tag.is-active { color: var(--pp-accent); }
-
 /* ---------- 目录 ---------- */
 .pp-list { padding: 8px 0; }
 .pp-item {
@@ -157,6 +153,9 @@ img { max-width: 100%; height: auto; }
 .cmt-empty { color: var(--pp-sub); font-size: 14px; }
 .cmt-form { margin-top: 20px; }
 .cmt-form-row { display: flex; gap: 10px; margin-bottom: 10px; }
+/* 管理员登录后的发言身份行（文章/微博评论表单共用），替代昵称输入框 */
+.cmt-as { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; color: var(--pp-sub); letter-spacing: 0.04em; }
+.cmt-as b { color: var(--pp-accent); font-weight: 700; }
 .cmt-input {
   flex: 1; font: inherit; font-size: 14px;
   border: 1px solid var(--pp-line); background: var(--pp-card);
@@ -327,19 +326,53 @@ img { max-width: 100%; height: auto; }
   .cmt-input, .cmt-textarea, .wb-cmt-input, .wb-cmt-textarea { font-size: 16px; }
 }
 
-/* ---------- 顶部站点导航（首页/分类/搜索/随机） ---------- */
+/* ---------- 顶部站点导航（首页/微博/分类话题/随机） ---------- */
 .pp-snav {
   display: flex; align-items: center; gap: 18px;
   padding: 12px 2px 10px; border-bottom: 1px solid var(--pp-line);
-  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
 }
-.pp-snav::-webkit-scrollbar { display: none; }
 .pp-snav-link { font-size: 13px; color: var(--pp-sub); white-space: nowrap; letter-spacing: 0.05em; transition: color 0.2s ease; }
 .pp-snav-link:hover, .pp-snav-link.is-active { color: var(--pp-accent); }
+
+/* 「分类话题」折叠菜单：details/summary 原生折叠，site.js 只负责点外部收起 */
+.pp-snav-dd { position: relative; }
+.pp-snav-dd summary { list-style: none; cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 4px; }
+.pp-snav-dd summary::-webkit-details-marker { display: none; }
+.pp-snav-caret { width: 10px; height: 10px; transition: transform 0.2s ease; }
+.pp-snav-dd[open] .pp-snav-caret { transform: rotate(180deg); }
+.pp-snav-dd[open] summary { color: var(--pp-accent); }
+.pp-snav-menu {
+  position: absolute; top: calc(100% + 12px); left: -8px; z-index: 60;
+  min-width: 260px; max-width: min(340px, calc(100vw - 48px));
+  max-height: min(60vh, 420px); overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 14px 16px 16px;
+  background: var(--pp-card); border: 1px solid var(--pp-line); border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(90, 78, 52, 0.16);
+  scrollbar-width: thin; scrollbar-color: var(--pp-line) transparent;
+}
+.pp-snav-menu::-webkit-scrollbar { width: 6px; }
+.pp-snav-menu::-webkit-scrollbar-thumb { background: var(--pp-line); border-radius: 3px; }
+.pp-snav-menu::-webkit-scrollbar-track { background: transparent; }
+.pp-snav-label { display: block; font-size: 11px; color: var(--pp-sub); letter-spacing: 0.14em; margin-bottom: 8px; }
+.pp-snav-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-snav-chip {
+  font-size: 12px; line-height: 1; color: var(--pp-ink); white-space: nowrap;
+  letter-spacing: 0.04em;
+  padding: 6px 11px; border: 1px solid var(--pp-line); border-radius: 999px; background: var(--pp-bg);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.pp-snav-chip i { font-style: normal; font-size: 11px; opacity: 0.55; margin-left: 3px; font-variant-numeric: tabular-nums; }
+.pp-snav-chip:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
+.pp-snav-chip.is-active { color: #f7f4ee; background: var(--pp-accent); border-color: var(--pp-accent); }
 .pp-notice { padding: 18px 0 0; }
 
-/* ---------- 报头检索（标签导航上方） ---------- */
-.pp-search { display: flex; gap: 8px; max-width: 400px; margin: 20px auto 4px; }
+/* ---------- 报头检索 ---------- */
+.pp-search {
+  display: flex; gap: 8px; max-width: 400px;
+  margin: 20px auto 0; padding: 0 0 16px;
+  border-bottom: 1px solid var(--pp-line);
+}
 .pp-search-input {
   flex: 1; min-width: 0; font: inherit; font-size: 16px;
   padding: 9px 14px; letter-spacing: 0.03em;

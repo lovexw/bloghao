@@ -17,8 +17,9 @@ export interface ThemeModule {
     tag?: string
     /** 搜索页当前关键词（刊头搜索框回填用） */
     q?: string
-    hotTags: string[]
-    /** 顶部导航数据与高亮：'home' | 分类 slug | 'search' | '' */
+    /** 顶部导航「分类话题」菜单的标签（带使用计数，已按热度排序） */
+    tags: import('../render').TagCount[]
+    /** 顶部导航数据与高亮：'home' | 'weibo' | 分类 slug | 'tag:标签名' | 'search' */
     categories: import('../render').CategoryLink[]
     navActive?: string
     /** 列表上方的通知区（搜索结果/分类说明），由 pages 层构建好的 HTML */
@@ -31,12 +32,16 @@ export interface ThemeModule {
   weibo(d: {
     settings: Record<string, string>
     categories: import('../render').CategoryLink[]
+    /** 顶部导航「分类话题」菜单的标签 */
+    tags?: import('../render').TagCount[]
     items: import('../render').WeiboItemView[]
     page: number
     totalPages: number
     total: number
     /** 站点「允许评论」开关：关闭时微博卡片只展示评论列表入口，不出表单 */
     allowComments: boolean
+    /** 登录管理员昵称：卡片内评论表单免填昵称，以作者身份发言 */
+    adminName?: string
     /** 当前筛选的话题（?topic=），为空为全部 */
     topic?: string
     /** 已发布微博的话题聚合（话题条数据），为空不渲染话题条 */
@@ -58,10 +63,16 @@ export interface ThemeModule {
     }
     category: import('../render').CategoryLink | null
     categories: import('../render').CategoryLink[]
+    tags?: import('../render').TagCount[]
     comments: { html: string; count: number }
     related: import('../render').HomePostView[]
   }): string
-  about(d: { settings: Record<string, string>; contentHtml: string; categories: import('../render').CategoryLink[] }): string
+  about(d: {
+    settings: Record<string, string>
+    contentHtml: string
+    categories: import('../render').CategoryLink[]
+    tags?: import('../render').TagCount[]
+  }): string
 }
 
 /**

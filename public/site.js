@@ -43,6 +43,20 @@
     return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日'
   }
 
+  /* ---------------- 顶部导航「分类话题」折叠菜单：点外部 / Esc 收起 ---------------- */
+  function closeNavMenus(except) {
+    var open = document.querySelectorAll('details.snav-dd[open]')
+    for (var i = 0; i < open.length; i++) {
+      if (!except || !open[i].contains(except)) open[i].removeAttribute('open')
+    }
+  }
+  document.addEventListener('click', function (e) {
+    closeNavMenus(e.target)
+  })
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeNavMenus(null)
+  })
+
   /* ---------------- 点赞（文章 + 微博，localStorage 防重复，可再点取消） ---------------- */
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('.like-btn') : null
@@ -113,8 +127,8 @@
       var content = form.querySelector('[name=content]')
       var link = form.querySelector('[name=link]')
       if (!content.value.trim()) return
-      // 管理员回复不带昵称（服务端用作者身份），访客留言必须填昵称
-      if (!replyId && (!nicknameInput || !nicknameInput.value.trim())) return
+      // 管理员表单没有昵称输入（服务端直接取作者身份），访客留言必须填昵称
+      if (nicknameInput && !replyId && !nicknameInput.value.trim()) return
       var label = btn.textContent
       btn.textContent = '发送中…'
       btn.disabled = true
@@ -263,8 +277,8 @@
     var tip = form.querySelector('.wb-cmt-tip')
     var btn = form.querySelector('.wb-cmt-submit')
     if (!content || !content.value.trim()) return
-    // 管理员回复不带昵称，访客必须填
-    if (!form.dataset.replyId && (!nickname || !nickname.value.trim())) return
+    // 管理员表单没有昵称输入（服务端直接取作者身份），访客必须填
+    if (nickname && !form.dataset.replyId && !nickname.value.trim()) return
     var label = btn ? btn.textContent : ''
     if (btn) {
       btn.textContent = '发送中…'

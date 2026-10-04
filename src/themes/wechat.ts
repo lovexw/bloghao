@@ -1,7 +1,6 @@
 import type { SettingsMap } from '../types'
 import {
   categoryLink,
-  commentsHtml,
   esc,
   fmtDate,
   fmtDateCN,
@@ -15,6 +14,7 @@ import {
   weiboTopicBar,
   type CategoryLink,
   type HomePostView,
+  type TagCount,
   type WeiboItemView,
 } from '../render'
 import css from './wechat.css'
@@ -30,25 +30,13 @@ function avatar(s: SettingsMap): string {
   return `<span class="wx-avatar" aria-hidden="true">${esc(ch)}</span>`
 }
 
-/** 刊头搜索框：位于标语与标签导航之间 */
+/** 刊头搜索框：位于标语与文章列表之间（分类、话题收进顶部导航的折叠菜单） */
 function searchForm(q: string | undefined): string {
   return `<form class="wx-search" action="/search" method="get" role="search">
   <svg class="wx-search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
   <input class="wx-search-input" type="search" name="q" value="${esc(q || '')}" placeholder="搜一搜站内的文章…" maxlength="60" aria-label="搜索文章">
   <button class="wx-search-btn" type="submit">搜索</button>
 </form>`
-}
-
-/** 刊头下的文字导航：全部 / 热门标签（分类、搜索走顶部站点导航） */
-function mastheadNav(activeTag: string | undefined, tags: string[]): string {
-  if (!activeTag && !tags.length) return ''
-  const link = (href: string, label: string, active = false) =>
-    `<a class="wx-nav-link${active ? ' is-active' : ''}" href="${href}">${esc(label)}</a>`
-  const links = [
-    link('/', '全部', !activeTag),
-    ...tags.slice(0, 5).map((t) => link(tagLink(t), t, t === activeTag)),
-  ]
-  return `<nav class="wx-nav">${links.join('')}</nav>`
 }
 
 export function home(d: {
@@ -59,7 +47,7 @@ export function home(d: {
   total: number
   tag?: string
   q?: string
-  hotTags: string[]
+  tags: TagCount[]
   categories: CategoryLink[]
   navActive?: string
   notice?: string
@@ -96,13 +84,12 @@ export function home(d: {
     .join('\n')
 
   return `<div class="wx-page">
-  ${siteNav({ cls: 'wx-snav', categories: d.categories, active: d.navActive })}
+  ${siteNav({ cls: 'wx-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
   <header class="wx-masthead">
     ${avatar(s)}
     <h1 class="wx-masthead-name">${esc(s.siteName)}</h1>
     ${s.siteDescription ? `<p class="wx-masthead-desc">${esc(s.siteDescription)}</p>` : ''}
     ${searchForm(d.q)}
-    ${mastheadNav(d.tag, d.hotTags)}
   </header>
   ${d.notice ? `<div class="wx-notice">${d.notice}</div>` : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
@@ -132,6 +119,7 @@ export function post(d: {
   }
   category: CategoryLink | null
   categories: CategoryLink[]
+  tags: TagCount[]
   comments: { html: string; count: number }
   related: HomePostView[]
 }): string {
@@ -158,7 +146,7 @@ export function post(d: {
     : ''
 
   return `<div class="wx-article">
-  ${siteNav({ cls: 'wx-snav', categories: d.categories })}
+  ${siteNav({ cls: 'wx-snav', categories: d.categories, tags: d.tags })}
   <h1 class="wx-title">${esc(p.title)}</h1>
   <div class="wx-meta">
     <a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(s)}</a>
@@ -183,9 +171,9 @@ export function post(d: {
 </div>`
 }
 
-export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[] }): string {
+export function about(d: { settings: SettingsMap; contentHtml: string; categories: CategoryLink[]; tags?: TagCount[] }): string {
   return `<div class="wx-article">
-  ${siteNav({ cls: 'wx-snav', categories: d.categories })}
+  ${siteNav({ cls: 'wx-snav', categories: d.categories, tags: d.tags })}
   <h1 class="wx-title">关于</h1>
   <div class="wx-meta"><a class="wx-meta-avatar" href="/" aria-label="返回首页">${avatar(d.settings)}</a>
     <div class="wx-meta-main"><a class="wx-account" href="/">${esc(d.settings.siteName)}</a></div>
@@ -199,19 +187,27 @@ export function about(d: { settings: SettingsMap; contentHtml: string; categorie
 export function weibo(d: {
   settings: SettingsMap
   categories: CategoryLink[]
+  tags?: TagCount[]
   items: WeiboItemView[]
   page: number
   totalPages: number
   total: number
   allowComments: boolean
+  adminName?: string
   topic?: string
   topics?: { name: string; count: number }[]
 }): string {
   const s = d.settings
   const topicBar = weiboTopicBar(d.topics || [], d.topic)
-  const cards = weiboCards({ settings: s, items: d.items, avatarHtml: avatar(s), allowComments: d.allowComments })
+  const cards = weiboCards({
+    settings: s,
+    items: d.items,
+    avatarHtml: avatar(s),
+    allowComments: d.allowComments,
+    adminName: d.adminName,
+  })
   return `<div class="wx-page">
-  ${siteNav({ cls: 'wx-snav', categories: d.categories, active: 'weibo' })}
+  ${siteNav({ cls: 'wx-snav', categories: d.categories, tags: d.tags, active: 'weibo' })}
   <header class="wb-page-head">
     <h1 class="wb-page-title">微博</h1>
     <p class="wb-page-sub">${d.topic ? `话题 #${esc(d.topic)} · 共 ${d.total} 条` : d.total > 0 ? `随手记 · 共 ${d.total} 条` : '随手记，想写就写'}</p>
