@@ -46,7 +46,9 @@ export interface WeiboRow {
   id: number
   content: string
   images: string
+  topics: string
   status: PostStatus
+  pinned: number
   likes: number
   published_at: number | null
   created_at: number

@@ -367,3 +367,22 @@ img { max-width: 100%; height: auto; }
   background: var(--pp-card); color: #6b665c; cursor: pointer;
 }
 .pager-go:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
+
+/* ---------- 微博置顶角标 + 话题 ---------- */
+.wb-pin {
+  margin-left: auto; flex: 0 0 auto;
+  font-size: 11px; line-height: 1; padding: 4px 9px; border-radius: 3px;
+  color: var(--pp-accent); border: 1px solid var(--pp-accent); letter-spacing: 0.1em;
+}
+.wb-topic { color: var(--pp-accent); }
+.wb-text a.wb-topic:hover { text-decoration: underline; text-underline-offset: 4px; }
+.wb-topics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.wb-topic-chip {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 12.5px; padding: 5px 13px; border-radius: 3px;
+  border: 1px solid var(--pp-line); color: var(--pp-sub); background: var(--pp-card);
+  letter-spacing: 0.05em; transition: all 0.18s ease;
+}
+.wb-topic-chip i { font-style: normal; font-size: 11px; opacity: 0.65; font-variant-numeric: tabular-nums; }
+.wb-topic-chip:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
+.wb-topic-chip.is-active { color: #f7f4ee; background: var(--pp-accent); border-color: var(--pp-accent); }

@@ -1,5 +1,5 @@
 import type { CommentRow, PostRow, SettingsMap } from './types'
-import { esc, fmtDate, fmtDateCN, fmtDateTime } from './utils'
+import { esc, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime } from './utils'
 
 export interface ThemePageOptions {
   settings: SettingsMap
@@ -131,6 +131,7 @@ export interface WeiboItemView {
   created_at: number
   likes: number
   commentCount: number
+  pinned?: boolean
 }
 
 /** 微博时间：今年「10月3日 14:20」，往年带年份 */
@@ -151,6 +152,27 @@ export function weiboImageGrid(images: string[]): string {
   const cls = n === 1 ? 'wb-imgs-1' : n === 2 || n === 4 ? 'wb-imgs-2' : 'wb-imgs-3'
   const imgs = images.map((u) => `<img src="${esc(u)}" loading="lazy" alt="">`).join('')
   return `<div class="wb-imgs ${cls}">${imgs}</div>`
+}
+
+/** 微博正文：转义后把 #话题# 渲染成指向 /weibo?topic= 的链接 */
+export function weiboTextHtml(content: string): string {
+  return esc(content).replace(/(?<![\p{L}\p{N}#])#[^\s#&<>"']{1,24}(?:#|(?=\s)|$)/gu, (m) => {
+    const name = extractWeiboTopics(m)[0]
+    if (!name) return esc(m)
+    return `<a class="wb-topic" href="/weibo?topic=${encodeURIComponent(name)}">${esc(m)}</a>`
+  })
+}
+
+/** 微博话题条：「全部」+ 各话题（带条数），当前话题高亮 */
+export function weiboTopicBar(topics: { name: string; count: number }[], active?: string): string {
+  if (!topics.length) return ''
+  const chip = (name: string, label: string, count?: number) =>
+    `<a class="wb-topic-chip${name === (active || '') ? ' is-active' : ''}" href="/weibo${
+      name ? `?topic=${encodeURIComponent(name)}` : ''
+    }">${esc(label)}${count != null ? `<i>${count}</i>` : ''}</a>`
+  return `<nav class="wb-topics" aria-label="微博话题">${chip('', '全部')}${topics
+    .map((t) => chip(t.name, '#' + t.name, t.count))
+    .join('')}</nav>`
 }
 
 /** 微博卡片底栏：点赞（同文章 like-btn，data-type=weibo）+ 评论数（点开卡片内折叠评论区） */
@@ -197,15 +219,16 @@ export function weiboCards(o: {
     .map((w) => {
       const foot = weiboCardFoot(w)
       const panel = weiboCommentPanel(w, allowComments)
-      return `<article class="wb-card" id="wb-${w.id}">
+      return `<article class="wb-card${w.pinned ? ' is-pinned' : ''}" id="wb-${w.id}">
   <header class="wb-head">
     <span class="wb-avatar">${o.avatarHtml}</span>
     <div class="wb-who">
       <span class="wb-name">${esc(name)}</span>
       <time class="wb-time" datetime="${new Date(w.created_at).toISOString()}">${weiboTime(w.created_at)}</time>
     </div>
+    ${w.pinned ? '<span class="wb-pin">置顶</span>' : ''}
   </header>
-  ${w.content ? `<div class="wb-text">${esc(w.content)}</div>` : ''}
+  ${w.content ? `<div class="wb-text">${weiboTextHtml(w.content)}</div>` : ''}
   ${weiboImageGrid(w.images)}
   ${foot}
   ${panel}

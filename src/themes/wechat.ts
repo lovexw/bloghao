@@ -12,6 +12,7 @@ import {
   weiboCards,
   weiboHomeEntry,
   weiboPager,
+  weiboTopicBar,
   type CategoryLink,
   type HomePostView,
   type WeiboItemView,
@@ -203,15 +204,19 @@ export function weibo(d: {
   totalPages: number
   total: number
   allowComments: boolean
+  topic?: string
+  topics?: { name: string; count: number }[]
 }): string {
   const s = d.settings
+  const topicBar = weiboTopicBar(d.topics || [], d.topic)
   const cards = weiboCards({ settings: s, items: d.items, avatarHtml: avatar(s), allowComments: d.allowComments })
   return `<div class="wx-page">
   ${siteNav({ cls: 'wx-snav', categories: d.categories, active: 'weibo' })}
   <header class="wb-page-head">
     <h1 class="wb-page-title">微博</h1>
-    <p class="wb-page-sub">${d.total > 0 ? `随手记 · 共 ${d.total} 条` : '随手记，想写就写'}</p>
+    <p class="wb-page-sub">${d.topic ? `话题 #${esc(d.topic)} · 共 ${d.total} 条` : d.total > 0 ? `随手记 · 共 ${d.total} 条` : '随手记，想写就写'}</p>
   </header>
+  ${topicBar}
   <main class="wb-list">
     ${cards || '<p class="wb-empty">还没发过微博，去后台随手写一条吧。</p>'}
   </main>

@@ -149,6 +149,7 @@ async function shellView(active, contentHTML) {
     <aside class="sidebar">
       <div class="side-logo"><img src="/favicon.svg" alt="">博客号</div>
       <nav class="side-nav">
+        <a class="side-item side-item-home" href="/" target="_blank" rel="noopener">${I.home}<span>查看主页</span></a>
         <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/">${I.home}<span>概览</span></a>
         <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts">${I.post}<span>文章</span></a>
         <a class="side-item${active === 'weibo' ? ' is-active' : ''}" href="#/weibo">${I.weibo}<span>微博</span></a>
@@ -157,7 +158,6 @@ async function shellView(active, contentHTML) {
         <a class="side-item${active === 'comments' ? ' is-active' : ''}" href="#/comments">${I.comment}<span>评论</span>${pending ? `<span class="side-badge">${pending}</span>` : ''}</a>
         <a class="side-item${active === 'media' ? ' is-active' : ''}" href="#/media">${I.image}<span>媒体</span></a>
         <a class="side-item${active === 'settings' ? ' is-active' : ''}" href="#/settings">${I.gear}<span>设置</span></a>
-        <a class="side-item" href="/" target="_blank" rel="noopener">${I.home}<span>查看主页</span></a>
       </nav>
       <div class="side-user">
         ${state.settings?.avatarUrl ? `<img class="side-user-avatar" src="${esc(state.settings.avatarUrl)}" alt="">` : `<span class="side-user-avatar">${esc((state.user.display_name || state.user.username).charAt(0).toUpperCase())}</span>`}
@@ -341,7 +341,11 @@ async function viewWeibo() {
         ${w.imageList.length ? `<div class="wb-row-thumbs">${w.imageList.map((u) => `<img src="${esc(u)}" loading="lazy" alt="">`).join('')}</div>` : ''}
         <div class="wb-row-meta">
           ${w.status === 'published' ? '<span class="chip chip-green">已发布</span>' : '<span class="chip chip-gray">草稿</span>'}
+          ${w.pinned ? '<span class="chip chip-warn">置顶</span>' : ''}
           ${w.imageList.length ? `<span>${w.imageList.length} 图</span><span>·</span>` : ''}
+          ${(w.topicList || []).length
+            ? `<span class="wb-row-topics">${w.topicList.map((t) => `<a href="/weibo?topic=${encodeURIComponent(t)}" target="_blank">#${esc(t)}</a>`).join('')}</span><span>·</span>`
+            : ''}
           <span>${w.likes || 0} 赞 · ${w.commentCount || 0} 评</span>
           <span>·</span>
           <span>${fmtDateTime(w.published_at || w.updated_at)}</span>
@@ -350,6 +354,7 @@ async function viewWeibo() {
       <div class="post-ops">
         <a class="btn btn-ghost btn-sm" href="/weibo" target="_blank">查看</a>
         <button class="btn btn-ghost btn-sm" data-act="edit">编辑</button>
+        ${w.status === 'published' ? `<button class="btn btn-ghost btn-sm" data-act="pin">${w.pinned ? '取消置顶' : '置顶'}</button>` : ''}
         <button class="btn btn-ghost btn-sm" data-act="toggle">${w.status === 'published' ? '下架' : '发布'}</button>
         <button class="btn btn-ghost btn-sm btn-danger" data-act="del">删除</button>
       </div>
@@ -362,7 +367,7 @@ async function viewWeibo() {
     `<div class="page-head"><div><div class="page-title">微博</div><div class="page-sub">随手记：短文字 + 图片，不用起标题</div></div></div>
     <div class="panel wb-composer">
       <textarea class="textarea wb-input" id="wb-content" maxlength="${WB_MAX_CHARS}" placeholder="有什么新鲜事？">${esc(wbEditing?.content || '')}</textarea>
-      <div class="wb-hint">支持 ⌘/Ctrl+V 粘贴截图、把图片拖进来，或点下方「加图」</div>
+      <div class="wb-hint">支持 ⌘/Ctrl+V 粘贴截图、把图片拖进来，或点下方「加图」；正文里写 #话题# 可归类，如 #晚餐日记#</div>
       <div class="wb-imgs" id="wb-imgs"></div>
       <div class="wb-composer-foot">
         <button class="btn btn-ghost btn-sm" id="wb-add-img" type="button">${I.image} 加图（${images.length}/${WB_MAX_IMAGES}）</button>
@@ -498,6 +503,15 @@ async function viewWeibo() {
       wbEditing = { id: w.id, content: w.content, images: [...w.imageList], status: w.status }
       viewWeibo()
     })
+    row.querySelector('[data-act=pin]')?.addEventListener('click', async () => {
+      try {
+        await api(`/admin/weibo/${id}/pin`, { method: 'POST', body: { pinned: !w.pinned } })
+        toast(w.pinned ? '已取消置顶' : '已置顶，将显示在微博页最前')
+        viewWeibo()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
     row.querySelector('[data-act=toggle]').addEventListener('click', async () => {
       const publish = w.status !== 'published'
       try {
@@ -519,9 +533,9 @@ async function viewWeibo() {
 
 /* ---------------- 分类管理 ---------------- */
 async function viewCategories() {
-  let d
+  let d, t
   try {
-    d = await api('/admin/categories')
+    ;[d, t] = await Promise.all([api('/admin/categories'), api('/admin/tags')])
   } catch (e) {
     return handleApiErr(e)
   }
@@ -539,6 +553,14 @@ async function viewCategories() {
     </div>`
     )
     .join('')
+  const tagChips = t.tags
+    .map(
+      (tg) => `<span class="tag-manage-item" data-name="${esc(tg.name)}">
+      <span class="tag-manage-name">${esc(tg.name)}</span><i>${tg.count}</i>
+      <button class="tag-manage-del" data-act="del-tag" title="删除标签">×</button>
+    </span>`
+    )
+    .join('')
 
   await shellView(
     'categories',
@@ -547,7 +569,17 @@ async function viewCategories() {
       <input class="input" id="cat-name" placeholder="新分类名称，如：生活随笔" maxlength="20">
       <button class="btn btn-primary" id="cat-add">添加分类</button>
     </div>
-    <div class="panel">${rows || '<div class="empty-box">还没有分类，添加一个吧</div>'}</div>`
+    <div class="panel">${rows || '<div class="empty-box">还没有分类，添加一个吧</div>'}</div>
+    <div class="panel">
+      <div class="panel-head"><span>标签</span><span class="panel-head-sub">共 ${t.tags.length} 个 · 可预建标签，删除会从所有文章移除</span></div>
+      <div class="panel-body">
+        <div class="toolbar" style="margin-bottom:12px;">
+          <input class="input" id="tag-name" placeholder="新标签名称，回车或点添加" maxlength="20">
+          <button class="btn btn-primary" id="tag-add">添加标签</button>
+        </div>
+        <div class="tag-manage-list">${tagChips || '<div class="empty-box" style="padding:20px 0;">还没有标签，在写文章时添加，或在这里预建</div>'}</div>
+      </div>
+    </div>`
   )
 
   document.getElementById('cat-add').addEventListener('click', async () => {
@@ -561,6 +593,37 @@ async function viewCategories() {
     } catch (e) {
       toast(e.message, true)
     }
+  })
+
+  const addTag = async () => {
+    const el = document.getElementById('tag-name')
+    const name = el.value.trim()
+    if (!name) return toast('先填个标签名', true)
+    try {
+      await api('/admin/tags', { method: 'POST', body: { name } })
+      toast('标签已创建')
+      viewCategories()
+    } catch (e) {
+      toast(e.message, true)
+    }
+  }
+  document.getElementById('tag-add').addEventListener('click', addTag)
+  document.getElementById('tag-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addTag()
+  })
+
+  $app.querySelectorAll('.tag-manage-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const name = btn.closest('.tag-manage-item').dataset.name
+      if (!(await confirmBox(`删除标签「${name}」？它会从所有文章中被移除。`))) return
+      try {
+        await api(`/admin/tags/${encodeURIComponent(name)}`, { method: 'DELETE' })
+        toast('标签已删除')
+        viewCategories()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
   })
 
   $app.querySelectorAll('.cat-row').forEach((row) => {
@@ -603,23 +666,27 @@ async function viewCategories() {
 async function viewComments() {
   const q = new URLSearchParams(location.hash.split('?')[1] || '')
   const status = q.get('status') || 'all'
+  const type = q.get('type') || 'all'
   let d
   try {
-    d = await api(`/admin/comments?status=${status}&page=${q.get('page') || 1}`)
+    d = await api(`/admin/comments?type=${type}&status=${status}&page=${q.get('page') || 1}`)
   } catch (e) {
     return handleApiErr(e)
   }
   const rows = d.items
     .map((cm) => {
+      const wbText = String(cm.weibo_content || '').replace(/\s+/g, ' ').trim()
+      const wbShort = wbText.length > 16 ? wbText.slice(0, 16) + '…' : wbText
       const target = cm.post_id
         ? `<a class="comment-post" href="/post/${esc(cm.post_slug)}#comments" target="_blank">《${esc(cm.post_title)}》</a>`
-        : `<a class="comment-post" href="/weibo#wb-${cm.weibo_id}" target="_blank">微博</a>`
+        : `<a class="comment-post" href="/weibo#wb-${cm.weibo_id}" target="_blank">微博${wbShort ? ` · ${esc(wbShort)}` : ''}</a>`
       return `<div class="comment-row">
       <div class="comment-main">
         <div class="comment-meta">
           <span class="who">${esc(cm.nickname)}</span>
           ${Number(cm.is_admin) ? '<span class="chip chip-green">作者</span>' : ''}
           ${cm.status === 'pending' ? '<span class="chip chip-warn">待审核</span>' : '<span class="chip chip-green">已展示</span>'}
+          <span class="chip chip-gray">${cm.post_id ? '文章' : '微博'}</span>
           ${target}
           ${cm.parent_nickname ? `<span class="chip chip-gray">回复 @${esc(cm.parent_nickname)}</span>` : ''}
           <span style="color:var(--sub);font-size:12px;">${fmtDateTime(cm.created_at)}</span>
@@ -639,18 +706,32 @@ async function viewComments() {
     })
     .join('')
 
+  const nav = (patch) => {
+    const p = new URLSearchParams({ type, status, ...patch })
+    location.hash = '#/comments?' + p.toString()
+  }
   await shellView(
     'comments',
     `<div class="page-head"><div><div class="page-title">评论</div><div class="page-sub">共 ${d.total} 条</div></div></div>
-    <div class="toolbar"><div class="tabs">
-      ${['all', 'pending', 'approved']
-        .map((t) => `<button class="tab${t === status ? ' is-active' : ''}" data-tab="${t}">${{ all: '全部', pending: '待审核', approved: '已展示' }[t]}</button>`)
-        .join('')}
-    </div></div>
+    <div class="toolbar">
+      <div class="tabs">
+        ${['all', 'post', 'weibo']
+          .map((t) => `<button class="tab${t === type ? ' is-active' : ''}" data-type="${t}">${{ all: '全部', post: '文章评论', weibo: '微博评论' }[t]}</button>`)
+          .join('')}
+      </div>
+      <div class="tabs">
+        ${['all', 'pending', 'approved']
+          .map((t) => `<button class="tab${t === status ? ' is-active' : ''}" data-tab="${t}">${{ all: '全部状态', pending: '待审核', approved: '已展示' }[t]}</button>`)
+          .join('')}
+      </div>
+    </div>
     <div class="panel">${rows || '<div class="empty-box">还没有评论</div>'}</div>`
   )
+  $app.querySelectorAll('[data-type]').forEach((b) =>
+    b.addEventListener('click', () => nav({ type: b.dataset.type, page: 1 }))
+  )
   $app.querySelectorAll('[data-tab]').forEach((b) =>
-    b.addEventListener('click', () => (location.hash = `#/comments?status=${b.dataset.tab}`))
+    b.addEventListener('click', () => nav({ status: b.dataset.tab, page: 1 }))
   )
   Array.from($app.querySelectorAll('.comment-row')).forEach((row, i) => {
     const cm = d.items[i]

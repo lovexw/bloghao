@@ -9,6 +9,7 @@ import {
   listCategories,
   listPosts,
   listWeibo,
+  listWeiboTopics,
   parseTags,
   relatedPosts,
   weiboCommentCountMap,
@@ -284,20 +285,31 @@ export async function renderAbout(c: C): Promise<Response> {
   )
 }
 
-/** 微博页（/weibo）：随手记时间线，复用主题的页面骨架与站点导航 */
+/** 微博页（/weibo）：随手记时间线，复用主题的页面骨架与站点导航；?topic= 按话题筛选 */
 export async function renderWeibo(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
   const url = new URL(c.req.url)
   const perPage = 15
-  const [r, categories] = await Promise.all([
-    listWeibo(c.env.DB, { status: 'published', page: clampInt(url.searchParams.get('page'), 1, 100000, 1), limit: perPage }),
+  const topic = (url.searchParams.get('topic') || '').trim().slice(0, 24)
+  const [r, categories, topics] = await Promise.all([
+    listWeibo(c.env.DB, {
+      status: 'published',
+      page: clampInt(url.searchParams.get('page'), 1, 100000, 1),
+      limit: perPage,
+      topic: topic || undefined,
+      pinnedFirst: true,
+    }),
     navCategories(c),
+    listWeiboTopics(c.env.DB),
   ])
   // 页码越界时回到最后一页重取一次
   if (r.page > r.totalPages && r.total > 0) {
-    Object.assign(r, await listWeibo(c.env.DB, { status: 'published', page: r.totalPages, limit: perPage }))
+    Object.assign(
+      r,
+      await listWeibo(c.env.DB, { status: 'published', page: r.totalPages, limit: perPage, topic: topic || undefined, pinnedFirst: true })
+    )
   }
   const cmtCounts = await weiboCommentCountMap(
     c.env.DB,
@@ -310,6 +322,7 @@ export async function renderWeibo(c: C): Promise<Response> {
     created_at: w.published_at ?? w.created_at,
     likes: w.likes,
     commentCount: cmtCounts.get(w.id) || 0,
+    pinned: !!w.pinned,
   }))
   const html = theme.weibo({
     settings,
@@ -319,6 +332,8 @@ export async function renderWeibo(c: C): Promise<Response> {
     totalPages: r.totalPages,
     total: r.total,
     allowComments: settings.allowComments === '1',
+    topic: topic || undefined,
+    topics,
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(

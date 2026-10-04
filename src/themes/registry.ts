@@ -37,6 +37,10 @@ export interface ThemeModule {
     total: number
     /** 站点「允许评论」开关：关闭时微博卡片只展示评论列表入口，不出表单 */
     allowComments: boolean
+    /** 当前筛选的话题（?topic=），为空为全部 */
+    topic?: string
+    /** 已发布微博的话题聚合（话题条数据），为空不渲染话题条 */
+    topics?: { name: string; count: number }[]
   }): string
   post(d: {
     settings: Record<string, string>

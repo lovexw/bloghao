@@ -78,3 +78,27 @@ export function clampInt(v: unknown, min: number, max: number, fallback: number)
   if (Number.isNaN(n)) return fallback
   return Math.min(max, Math.max(min, n))
 }
+
+/* ---------------- 微博话题 ----------------
+ * 识别正文里的 #话题#（成对井号）与独立成词的 #话题（后面跟空白或到行尾）。
+ * 要求 # 前不是字母/数字/#，避免把 C# 、手机#1 之类误判成话题。
+ */
+const WEIBO_TOPIC_RE = /(?<![\p{L}\p{N}#])#([^\s#&<>"']{1,24})(?:#|(?=\s)|$)/gu
+
+export const WEIBO_MAX_TOPICS = 10
+
+/** 从微博正文提取话题（保序去重，最多 10 个） */
+export function extractWeiboTopics(content: string): string[] {
+  const out: string[] = []
+  for (const m of content.matchAll(WEIBO_TOPIC_RE)) {
+    const t = m[1].trim()
+    if (t && !out.includes(t)) out.push(t)
+    if (out.length >= WEIBO_MAX_TOPICS) break
+  }
+  return out
+}
+
+/** 话题过滤的 LIKE 模式：带 JSON 引号做精确匹配，防「猫」命中「波斯猫」 */
+export function jsonItemLikePattern(name: string): string {
+  return `%${JSON.stringify(name).replace(/[%_\\]/g, (m) => '\\' + m)}%`
+}

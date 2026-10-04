@@ -419,6 +419,7 @@ input, textarea, select { font: inherit; color: inherit; }
   .side-logo, .side-user { display: none; }
   .side-nav { display: flex; padding: 0; overflow-x: auto; }
   .side-item { flex-direction: column; gap: 3px; font-size: 11px; padding: 6px 12px; }
+  .side-item-home + .side-item::before { display: none; }
   .main { padding: 18px 14px 90px; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .ed-drawer {
@@ -515,3 +516,32 @@ img.side-user-avatar { object-fit: cover; }
 .wb-row-thumbs img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
 .wb-row-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--sub); flex-wrap: wrap; }
 .dim { color: var(--sub); }
+.wb-row-topics { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.wb-row-topics a { color: var(--accent); }
+.wb-row-topics a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---------- 标签管理（分类页） ---------- */
+.panel-head-sub { font-size: 12px; font-weight: 400; color: var(--sub); }
+.tag-manage-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-manage-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #f4f1ea; border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 6px 4px 12px; font-size: 13px; max-width: 100%;
+}
+.tag-manage-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-manage-item i { font-style: normal; font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.tag-manage-item i:empty::before { content: '0'; }
+.tag-manage-del {
+  width: 18px; height: 18px; border-radius: 50%; line-height: 1;
+  color: var(--sub); font-size: 14px; display: flex; align-items: center; justify-content: center;
+}
+.tag-manage-del:hover { background: rgba(230, 67, 64, 0.12); color: var(--danger); }
+
+/* ---------- 侧栏：查看主页（外链）与后台页之间的分隔 ---------- */
+.side-item-home { color: var(--sub); }
+.side-item-home svg { opacity: 0.75; }
+.side-item-home + .side-item { position: relative; }
+.side-item-home + .side-item::before {
+  content: ''; position: absolute; top: -2px; left: 12px; right: 12px;
+  border-top: 1px dashed var(--line);
+}

@@ -25,6 +25,7 @@ import {
   listCategories,
   listPosts,
   listWeibo,
+  listWeiboTopics,
   parseTags,
   parseWeiboImages,
   saveSettings,
@@ -34,13 +35,14 @@ import {
   uniqueSlug,
   weiboCommentCountMap,
   weiboImageList,
+  weiboTopicList,
 } from './db'
 import { mdToHtml } from './markdown'
 import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
-import { clampInt, excerpt, slugify } from './utils'
+import { clampInt, excerpt, extractWeiboTopics, jsonItemLikePattern, slugify } from './utils'
 
 type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
@@ -338,13 +340,17 @@ api.delete('/admin/posts/:id', async (c) => {
 
 /* ---------------- 微博管理（随手记） ---------------- */
 const WEIBO_MAX_CHARS = 5000
+const WEIBO_MAX_PINNED = 3
 
 async function readWeiboPayload(c: { req: { json: () => Promise<unknown> } }) {
   const raw = await c.req.json().catch(() => null)
   if (!raw || typeof raw !== 'object') return null
   const b = raw as Record<string, unknown>
+  const content = String(b.content ?? '').trim().slice(0, WEIBO_MAX_CHARS)
   return {
-    content: String(b.content ?? '').trim().slice(0, WEIBO_MAX_CHARS),
+    content,
+    // 话题从正文 #话题# 自动提取，不接受客户端直传
+    topics: extractWeiboTopics(content),
     images: parseWeiboImages(b.images),
     status: b.status === 'published' ? 'published' : 'draft',
   }
@@ -357,10 +363,16 @@ api.get('/admin/weibo', async (c) => {
     status,
     page: clampInt(c.req.query('page'), 1, 100000, 1),
     limit: clampInt(c.req.query('limit'), 1, 100, 20),
+    pinnedFirst: true,
   })
   const cmtCounts = await weiboCommentCountMap(c.env.DB, r.items.map((w) => w.id))
   return c.json({
-    items: r.items.map((w) => ({ ...w, imageList: weiboImageList(w), commentCount: cmtCounts.get(w.id) || 0 })),
+    items: r.items.map((w) => ({
+      ...w,
+      imageList: weiboImageList(w),
+      topicList: weiboTopicList(w),
+      commentCount: cmtCounts.get(w.id) || 0,
+    })),
     total: r.total,
     page: r.page,
     totalPages: r.totalPages,
@@ -373,12 +385,12 @@ api.post('/admin/weibo', async (c) => {
   if (!p.content && !p.images.length) return jsonError('写点什么，或者配张图吧')
   const now = Date.now()
   const res = await c.env.DB.prepare(
-    'INSERT INTO weibo (content, images, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO weibo (content, images, topics, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   )
-    .bind(p.content, JSON.stringify(p.images), p.status, p.status === 'published' ? now : null, now, now)
+    .bind(p.content, JSON.stringify(p.images), JSON.stringify(p.topics), p.status, p.status === 'published' ? now : null, now, now)
     .run()
   const row = await getWeiboById(c.env.DB, Number(res.meta.last_row_id))
-  return c.json({ ok: true, weibo: row ? { ...row, imageList: weiboImageList(row) } : null })
+  return c.json({ ok: true, weibo: row ? { ...row, imageList: weiboImageList(row), topicList: weiboTopicList(row) } : null })
 })
 
 api.put('/admin/weibo/:id', async (c) => {
@@ -389,11 +401,33 @@ api.put('/admin/weibo/:id', async (c) => {
   if (!p) return jsonError('请求格式错误')
   if (!p.content && !p.images.length) return jsonError('写点什么，或者配张图吧')
   const publishedAt = p.status === 'published' ? (existing.published_at ?? Date.now()) : null
-  await c.env.DB.prepare('UPDATE weibo SET content = ?, images = ?, status = ?, published_at = ?, updated_at = ? WHERE id = ?')
-    .bind(p.content, JSON.stringify(p.images), p.status, publishedAt, Date.now(), id)
+  // 转回草稿时自动取消置顶
+  const pinned = p.status === 'published' ? existing.pinned : 0
+  await c.env.DB.prepare(
+    'UPDATE weibo SET content = ?, images = ?, topics = ?, status = ?, pinned = ?, published_at = ?, updated_at = ? WHERE id = ?'
+  )
+    .bind(p.content, JSON.stringify(p.images), JSON.stringify(p.topics), p.status, pinned, publishedAt, Date.now(), id)
     .run()
   const row = await getWeiboById(c.env.DB, id)
-  return c.json({ ok: true, weibo: row ? { ...row, imageList: weiboImageList(row) } : null })
+  return c.json({ ok: true, weibo: row ? { ...row, imageList: weiboImageList(row), topicList: weiboTopicList(row) } : null })
+})
+
+api.post('/admin/weibo/:id/pin', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json<{ pinned?: boolean }>().catch(() => null)
+  const existing = await getWeiboById(c.env.DB, id)
+  if (!existing) return jsonError('这条微博不存在', 404)
+  if (body?.pinned) {
+    if (existing.status !== 'published') return jsonError('草稿不能置顶，先发布吧')
+    if (!existing.pinned) {
+      const n = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM weibo WHERE pinned = 1').first<{ n: number }>()
+      if ((n?.n ?? 0) >= WEIBO_MAX_PINNED) return jsonError(`最多置顶 ${WEIBO_MAX_PINNED} 条微博，先取消一条吧`)
+    }
+  }
+  await c.env.DB.prepare('UPDATE weibo SET pinned = ?, updated_at = ? WHERE id = ?')
+    .bind(body?.pinned ? 1 : 0, Date.now(), id)
+    .run()
+  return c.json({ ok: true })
 })
 
 api.delete('/admin/weibo/:id', async (c) => {
@@ -463,19 +497,51 @@ api.delete('/admin/categories/:id', async (c) => {
 })
 
 api.get('/admin/tags', async (c) => {
-  const { results } = await c.env.DB.prepare("SELECT tags FROM posts WHERE status = 'published' LIMIT 500").all<{
-    tags: string
-  }>()
+  // 文章里实际用到的标签（含草稿）+ 分类页预建的标签（count 为 0）
+  const [postsRes, extraRes] = await Promise.all([
+    c.env.DB.prepare('SELECT tags FROM posts LIMIT 2000').all<{ tags: string }>(),
+    c.env.DB.prepare('SELECT name FROM tags').all<{ name: string }>(),
+  ])
   const count = new Map<string, number>()
-  for (const r of results ?? []) {
+  for (const r of postsRes.results ?? []) {
     for (const t of parseTags({ tags: r.tags } as PostRow)) count.set(t, (count.get(t) || 0) + 1)
   }
+  for (const r of extraRes.results ?? []) if (!count.has(r.name)) count.set(r.name, 0)
   return c.json({
     tags: [...count.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 30)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 200)
       .map(([name, n]) => ({ name, count: n })),
   })
+})
+
+api.post('/admin/tags', async (c) => {
+  const body = await c.req.json<{ name?: string }>().catch(() => null)
+  const name = String(body?.name ?? '').trim().slice(0, 20)
+  if (!name) return jsonError('标签名不能为空')
+  const dup = await c.env.DB.prepare('SELECT id FROM tags WHERE name = ?').bind(name).first<{ id: number }>()
+  if (dup) return jsonError('这个标签已存在')
+  await c.env.DB.prepare('INSERT INTO tags (name, created_at) VALUES (?, ?)').bind(name, Date.now()).run()
+  return c.json({ ok: true })
+})
+
+api.delete('/admin/tags/:name', async (c) => {
+  const name = c.req.param('name').trim().slice(0, 20)
+  if (!name) return jsonError('参数错误')
+  // 从所有文章的标签里移除该标签（LIKE 预筛后再精确过滤）
+  const { results } = await c.env.DB
+    .prepare("SELECT id, tags FROM posts WHERE tags LIKE ? ESCAPE '\\'")
+    .bind(jsonItemLikePattern(name))
+    .all<{ id: number; tags: string }>()
+  const stmts = (results ?? [])
+    .filter((r) => parseTags({ tags: r.tags } as PostRow).includes(name))
+    .map((r) => {
+      const kept = parseTags({ tags: r.tags } as PostRow).filter((t) => t !== name)
+      return c.env.DB.prepare('UPDATE posts SET tags = ? WHERE id = ?').bind(JSON.stringify(kept), r.id)
+    })
+  stmts.push(c.env.DB.prepare('DELETE FROM tags WHERE name = ?').bind(name))
+  await c.env.DB.batch(stmts)
+  return c.json({ ok: true })
 })
 
 /* ---------------- 媒体库（R2 图床） ---------------- */
@@ -529,21 +595,30 @@ api.delete('/admin/uploads', async (c) => {
 /* ---------------- 评论管理 ---------------- */
 api.get('/admin/comments', async (c) => {
   const status = c.req.query('status')
+  const type = c.req.query('type') // post = 文章评论，weibo = 微博评论
   const page = clampInt(c.req.query('page'), 1, 100000, 1)
   const limit = 20
-  const where = status === 'approved' || status === 'pending' ? 'WHERE c.status = ?' : ''
-  const binds = where ? [status] : []
+  const where: string[] = []
+  const binds: unknown[] = []
+  if (status === 'approved' || status === 'pending') {
+    where.push('c.status = ?')
+    binds.push(status)
+  }
+  if (type === 'post') where.push('c.post_id > 0')
+  else if (type === 'weibo') where.push('c.weibo_id > 0')
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
   const [listRes, countRes] = await Promise.all([
     c.env.DB.prepare(
-      `SELECT c.*, p.title AS post_title, p.slug AS post_slug, pc.nickname AS parent_nickname
+      `SELECT c.*, p.title AS post_title, p.slug AS post_slug, w.content AS weibo_content, pc.nickname AS parent_nickname
        FROM comments c
        LEFT JOIN posts p ON p.id = c.post_id
+       LEFT JOIN weibo w ON w.id = c.weibo_id
        LEFT JOIN comments pc ON pc.id = c.parent_id
-       ${where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`
+       ${whereSql} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`
     )
       .bind(...binds, limit, (page - 1) * limit)
       .all(),
-    c.env.DB.prepare(`SELECT COUNT(*) AS n FROM comments c ${where}`)
+    c.env.DB.prepare(`SELECT COUNT(*) AS n FROM comments c ${whereSql}`)
       .bind(...binds)
       .first<{ n: number }>(),
   ])

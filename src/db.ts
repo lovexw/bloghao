@@ -1,5 +1,5 @@
 import type { CategoryRow, CommentRow, PostRow, SettingsMap, WeiboRow } from './types'
-import { clampInt } from './utils'
+import { clampInt, jsonItemLikePattern, WEIBO_MAX_TOPICS } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
   siteName: '博客号 BlogHao',
@@ -81,7 +81,7 @@ export async function listPosts(db: D1Database, opts: ListPostsOptions = {}): Pr
   }
   if (opts.tag) {
     where.push("tags LIKE ? ESCAPE '\\'")
-    binds.push(`%${JSON.stringify(opts.tag).slice(1, -1).replace(/[%_\\]/g, (m) => '\\' + m)}%`)
+    binds.push(jsonItemLikePattern(opts.tag))
   }
   if (opts.categorySlug) {
     where.push('id IN (SELECT post_id FROM post_categories WHERE category_id IN (SELECT id FROM categories WHERE slug = ?))')
@@ -254,6 +254,30 @@ export function weiboImageList(row: Pick<WeiboRow, 'images'>): string[] {
   }
 }
 
+export function weiboTopicList(row: Pick<WeiboRow, 'topics'>): string[] {
+  try {
+    const a = JSON.parse(row.topics || '[]')
+    return Array.isArray(a) ? a.filter((x: unknown) => typeof x === 'string' && x.trim()).slice(0, WEIBO_MAX_TOPICS) : []
+  } catch {
+    return []
+  }
+}
+
+/** 已发布微博的话题聚合（前台话题条用）：按出现次数倒序，取前 20 个 */
+export async function listWeiboTopics(db: D1Database): Promise<{ name: string; count: number }[]> {
+  const { results } = await db
+    .prepare("SELECT topics FROM weibo WHERE status = 'published' LIMIT 1000")
+    .all<{ topics: string }>()
+  const count = new Map<string, number>()
+  for (const r of results ?? []) {
+    for (const t of weiboTopicList({ topics: r.topics })) count.set(t, (count.get(t) || 0) + 1)
+  }
+  return [...count.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 20)
+    .map(([name, count]) => ({ name, count }))
+}
+
 export interface ListWeiboResult {
   items: WeiboRow[]
   total: number
@@ -263,19 +287,36 @@ export interface ListWeiboResult {
 
 export async function listWeibo(
   db: D1Database,
-  opts: { status?: 'published' | 'draft' | 'all'; page?: number; limit?: number } = {}
+  opts: {
+    status?: 'published' | 'draft' | 'all'
+    page?: number
+    limit?: number
+    topic?: string
+    pinnedFirst?: boolean
+  } = {}
 ): Promise<ListWeiboResult> {
   const page = clampInt(opts.page, 1, 100000, 1)
   const limit = clampInt(opts.limit, 1, 100, 15)
-  const where = opts.status && opts.status !== 'all' ? 'WHERE status = ?' : ''
-  const binds: unknown[] = opts.status && opts.status !== 'all' ? [opts.status] : []
-  const order = 'ORDER BY COALESCE(published_at, created_at) DESC, id DESC'
+  const where: string[] = []
+  const binds: unknown[] = []
+  if (opts.status && opts.status !== 'all') {
+    where.push('status = ?')
+    binds.push(opts.status)
+  }
+  if (opts.topic) {
+    where.push("topics LIKE ? ESCAPE '\\'")
+    binds.push(jsonItemLikePattern(opts.topic))
+  }
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
+  const order = opts.pinnedFirst
+    ? 'ORDER BY pinned DESC, COALESCE(published_at, created_at) DESC, id DESC'
+    : 'ORDER BY COALESCE(published_at, created_at) DESC, id DESC'
   const [itemsRes, countRes] = await Promise.all([
     db
-      .prepare(`SELECT * FROM weibo ${where} ${order} LIMIT ? OFFSET ?`)
+      .prepare(`SELECT * FROM weibo ${whereSql} ${order} LIMIT ? OFFSET ?`)
       .bind(...binds, limit, (page - 1) * limit)
       .all<WeiboRow>(),
-    db.prepare(`SELECT COUNT(*) AS n FROM weibo ${where}`).bind(...binds).first<{ n: number }>(),
+    db.prepare(`SELECT COUNT(*) AS n FROM weibo ${whereSql}`).bind(...binds).first<{ n: number }>(),
   ])
   const total = countRes?.n ?? 0
   return { items: itemsRes.results ?? [], total, page, totalPages: Math.max(1, Math.ceil(total / limit)) }
@@ -304,9 +345,18 @@ export async function weiboCommentCountMap(db: D1Database, weiboIds: number[]): 
  */
 const SCHEMA_COLUMNS: { table: string; column: string; ddl: string }[] = [
   { table: 'weibo', column: 'likes', ddl: 'ALTER TABLE weibo ADD COLUMN likes INTEGER NOT NULL DEFAULT 0' },
+  { table: 'weibo', column: 'topics', ddl: "ALTER TABLE weibo ADD COLUMN topics TEXT NOT NULL DEFAULT '[]'" },
+  { table: 'weibo', column: 'pinned', ddl: 'ALTER TABLE weibo ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0' },
   { table: 'comments', column: 'weibo_id', ddl: 'ALTER TABLE comments ADD COLUMN weibo_id INTEGER NOT NULL DEFAULT 0' },
   { table: 'comments', column: 'parent_id', ddl: 'ALTER TABLE comments ADD COLUMN parent_id INTEGER NOT NULL DEFAULT 0' },
   { table: 'comments', column: 'is_admin', ddl: 'ALTER TABLE comments ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0' },
+]
+const SCHEMA_TABLES = [
+  `CREATE TABLE IF NOT EXISTS tags (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+  )`,
 ]
 const SCHEMA_INDEXES = ['CREATE INDEX IF NOT EXISTS idx_comments_weibo ON comments (weibo_id, created_at)']
 
@@ -326,6 +376,13 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       await db.prepare(ddl).run()
     } catch {
       /* 并发 isolate 已加过列，忽略 duplicate column 错误 */
+    }
+  }
+  for (const ddl of SCHEMA_TABLES) {
+    try {
+      await db.prepare(ddl).run()
+    } catch {
+      /* 表已存在 */
     }
   }
   for (const ddl of SCHEMA_INDEXES) {

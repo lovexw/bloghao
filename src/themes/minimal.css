@@ -318,3 +318,22 @@ img { max-width: 100%; height: auto; }
   .wb-imgs { gap: 4px; }
   .wb-imgs-1 img { max-height: 360px; }
 }
+
+/* ---------- 微博置顶角标 + 话题 ---------- */
+.wb-pin {
+  margin-left: auto; flex: 0 0 auto;
+  font-size: 11px; line-height: 1; padding: 4px 9px; border-radius: 999px;
+  color: var(--mn-sub); border: 1px solid var(--mn-line); letter-spacing: 0.05em;
+}
+.wb-topic { color: inherit; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #bbb; }
+.wb-topic:hover { text-decoration-color: var(--mn-ink); }
+.wb-topics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.wb-topic-chip {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 12.5px; padding: 5px 13px; border-radius: 999px;
+  border: 1px solid var(--mn-line); color: var(--mn-sub); background: transparent;
+  transition: all 0.15s ease;
+}
+.wb-topic-chip i { font-style: normal; font-size: 11px; opacity: 0.65; font-variant-numeric: tabular-nums; }
+.wb-topic-chip:hover { color: var(--mn-ink); border-color: var(--mn-ink); }
+.wb-topic-chip.is-active { color: #fff; background: var(--mn-ink); border-color: var(--mn-ink); }

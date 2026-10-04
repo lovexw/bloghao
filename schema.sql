@@ -78,13 +78,22 @@ CREATE TABLE IF NOT EXISTS weibo (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   content      TEXT    NOT NULL DEFAULT '',
   images       TEXT    NOT NULL DEFAULT '[]', -- JSON 数组，如 ["/images/u/202510/xxx.jpg"]
+  topics       TEXT    NOT NULL DEFAULT '[]', -- JSON 数组，从正文 #话题# 自动提取
   status       TEXT    NOT NULL DEFAULT 'published', -- draft | published
+  pinned       INTEGER NOT NULL DEFAULT 0,          -- 置顶（最多 3 条，应用层限制）
   likes        INTEGER NOT NULL DEFAULT 0,
   published_at INTEGER,
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_weibo_status ON weibo (status, published_at DESC);
+
+-- 标签登记表：分类页可预建标签；文章用到的标签读取时自动并入展示
+CREATE TABLE IF NOT EXISTS tags (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT    NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS uploads (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,

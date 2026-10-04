@@ -11,6 +11,7 @@ import {
   weiboCards,
   weiboHomeEntry,
   weiboPager,
+  weiboTopicBar,
   type CategoryLink,
   type HomePostView,
   type WeiboItemView,
@@ -154,8 +155,11 @@ export function weibo(d: {
   totalPages: number
   total: number
   allowComments: boolean
+  topic?: string
+  topics?: { name: string; count: number }[]
 }): string {
   const s = d.settings
+  const topicBar = weiboTopicBar(d.topics || [], d.topic)
   const cards = weiboCards({ settings: s, items: d.items, avatarHtml: avatar(s), allowComments: d.allowComments })
   return `<div class="mn-wrap">
   ${siteNav({ cls: 'mn-snav', categories: d.categories, active: 'weibo' })}
@@ -163,6 +167,7 @@ export function weibo(d: {
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
     <nav class="mn-nav"><a class="mn-nav-link is-active" href="/weibo">微博</a><a class="mn-nav-link" href="/about">关于</a></nav>
   </header>
+  ${topicBar}
   <main class="wb-list">
     ${cards || '<p class="wb-empty">Nothing here yet.</p>'}
   </main>

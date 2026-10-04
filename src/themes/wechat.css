@@ -549,3 +549,22 @@ a.wx-account:hover { opacity: 0.75; }
   background: var(--wx-card); color: var(--wx-text); cursor: pointer;
 }
 .pager-go:hover { color: var(--wx-accent); border-color: var(--wx-accent); }
+
+/* ---------- 微博置顶角标 + 话题 ---------- */
+.wb-pin {
+  margin-left: auto; flex: 0 0 auto;
+  font-size: 11px; line-height: 1; padding: 4px 9px; border-radius: 999px;
+  color: var(--wx-accent); background: rgba(178, 58, 41, 0.07); letter-spacing: 0.05em;
+}
+.wb-topic { color: var(--wx-accent); }
+.wb-text a.wb-topic:hover { text-decoration: underline; text-underline-offset: 3px; }
+.wb-topics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.wb-topic-chip {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 12.5px; padding: 5px 13px; border-radius: 999px;
+  border: 1px solid var(--wx-line); color: var(--wx-sub); background: var(--wx-card);
+  transition: all 0.18s ease;
+}
+.wb-topic-chip i { font-style: normal; font-size: 11px; opacity: 0.65; font-variant-numeric: tabular-nums; }
+.wb-topic-chip:hover { color: var(--wx-accent); border-color: var(--wx-accent); }
+.wb-topic-chip.is-active { color: #fff; background: var(--wx-accent); border-color: var(--wx-accent); }
