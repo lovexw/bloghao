@@ -103,4 +103,18 @@ export interface FriendLinkRow {
   updated_at: number
 }
 
+/** 访客统计日志（visit_log 表，src/stats.ts）：只存匿名 vid，不存 IP / 原始 UA */
+export interface VisitRow {
+  id: number
+  ts: number
+  day: string
+  vid: string
+  path: string
+  title: string
+  ref: string
+  dev: string
+  br: string
+  country: string
+}
+
 export type SettingsMap = Record<string, string>

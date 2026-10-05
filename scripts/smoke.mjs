@@ -29,7 +29,7 @@ function run(cmd, args, label) {
     p.on('close', (code) => {
       if (code === 0) {
         console.log('  ✓ 完成')
-        resolve()
+        resolve(out)
       } else {
         console.error(out.trim().split('\n').slice(-15).join('\n'))
         reject(new Error(`${label} 失败（exit ${code}）`))
@@ -69,10 +69,15 @@ async function startDevServer() {
   throw new Error('wrangler dev 启动超时')
 }
 
-async function check(method, url, expectStatus, expectBody) {
+async function check(method, url, expectStatus, expectBody, opts = {}) {
   const label = `${method} ${url}${expectBody ? '（含内容断言）' : ''}`
   try {
-    const res = await fetch(`http://127.0.0.1:${PORT}${url}`, { signal: AbortSignal.timeout(15_000) })
+    const res = await fetch(`http://127.0.0.1:${PORT}${url}`, {
+      method,
+      headers: opts.headers,
+      body: opts.body,
+      signal: AbortSignal.timeout(15_000),
+    })
     let bodyOk = true
     if (expectBody) {
       const text = await res.text()
@@ -125,6 +130,36 @@ try {
   await check('GET', '/sitemap.xml', 200)
   await check('GET', '/admin/', 200)
   await check('GET', '/post/no-such-post-should-404', 404)
+  // 访客统计：公开打点 200、后台聚合接口未登录必须 401（在 /admin/* 鉴权保护之下）
+  await check('POST', '/api/public/track', 200, 'ok', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p: '/post/smoke-multi-tag', r: 'https://www.google.com/', v: 'smoke-visitor-1', t: '冒烟测试' }),
+  })
+  await check('GET', '/api/admin/visits', 401)
+
+  // 回归守卫：打点真的落进了 visit_log（waitUntil 异步写，稍等一拍再用 d1 查）——
+  // 防止「接口 200 但 INSERT 静默失败」的假绿
+  await new Promise((r) => setTimeout(r, 1500))
+  try {
+    const out = await run(
+      'npx',
+      [
+        'wrangler', 'd1', 'execute', 'DB', '--local', '--json', '--command',
+        "SELECT COUNT(*) AS n FROM visit_log WHERE vid = 'smoke-visitor-1'",
+      ],
+      '校验打点已落库（visit_log）'
+    )
+    if (/"n"\s*:\s*[1-9]/.test(out)) {
+      console.log('  ✓ visit_log 已收到打点记录')
+      results.push(['visit_log 落库校验', true])
+    } else {
+      console.error('  ✗ visit_log 未查到 smoke 打点记录')
+      results.push(['visit_log 落库校验', false])
+    }
+  } catch (e) {
+    console.error(`  ✗ visit_log 落库校验：${e.message}`)
+    results.push(['visit_log 落库校验', false])
+  }
 } finally {
   if (dev && dev.exitCode === null) dev.kill('SIGTERM')
 }

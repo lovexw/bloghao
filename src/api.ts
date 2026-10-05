@@ -47,6 +47,7 @@ import { collectRoutes } from './collect'
 import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes } from './external'
 import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
+import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
 import { clampInt, cleanSlug, excerpt, extractWeiboTopics, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
@@ -197,6 +198,12 @@ api.get('/admin/stats', async (c) => {
       published_at: r.published_at,
     })),
   })
+})
+
+/* 访客统计（后台「统计」页），聚合见 src/stats.ts */
+api.get('/admin/visits', async (c) => {
+  const days = clampInt(c.req.query('days'), 1, 365, 30)
+  return c.json(await getVisitStats(c.env.DB, days))
 })
 
 /* ---------------- 文章管理 ---------------- */
@@ -971,7 +978,7 @@ api.put('/admin/settings', async (c) => {
       patch[key] = v === '1' || v === 'true' ? '1' : '0'
       continue
     }
-    if (key === 'notifyNewComment' || key === 'rssFullText' || key === 'backupEnabled') {
+    if (key === 'notifyNewComment' || key === 'rssFullText' || key === 'backupEnabled' || key === 'statsEnabled') {
       patch[key] = v === '1' || v === 'true' ? '1' : '0'
       continue
     }
@@ -1288,6 +1295,31 @@ api.post('/public/like/:slug', async (c) => {
     .run()
   const row = await getPostBySlug(c.env.DB, slug)
   return c.json({ ok: true, likes: row?.likes ?? 0 })
+})
+
+/* ---------------- 访客统计打点（公开，site.js 上报，见 src/stats.ts） ---------------- */
+api.post('/public/track', async (c) => {
+  if (!rateLimit(`track:${clientIp(c.req.raw)}`, 120, 10 * 60_000)) return jsonError('请求过于频繁，请稍后再试', 429)
+  const settings = await getSettings(c.env.DB)
+  if (settings.statsEnabled === '0') return c.json({ ok: true })
+  const body = await c.req.json<{ p?: string; r?: string; v?: string; t?: string }>().catch(() => null)
+  const path = cleanPath(body?.p)
+  // 正常页面路径必然以 / 开头，不合法的一律丢弃（裸 curl 刷接口拿不到有效数据）
+  if (!path) return c.json({ ok: true })
+  const ua = c.req.header('User-Agent') || ''
+  // 打点失败不影响页面（表未就绪等极端情况也走这里）
+  c.executionCtx.waitUntil(
+    recordVisit(c.env.DB, {
+      path,
+      title: cleanTitle(body?.t),
+      ref: cleanRef(body?.r),
+      vid: cleanVid(body?.v),
+      dev: classifyDevice(ua),
+      br: classifyBrowser(ua),
+      country: (c.req.header('CF-IPCountry') || '').slice(0, 8),
+    }).catch(() => {})
+  )
+  return c.json({ ok: true })
 })
 
 /* ---------------- 友链申请（公开，进入待审核） ---------------- */

@@ -5,6 +5,7 @@ import { api } from './api'
 import { ensureSchema, getSettings, listCategories, listPublishedTags, listPosts, listSitemapPosts } from './db'
 import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
 import { buildRss, buildSitemap } from './rss'
+import { purgeVisits } from './stats'
 import type { Env, SessionUser } from './types'
 
 const app = new Hono<{ Bindings: Env; Variables: { user: SessionUser | null } }>()
@@ -131,7 +132,11 @@ export default {
           console.error('ensureSchema (cron) failed:', e)
         }
         await runScheduledPublish(env)
-        if (isBackupCron) await scheduledBackup(controller, env)
+        if (isBackupCron) {
+          await scheduledBackup(controller, env)
+          // 访客日志滚动清理：visit_log 是日志类数据不进备份，只在这里按保留期删
+          await purgeVisits(env.DB).catch((e) => console.error('purgeVisits failed:', e))
+        }
       })()
     )
   },

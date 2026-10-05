@@ -53,6 +53,18 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 - `url` 自动补全 `https://` 前缀并做 URL 规整，非法返回错误；同名网址去重
 - `name` ≤ 40 字，`description` ≤ 120 字；成功入库 `status='pending'`、`source='user'`
 
+### POST /api/public/track
+访客统计打点（`site.js` 在所有公开页面自动上报，一般无需手动调用）。Body：
+
+```json
+{ "p": "/post/hello?utm=x", "r": "https://www.google.com/", "v": "匿名访客id", "t": "页面标题" }
+```
+
+- 服务端清洗：`p` 必须以 `/` 开头（剥控制字符，截 300），`r` 只留域名，`v` 只放行 `[A-Za-z0-9_-]`，`t` 截 200；路径不合法直接静默丢弃
+- 设备 / 浏览器族由服务端按 User-Agent 解析，国家取 `CF-IPCountry`；不存 IP 与原始 UA
+- 同 IP 10 分钟限 120 次；设置 `statsEnabled=0` 时接口返回 `{ok:true}` 但不入库
+- 始终返回 `{"ok":true}`（失败静默，不打扰页面）
+
 ## 认证
 
 ### GET /api/auth/state
@@ -74,6 +86,24 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 
 ### GET /api/admin/stats
 概览统计：`{posts, views, likes, drafts, pendingComments, pendingLinks, uploads:{count,bytes}, recent:[…]}`
+
+### GET /api/admin/visits?days=30
+访客统计聚合（后台「统计」页），`days` 1-365 默认 30（含今天共 N 天，北京时间）。响应：
+
+```json
+{
+  "days": 30, "pv": 0, "uv": 0, "todayPv": 0, "todayUv": 0,
+  "series":   [{ "day": "2026-10-01", "pv": 0, "uv": 0 }],
+  "topPages": [{ "path": "/post/hello", "title": "…", "pv": 0, "uv": 0 }],
+  "topRefs":  [{ "ref": "www.google.com", "pv": 0, "uv": 0 }],
+  "devices":  [{ "name": "mobile", "pv": 0 }],
+  "browsers": [{ "name": "wechat", "pv": 0 }],
+  "countries":[{ "name": "CN", "pv": 0 }],
+  "hourly":   [{ "h": 0, "pv": 0 }]
+}
+```
+
+`series` 按天补零；UV 为去重匿名访客号（`COUNT(DISTINCT vid)`）；数据表 `visit_log` 保留 180 天、不进备份。
 
 ### 文章
 | 方法 | 路径 | 说明 |

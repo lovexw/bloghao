@@ -136,3 +136,20 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''
 );
+
+-- 访客统计日志（后台「统计」页）：site.js 打点 → POST /api/public/track 落这里。
+-- 只存匿名 vid 与来源域名，不存 IP / 原始 UA；day 是北京时间日期（写入时算好，聚合直接 GROUP BY）。
+-- 日志类数据：不进备份（与 sessions / tg_buffer 同理），保留 180 天由每晚备份 cron 顺带清理。
+CREATE TABLE IF NOT EXISTS visit_log (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts      INTEGER NOT NULL,               -- 毫秒时间戳
+  day     TEXT    NOT NULL,               -- 北京时间 YYYY-MM-DD
+  vid     TEXT    NOT NULL DEFAULT '',    -- 匿名访客 id（localStorage）
+  path    TEXT    NOT NULL DEFAULT '',    -- 页面路径（含 query，截 300）
+  title   TEXT    NOT NULL DEFAULT '',    -- document.title 截 200
+  ref     TEXT    NOT NULL DEFAULT '',    -- 来源域名（站内/直接为空）
+  dev     TEXT    NOT NULL DEFAULT '',    -- desktop | mobile | tablet
+  br      TEXT    NOT NULL DEFAULT '',    -- wechat | chrome | edge | firefox | safari | other
+  country TEXT    NOT NULL DEFAULT ''     -- CF-IPCountry 两字母码
+);
+CREATE INDEX IF NOT EXISTS idx_visit_day ON visit_log (day, ts);

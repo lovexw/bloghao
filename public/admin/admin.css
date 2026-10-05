@@ -592,3 +592,40 @@ img.side-user-avatar { object-fit: cover; }
 /* ---------- 编辑器：信息按钮高亮 = 抽屉展开中 ---------- */
 #ed-drawer-toggle.is-active { color: var(--accent); background: rgba(178, 58, 41, 0.08); }
 
+/* ---------- 访客统计（#/stats） ---------- */
+.chart-svg { width: 100%; height: auto; display: block; }
+.chart-tick { font-size: 10px; fill: var(--sub); }
+.chart-legend { display: flex; gap: 16px; align-items: center; color: var(--sub); font-size: 12px; margin-bottom: 8px; }
+.chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.chart-legend .lg-bar { background: var(--accent); opacity: 0.85; }
+.chart-legend .lg-line { width: 14px; height: 2px; border-radius: 1px; background: var(--sub); }
+.hbar-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.hbar-name { flex: 0 0 96px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-track { flex: 1; height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+.hbar-fill { display: block; height: 100%; border-radius: 4px; background: var(--accent); opacity: 0.75; }
+.hbar-num { flex: 0 0 48px; text-align: right; font-size: 13px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.stats-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.stat-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--line); text-decoration: none;
+}
+.stat-row:last-child { border-bottom: none; }
+.stat-row-main { min-width: 0; }
+.stat-row-title {
+  display: block; font-size: 14px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.stat-row-sub {
+  display: block; font-size: 12px; color: var(--sub);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.stat-row-num { flex: none; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums; }
+.stat-row-num small { display: block; font-size: 11px; font-weight: 400; color: var(--sub); }
+a.stat-row:hover .stat-row-title { color: var(--accent); }
+@media (max-width: 860px) {
+  .stats-duo { grid-template-columns: 1fr; }
+  .hbar-name { flex-basis: 76px; }
+  /* 图表按 720 宽 viewBox 等比缩放，窄屏下 10px 刻度实际只有 ~5px，放大补偿 */
+  .chart-tick { font-size: 20px; }
+}
+

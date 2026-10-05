@@ -32,6 +32,7 @@ export function page(o: ThemePageOptions): string {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 ${o.noindex ? '<meta name="robots" content="noindex">' : ''}
+${o.settings.statsEnabled === '0' ? '<meta name="xw-stats" content="off">' : ''}
 ${base ? `<link rel="canonical" href="${esc(base + o.path)}">` : ''}
 <meta property="og:title" content="${esc(o.title || siteName)}">
 <meta property="og:description" content="${esc(desc)}">

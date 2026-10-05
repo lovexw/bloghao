@@ -852,4 +852,33 @@
       open(t)
     })
   })()
+
+  /* ---------------- 访客统计打点（后台「统计」页，服务端见 src/stats.ts） ----------------
+   * 只上报匿名访客 id / 路径 / 标题 / 来源域名，不碰 Cookie 不存 IP；
+   * 页面带 <meta name="xw-stats" content="off">（后台关闭采集）时完全不发请求 */
+  try {
+    if (
+      document.visibilityState === 'visible' &&
+      !/bot|crawl|spider|slurp/i.test(navigator.userAgent) &&
+      !document.querySelector('meta[name="xw-stats"][content="off"]')
+    ) {
+      var vid = localStorage.getItem('xw-vid')
+      if (!vid) {
+        vid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
+        try {
+          localStorage.setItem('xw-vid', vid)
+        } catch (err) {
+          /* 隐私模式等存不进去：本次用一次性 id，不影响上报 */
+        }
+      }
+      postJSON('/api/public/track', {
+        p: (location.pathname + location.search).slice(0, 300),
+        r: document.referrer,
+        v: vid,
+        t: document.title,
+      }).catch(function () {})
+    }
+  } catch (err) {
+    /* 统计永不影响页面 */
+  }
 })()

@@ -24,6 +24,8 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   rssFullText: '1',
   // 每晚凌晨自动备份 D1 到 R2 的 backups/ 目录
   backupEnabled: '1',
+  // 访客统计采集开关（后台「统计」页；关闭后前台不打点，见 src/stats.ts）
+  statsEnabled: '1',
 }
 
 export async function getSettings(db: D1Database): Promise<SettingsMap> {
@@ -583,10 +585,24 @@ const SCHEMA_TABLES = [
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
   )`,
+  // 访客统计日志（src/stats.ts）：只存匿名 vid 与来源域名，不进备份，保留 180 天
+  `CREATE TABLE IF NOT EXISTS visit_log (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts      INTEGER NOT NULL,
+    day     TEXT    NOT NULL,
+    vid     TEXT    NOT NULL DEFAULT '',
+    path    TEXT    NOT NULL DEFAULT '',
+    title   TEXT    NOT NULL DEFAULT '',
+    ref     TEXT    NOT NULL DEFAULT '',
+    dev     TEXT    NOT NULL DEFAULT '',
+    br      TEXT    NOT NULL DEFAULT '',
+    country TEXT    NOT NULL DEFAULT ''
+  )`,
 ]
 const SCHEMA_INDEXES = [
   'CREATE INDEX IF NOT EXISTS idx_comments_weibo ON comments (weibo_id, created_at)',
   'CREATE INDEX IF NOT EXISTS idx_friend_links_status ON friend_links (status, sort, id)',
+  'CREATE INDEX IF NOT EXISTS idx_visit_day ON visit_log (day, ts)',
 ]
 
 async function tableColumns(db: D1Database, table: string): Promise<Set<string>> {

@@ -118,6 +118,7 @@ function confirmBox(text) {
 /* ---------------- 图标 ---------------- */
 const I = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="M8.5 16v-4.5M13 16V7.5M17.5 16v-6"/></svg>',
   post: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 4h9l4 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5M9 13h7M9 17h5"/></svg>',
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a1 1 0 0 1 1-1h5l2 2.5h9a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg>',
   weibo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3v4l4.5-4H21a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><path d="M8 9h9M8 13h6"/></svg>',
@@ -196,6 +197,7 @@ async function shellView(active, contentHTML) {
       <nav class="side-nav">
         <a class="side-item side-item-home" href="/" target="_blank" rel="noopener" title="查看主页">${I.home}<span>查看主页</span></a>
         <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/" title="概览">${I.home}<span>概览</span></a>
+        <a class="side-item${active === 'stats' ? ' is-active' : ''}" href="#/stats" title="统计">${I.chart}<span>统计</span></a>
         <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts" title="文章">${I.post}<span>文章</span></a>
         <a class="side-item${active === 'weibo' ? ' is-active' : ''}" href="#/weibo" title="微博">${I.weibo}<span>微博</span></a>
         <a class="side-item${active === 'links' ? ' is-active' : ''}" href="#/links" title="友链">${I.link}<span>友链</span>${pendingLinks ? `<span class="side-badge">${pendingLinks}</span>` : ''}</a>
@@ -267,6 +269,177 @@ async function viewHome() {
         <div style="color:var(--sub);font-size:13px;">占用 ${fmtSize(s.uploads.bytes)} · 存于 R2 图床，全球加速</div>
       </div>
     </div>`
+  )
+}
+
+/* ---------------- 访客统计（#/stats，数据来自 /api/admin/visits，见 src/stats.ts） ---------------- */
+const DEV_NAME = { mobile: '手机', tablet: '平板', desktop: '电脑' }
+const BR_NAME = { wechat: '微信', chrome: 'Chrome', edge: 'Edge', firefox: 'Firefox', safari: 'Safari', other: '其他' }
+const CC_NAME = {
+  CN: '中国大陆', HK: '中国香港', MO: '中国澳门', TW: '中国台湾', US: '美国', JP: '日本', KR: '韩国',
+  SG: '新加坡', MY: '马来西亚', TH: '泰国', VN: '越南', GB: '英国', DE: '德国', FR: '法国', CA: '加拿大',
+  AU: '澳大利亚', RU: '俄罗斯', IN: '印度', NL: '荷兰', BR: '巴西',
+}
+const STATS_DAYS = [7, 30, 90]
+
+/** 横条排行（来源 / 设备 / 浏览器 / 国家） */
+function hbarRows(items, nameFn) {
+  if (!items.length) return '<div class="empty-box">暂无数据</div>'
+  const max = Math.max(...items.map((x) => x.pv), 1)
+  return items
+    .map(
+      (x) => `<div class="hbar-row">
+        <span class="hbar-name" title="${esc(nameFn(x))}">${esc(nameFn(x))}</span>
+        <span class="hbar-track"><span class="hbar-fill" style="width:${Math.max(2, Math.round((x.pv / max) * 100))}%"></span></span>
+        <span class="hbar-num">${x.pv}</span>
+      </div>`
+    )
+    .join('')
+}
+
+/** 每日趋势：PV 柱 + UV 折线，自绘 SVG（零依赖），悬停整列出数值 */
+function trendChart(series) {
+  const W = 720, H = 210, padL = 40, padR = 8, padT = 12, padB = 24
+  const n = series.length
+  if (!n) return ''
+  const iw = W - padL - padR
+  const ih = H - padT - padB
+  const maxV = Math.max(...series.map((d) => Math.max(d.pv, d.uv)), 5)
+  const step = iw / n
+  const barW = Math.max(1, Math.min(step * 0.6, 24))
+  const tickEvery = Math.ceil(n / 6)
+  let marks = ''
+  const pts = []
+  series.forEach((d, i) => {
+    const x = padL + i * step
+    if (d.pv > 0) {
+      const h = Math.max(1, (d.pv / maxV) * ih)
+      marks += `<rect x="${(x + (step - barW) / 2).toFixed(1)}" y="${(padT + ih - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="var(--accent)" opacity="0.85"/>`
+    }
+    pts.push(`${(x + step / 2).toFixed(1)},${(padT + ih - (d.uv / maxV) * ih).toFixed(1)}`)
+    if (i % tickEvery === 0 || i === n - 1) {
+      // 最后一个刻度右对齐贴边，放大字号后中锚文字会溢出 viewBox 被裁
+      if (i === n - 1) {
+        marks += `<text x="${W - padR}" y="${H - 6}" text-anchor="end" class="chart-tick">${esc(d.day.slice(5))}</text>`
+      } else {
+        marks += `<text x="${(x + step / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="chart-tick">${esc(d.day.slice(5))}</text>`
+      }
+    }
+  })
+  let grid = ''
+  for (let g = 0; g <= 3; g++) {
+    const y = padT + (ih * g) / 3
+    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${padL - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="chart-tick">${Math.round((maxV * (3 - g)) / 3)}</text>`
+  }
+  const hovers = series
+    .map((d, i) => {
+      const x = padL + i * step
+      return `<rect x="${x.toFixed(1)}" y="${padT}" width="${step.toFixed(1)}" height="${ih}" fill="transparent"><title>${d.day}：浏览 ${d.pv}，访客 ${d.uv}</title></rect>`
+    })
+    .join('')
+  return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="每日浏览趋势">${grid}${marks}<polyline points="${pts.join(' ')}" fill="none" stroke="var(--sub)" stroke-width="1.5" opacity="0.9"/>${hovers}</svg>`
+}
+
+/** 今日 24 小时分布（北京时间） */
+function hourChart(hourly) {
+  const W = 720, H = 150, padL = 40, padR = 8, padT = 10, padB = 22
+  const iw = W - padL - padR
+  const ih = H - padT - padB
+  const maxV = Math.max(...hourly.map((x) => x.pv), 5)
+  const step = iw / 24
+  const barW = Math.max(2, step * 0.62)
+  let marks = ''
+  hourly.forEach((d) => {
+    const x = padL + d.h * step
+    if (d.pv > 0) {
+      const h = Math.max(1, (d.pv / maxV) * ih)
+      marks += `<rect x="${(x + (step - barW) / 2).toFixed(1)}" y="${(padT + ih - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="var(--accent)" opacity="0.85"/>`
+    }
+    marks += `<rect x="${x.toFixed(1)}" y="${padT}" width="${step.toFixed(1)}" height="${ih}" fill="transparent"><title>${d.h}:00–${d.h + 1}:00：${d.pv} 次浏览</title></rect>`
+  })
+  for (const hh of [0, 6, 12, 18]) {
+    marks += `<text x="${(padL + hh * step + step / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="chart-tick">${hh}时</text>`
+  }
+  let grid = ''
+  for (let g = 0; g <= 2; g++) {
+    const y = padT + (ih * g) / 2
+    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${padL - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="chart-tick">${Math.round((maxV * (2 - g)) / 2)}</text>`
+  }
+  return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="今日小时分布">${grid}${marks}</svg>`
+}
+
+async function viewStats() {
+  const q = new URLSearchParams((location.hash.split('?')[1] || ''))
+  const days = STATS_DAYS.includes(Number(q.get('days'))) ? Number(q.get('days')) : 30
+  let s
+  try {
+    s = await api(`/admin/visits?days=${days}`)
+  } catch (e) {
+    return handleApiErr(e)
+  }
+  const tabs = STATS_DAYS.map(
+    (d) => `<button class="tab${d === days ? ' is-active' : ''}" data-days="${d}">${d} 天</button>`
+  ).join('')
+  const hasData = s.pv > 0 || s.uv > 0
+  const pages = s.topPages
+    .map(
+      (p) => `<a class="stat-row" href="${esc(p.path)}" target="_blank" rel="noopener">
+        <span class="stat-row-main"><span class="stat-row-title">${esc(p.title || p.path)}</span><span class="stat-row-sub">${esc(p.path)}</span></span>
+        <span class="stat-row-num">${p.pv}<small>浏览 · ${p.uv} 人</small></span>
+      </a>`
+    )
+    .join('')
+  const trendBody = hasData
+    ? `<div class="chart-legend"><span><i class="lg-bar"></i>浏览量</span><span><i class="lg-line"></i>访客数</span></div>${trendChart(s.series)}`
+    : '<div class="empty-box">还没有访客数据。功能上线后有人访问就会出现，也可以先自己逛一逛。</div>'
+  await shellView(
+    'stats',
+    `<div class="page-head">
+      <div><div class="page-title">统计</div><div class="page-sub">访客都在看什么、从哪里来（数据来自前台页面访问，后台自身不计入）</div></div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">浏览量（${days} 天）</div><div class="stat-value">${s.pv}</div></div>
+      <div class="stat-card"><div class="stat-label">访客数（${days} 天）</div><div class="stat-value">${s.uv}</div></div>
+      <div class="stat-card"><div class="stat-label">今日浏览</div><div class="stat-value">${s.todayPv}</div></div>
+      <div class="stat-card"><div class="stat-label">今日访客</div><div class="stat-value">${s.todayUv}</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span>访问趋势</span><div class="tabs">${tabs}</div></div>
+      <div class="panel-body">${trendBody}</div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span>今日小时分布</span><span class="panel-head-sub">北京时间</span></div>
+      <div class="panel-body">${s.todayPv ? hourChart(s.hourly) : '<div class="empty-box">今天还没有访问</div>'}</div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span>受欢迎的页面</span><span class="panel-head-sub">近 ${days} 天 · 点标题可打开页面</span></div>
+      <div class="panel-body">${pages || '<div class="empty-box">暂无数据</div>'}</div>
+    </div>
+    <div class="stats-duo">
+      <div class="panel">
+        <div class="panel-head"><span>从哪里来</span><span class="panel-head-sub">站外来源域名</span></div>
+        <div class="panel-body">${hbarRows(s.topRefs, (x) => x.ref)}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><span>访客设备</span></div>
+        <div class="panel-body">${hbarRows(s.devices, (x) => DEV_NAME[x.name] || x.name || '未知')}</div>
+      </div>
+    </div>
+    <div class="stats-duo">
+      <div class="panel">
+        <div class="panel-head"><span>浏览器</span></div>
+        <div class="panel-body">${hbarRows(s.browsers, (x) => BR_NAME[x.name] || x.name || '未知')}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><span>国家 / 地区</span></div>
+        <div class="panel-body">${hbarRows(s.countries, (x) => CC_NAME[x.name] || x.name)}</div>
+      </div>
+    </div>`
+  )
+  $app.querySelectorAll('.tab[data-days]').forEach((t) =>
+    t.addEventListener('click', () => {
+      location.hash = `#/stats?days=${t.dataset.days}`
+    })
   )
 }
 
@@ -1339,6 +1512,15 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
+      <div class="form-section"><h3>访客统计</h3><div class="sec-desc">在后台「统计」页展示浏览量、访客数、来源与设备分布；只记匿名访客号与来源域名，不存 IP 和原始 UA，日志保留 180 天</div>
+        <div class="switch-row">
+          <div><div class="switch-label">开启访客统计采集</div><div class="switch-sub">关闭后前台页面不再上报访问数据（已有数据保留不再新增，统计页仍可看历史）</div></div>
+          <label class="switch"><input type="checkbox" id="st-statsEnabled" ${s.statsEnabled === '1' ? 'checked' : ''}><span class="track"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:20px;">
       <div class="form-section"><h3>外部发布</h3><div class="sec-desc">用 Telegram 机器人或开放 API 远程发微博（文字 / 图片 / 相册都可以）</div>
         <div class="form-item">
           <label>API Token（开放接口密钥，重新生成后旧 Token 立即失效）</label>
@@ -1488,6 +1670,7 @@ async function viewSettings() {
       notifyNewComment: g('st-notifyNewComment').checked ? '1' : '0',
       rssFullText: g('st-rssFullText').checked ? '1' : '0',
       backupEnabled: g('st-backupEnabled').checked ? '1' : '0',
+      statsEnabled: g('st-statsEnabled').checked ? '1' : '0',
       about: g('st-about').value,
     }
     try {
@@ -1664,6 +1847,7 @@ async function navigate() {
   }
   try {
     if (name === 'home') await viewHome()
+    else if (name === 'stats') await viewStats()
     else if (name === 'posts') await viewPosts()
     else if (name === 'weibo') await viewWeibo()
     else if (name === 'links') await viewLinks()
