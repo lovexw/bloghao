@@ -36,7 +36,7 @@
 | 🖼️ **R2 图床** | 图片视频私有存储，Worker 鉴权输出 + 长缓存 + ETag 304，媒体库可视化管理；上传前自动压缩（>300KB 或 >2000px 压成 JPEG，透明 PNG 保持 PNG） |
 | 🔒 **安全默认开启** | PBKDF2 / HttpOnly 会话 / CSRF 同源校验 / HTML 白名单净化 / 评论与友链蜜罐限流 / CSP |
 | ⚡ **快** | SSR 直出、主题 CSS 内联零额外请求、边缘节点全球分发 |
-| 📡 **自带生态件** | 全文 RSS、sitemap、robots.txt、OG 分享标签（可一键生成 1200×630 专属分享卡图）、图片灯箱、每晚自动备份到 R2、GitHub Actions 自动部署 |
+| 📡 **自带生态件** | 全文 RSS、sitemap、robots.txt、OG 分享标签（可一键生成 1200×630 专属分享卡图）、JSON-LD 结构化数据、图片灯箱、每晚自动备份到 R2、GitHub Actions 自动部署 |
 | 🚚 **数据导出** | 一键打包 Markdown（文章含草稿 + 微博 + 页面 + 引用的图片，front-matter 齐全）与 WordPress WXR——数据主权随时兑现，搬家不留钳制 |
 
 <details>

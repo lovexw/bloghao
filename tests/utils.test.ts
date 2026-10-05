@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanDisabledPlugins, cleanSlug, clampInt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, jsonItemLikePattern, plainText } from '../src/utils.ts'
+import { cleanDisabledPlugins, cleanSlug, clampInt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate, jsonItemLikePattern, plainText } from '../src/utils.ts'
 
 // ── SSR 时间统一北京时间（回归：0-8 点发布的内容曾显示成前一天）──
 test('fmtDate 按 UTC+8 取墙上日期：UTC 16:30 = 北京次日 00:30', () => {
@@ -20,6 +20,16 @@ test('fmtDate/fmtDateCN/fmtDateTime 空值返回空串', () => {
   assert.equal(fmtDate(null), '')
   assert.equal(fmtDateCN(undefined), '')
   assert.equal(fmtDateTime(0), '')
+})
+
+test('isoDate 输出北京时间 +08:00 的 ISO 8601（JSON-LD 机器日期）', () => {
+  const ts = Date.UTC(2026, 9, 5, 0, 30) // 北京 08:30
+  assert.equal(isoDate(ts), '2026-10-05T08:30:00+08:00')
+  // 0-8 点口径回归：UTC 10-05 18:00 = 北京 10-06 02:00，不能错位到前一天
+  const lateNight = Date.UTC(2026, 9, 5, 18, 0)
+  assert.equal(isoDate(lateNight), '2026-10-06T02:00:00+08:00')
+  assert.equal(isoDate(null), '')
+  assert.equal(isoDate(0), '')
 })
 
 // ── plainText 实体解码顺序（回归：&amp;lt; 曾被二次解码成裸 <）──

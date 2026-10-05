@@ -25,6 +25,7 @@ import {
   type PostSort,
 } from './db'
 import {
+  articleJsonLd,
   archiveGroups,
   commentsHtml,
   friendLinkApply,
@@ -35,6 +36,7 @@ import {
   onThisDayCard,
   page,
   pagerHtml,
+  siteBase,
   toHomePost,
   stripCoverDuplicate,
   weiboCards,
@@ -330,6 +332,22 @@ export async function renderPost(c: C): Promise<Response> {
   c.header('Cache-Control', 'no-cache')
   // 分享卡图优先：编辑器生成的 OG 卡图 > 封面图
   const ogImage = extractOgImage(sanitizeHtml(row.content)) || row.cover || undefined
+  const base = siteBase(settings, url.origin)
+  // 结构化数据（roadmap A3）：schema.org BlogPosting，与 og:image / canonical 同口径；草稿预览（noindex）不出
+  const jsonLd = isPreview
+    ? undefined
+    : articleJsonLd({
+        settings,
+        title: row.title,
+        description: row.summary || excerpt(row.content, 120),
+        image: ogImage,
+        url: `${base}/post/${row.slug}`,
+        base,
+        publishedAt: row.published_at,
+        updatedAt: row.updated_at,
+        tags: parseTags(row),
+        commentCount: comments.length,
+      })
   return c.html(
     page({
       settings,
@@ -340,6 +358,7 @@ export async function renderPost(c: C): Promise<Response> {
       path: `/post/${row.slug}`,
       origin: url.origin,
       noindex: isPreview,
+      jsonLd,
       body: html,
       preview: isPreview,
     })

@@ -1,6 +1,6 @@
 import type { CommentRow, PostRow, SettingsMap } from './types'
 import type { PostSort } from './db'
-import { cstDate, esc, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime } from './utils'
+import { cstDate, esc, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate } from './utils'
 
 export interface ThemePageOptions {
   settings: SettingsMap
@@ -15,18 +15,33 @@ export interface ThemePageOptions {
   origin?: string
   /** 工具型页面（搜索、草稿预览）：要求搜索引擎不收录 */
   noindex?: boolean
+  /** 结构化数据（JSON-LD）：对象序列化进 <script type="application/ld+json">，文章页传 articleJsonLd() 的产物 */
+  jsonLd?: Record<string, unknown>
 }
 
-/** HTML 骨架：meta/OG/内联主题 CSS/站点脚本，所有主题共用 */
+/** og:image 三级兜底：文章专属卡图（编辑器 OG 标记 > 封面）→ 后台设置的默认卡图 → 内置品牌卡图。
+ *  og:image 绝不缺位：社交平台抓不到图时会退化为灰色占位小图标 */
+export function resolveOgImage(ogImage: string | undefined, settings: SettingsMap): string {
+  return ogImage || settings.ogImageDefault || '/og-default.png'
+}
+
+/** 站点绝对地址前缀：后台「站点链接」优先，未配置时回退请求 origin；去尾部斜杠 */
+export function siteBase(settings: SettingsMap, origin?: string): string {
+  return ((settings.siteUrl || origin || '') as string).replace(/\/+$/, '')
+}
+
+/** HTML 骨架：meta/OG/JSON-LD/内联主题 CSS/站点脚本，所有主题共用 */
 export function page(o: ThemePageOptions): string {
   const siteName = o.settings.siteName || 'BlogHao'
   const desc = (o.description || o.settings.siteDescription || '').slice(0, 160)
-  const base = ((o.settings.siteUrl || o.origin || '') as string).replace(/\/+$/, '')
+  const base = siteBase(o.settings, o.origin)
   const title = o.title ? `${o.title} - ${siteName}` : siteName
   const ogType = o.path.startsWith('/post/') ? 'article' : 'website'
-  // 分享卡图三级兜底：文章专属卡图（编辑器 OG 标记 > 封面）→ 后台设置的默认卡图 → 内置品牌卡图。
-  // og:image 绝不缺位：社交平台抓不到图时会退化为灰色占位小图标
-  const ogImage = o.ogImage || o.settings.ogImageDefault || '/og-default.png'
+  const ogImage = resolveOgImage(o.ogImage, o.settings)
+  // JSON-LD 里的 < 必须转成 \u003c（仍是合法 JSON）：防正文标题带 </script> 提前闭合脚本标签
+  const jsonLdHtml = o.jsonLd
+    ? `<script type="application/ld+json">${JSON.stringify(o.jsonLd).replace(/</g, '\\u003c')}</script>`
+    : ''
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -45,6 +60,7 @@ ${base ? `<meta property="og:url" content="${esc(base + o.path)}">` : ''}
 <meta property="og:image" content="${esc(absUrl(base, ogImage))}">
 <meta property="og:image:alt" content="${esc(o.title || siteName)}">
 <meta name="twitter:card" content="summary_large_image">
+${jsonLdHtml}
 ${o.settings.faviconUrl ? `<link rel="icon" href="${esc(absUrl(base, o.settings.faviconUrl))}">` : `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`}
 ${base ? `<link rel="alternate" type="application/rss+xml" title="${esc(siteName)}" href="${esc(base)}/rss.xml">` : ''}
 <style>${o.css}</style>
@@ -59,6 +75,55 @@ ${o.body}
 function absUrl(siteUrl: string, path: string): string {
   if (/^https?:\/\//i.test(path)) return path
   return siteUrl ? siteUrl + path : path
+}
+
+export interface ArticleJsonLdOptions {
+  settings: SettingsMap
+  /** 文章标题（headline，不带站名后缀） */
+  title: string
+  description: string
+  /** 文章专属卡图或封面（可相对路径）：内部走 resolveOgImage 兜底，与 og:image 恒一致 */
+  image?: string
+  /** 文章 canonical 地址：与 page() 的 canonical 同源拼接（base + /post/:slug） */
+  url: string
+  base: string
+  /** 发布时间（毫秒），缺失回退 updatedAt */
+  publishedAt?: number | null
+  /** 最后更新时间（毫秒） */
+  updatedAt: number
+  tags?: string[]
+  commentCount?: number
+}
+
+/**
+ * 文章页 JSON-LD 结构化数据（schema.org BlogPosting，SEO 基本盘，roadmap A3）。
+ * 时间统一北京时间 +08:00（isoDate，与全站时间口径一致）；dateModified 取发布/更新中较晚者——
+ * 定时发布场景 updated_at 会早于 published_at，直接用会造成「修改时间早于发布时间」的矛盾数据。
+ */
+export function articleJsonLd(o: ArticleJsonLdOptions): Record<string, unknown> {
+  const siteName = o.settings.siteName || 'BlogHao'
+  const publishedTs = o.publishedAt || o.updatedAt
+  const data: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    mainEntityOfPage: { '@type': 'WebPage', '@id': o.url },
+    // Google 建议 headline 控制在 110 字符内，超长截断
+    headline: o.title.slice(0, 110),
+    description: o.description,
+    image: absUrl(o.base, resolveOgImage(o.image, o.settings)),
+    datePublished: isoDate(publishedTs),
+    dateModified: isoDate(Math.max(publishedTs, o.updatedAt)),
+    author: { '@type': 'Person', name: siteName },
+    publisher: {
+      '@type': 'Organization',
+      name: siteName,
+      logo: { '@type': 'ImageObject', url: absUrl(o.base, o.settings.faviconUrl || '/favicon.svg') },
+    },
+    inLanguage: 'zh-CN',
+  }
+  if (o.tags?.length) data.keywords = o.tags.join(', ')
+  if (o.commentCount != null) data.commentCount = o.commentCount
+  return data
 }
 
 export interface HomePostView {

@@ -37,7 +37,7 @@
 | [/archives](https://blog.xiaowuleyi.com/archives) | **文章归档**：全部已发布文章按年份分组，一页看尽所有文章（独立页面，利于搜索引擎收录） |
 | [/guestbook](https://blog.xiaowuleyi.com/guestbook) | **留言板**：独立留言墙，不分文章，想聊什么直接留；作者回复带「作者」徽标，管理规则与文章评论一致 |
 | [/links](https://blog.xiaowuleyi.com/links) | **友情链接**：友链卡片 + 访客在线申请收录表单 |
-| [/post/:slug](https://blog.xiaowuleyi.com/) | **文章页**：正文、点赞、楼中楼评论、相关文章；草稿只有本人登录后加 `?preview=1` 才能看到 |
+| [/post/:slug](https://blog.xiaowuleyi.com/) | **文章页**：正文、点赞、楼中楼评论、相关文章；自动输出 OG 分享标签与 schema.org JSON-LD 结构化数据（搜索引擎收录基本盘，无需配置）；草稿只有本人登录后加 `?preview=1` 才能看到 |
 | [/category/:slug](https://blog.xiaowuleyi.com/) | **分类归档页**（顶部「分类话题」菜单里点分类进入） |
 | [/tag/:tag](https://blog.xiaowuleyi.com/) | **标签归档页**（菜单里点话题进入，带文章计数） |
 | [/search?q=](https://blog.xiaowuleyi.com/search) | **搜索页**：标题与正文关键词搜索，展示前 50 条 |

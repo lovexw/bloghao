@@ -61,6 +61,13 @@ export function fmtDateCN(ts: number | null | undefined): string {
   return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
 }
 
+/** ISO 8601 机器日期，JSON-LD 等结构化数据用：2026-10-05T14:30:00+08:00。
+ *  与 fmtDate 同一偏移口径（+8h 后取 UTC 分量再标 +08:00），0-8 点发布的时间不错位 */
+export function isoDate(ts: number | null | undefined): string {
+  if (!ts) return ''
+  return new Date(ts + 8 * 3600_000).toISOString().replace(/\.\d{3}Z$/, '+08:00')
+}
+
 export function readingMinutes(html: string): number {
   const n = plainText(html).replace(/\s/g, '').length
   return Math.max(1, Math.ceil(n / 400))

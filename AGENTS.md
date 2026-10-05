@@ -33,6 +33,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 **时间口径（tests/utils.test.ts）**
 
 - SSR 端一切日期显示统一北京时间：用 `utils.ts` 的 `cstDate/fmtDate/fmtDateCN/fmtDateTime`（+8h 后取 UTC 分量），**禁止** `new Date(ts).getHours()` 这类依赖 Worker 时区（UTC）的写法——0-8 点发布的内容会显示成前一天；SQL 里按天/年聚合用 `strftime(..., ts/1000 + 28800, 'unixepoch')`；客户端 site.js 同口径（+8h + getUTC*）
+- 机器可读日期（JSON-LD 等结构化数据）用 `utils.ts` 的 `isoDate`（产出 `2026-10-05T08:30:00+08:00`，同北京时间口径），**禁止**裸 `toISOString()`（产出 UTC，0-8 点发布的 datePublished 会错位到前一天）；JSON-LD 序列化进 page() 前自动把 `<` 转 `\u003c` 防 `</script>` 逃逸，别在别处手拼 `<script type="application/ld+json">`
 
 **SQL / 输入（tests/utils.test.ts）**
 
