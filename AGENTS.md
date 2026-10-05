@@ -84,3 +84,4 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 - `public/admin/`：后台（app.js 路由与页面——侧栏菜单看顶部 `MENU` 配置数组，editor.js 写作编辑器，admin.css 样式）；「皮肤 / 插件」是独立页面（`#/appearance`、`#/plugins`），市场目录在 `public/market/catalog.json`
 - `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao 的 issues；官网 UI 改动同样过 390px 移动端检查
 - 编辑器内容样式（`.ed-editor`）与文章页（`.rich`）需保持视觉一致——改一处记得镜像另一处
+- 前台微博卡管理（编辑 / 置顶 / 删除，site.js 末段）：管理按钮由 `render.ts weiboCards` 仅在 `adminName`（⟺ 管理员登录）时渲染，**访客 HTML 里不存在**；写操作复用 `/api/admin/weibo*`（session 鉴权）——`PUT` 是全量更新，**必须带原 images 否则配图被清**、必须显式传 `status:'published'` 否则会转草稿；编辑保存后的就地渲染（wbTextHtml / imgsClass）与后端 `weiboTextHtml / weiboImageGrid` 同口径，改正则或网格分列规则要两边同步；编辑态切换显隐用内联 `style.display`（主题 CSS 的 display 会盖掉 `[hidden]`）

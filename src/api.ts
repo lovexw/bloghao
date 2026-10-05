@@ -442,6 +442,15 @@ api.get('/admin/weibo', async (c) => {
   })
 })
 
+/* 单条取原稿（前台卡片「编辑」用：正文要拿未转义原文，DOM 里的渲染文本反解不可靠） */
+api.get('/admin/weibo/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return jsonError('这条微博不存在', 404)
+  const row = await getWeiboById(c.env.DB, id)
+  if (!row) return jsonError('这条微博不存在', 404)
+  return c.json({ weibo: { ...row, imageList: weiboImageList(row), topicList: weiboTopicList(row) } })
+})
+
 api.post('/admin/weibo', async (c) => {
   const p = await readWeiboPayload(c)
   if (!p) return jsonError('请求格式错误')

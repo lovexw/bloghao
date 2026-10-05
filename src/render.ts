@@ -449,8 +449,17 @@ export function weiboTopicBar(topics: { name: string; count: number }[], active?
   return `<nav class="wb-topics" aria-label="微博话题">${chip('', '全部')}${chip(active, '#' + active, hit?.count)}</nav>`
 }
 
+/** 卡片底栏右侧管理操作（仅管理员登录时渲染，访客 HTML 里不存在；交互在 site.js） */
+function weiboAdminBar(w: WeiboItemView): string {
+  return `<div class="wb-admin" data-wb-admin="${w.id}">
+  <button class="wb-admin-btn" type="button" data-wb-act="edit">编辑</button>
+  <button class="wb-admin-btn" type="button" data-wb-act="pin">${w.pinned ? '取消置顶' : '置顶'}</button>
+  <button class="wb-admin-btn is-danger" type="button" data-wb-act="del">删除</button>
+</div>`
+}
+
 /** 微博卡片底栏：点赞（同文章 like-btn，data-type=weibo）+ 评论数（点开卡片内折叠评论区） */
-export function weiboCardFoot(w: WeiboItemView): string {
+export function weiboCardFoot(w: WeiboItemView, isAdmin?: boolean): string {
   const like = `<button class="wb-action like-btn" type="button" data-type="weibo" data-id="${w.id}" data-likes="${w.likes}" aria-label="点赞">
   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.5 8.4 2.3 4.9 5.7 4.5c2-.2 3.9.8 5 2.5a5.7 5.7 0 0 1 5-2.5c3.4.4 5.2 3.9 3.7 7.2C19.5 16.1 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
   <b class="like-count" data-count>${w.likes}</b>
@@ -459,7 +468,7 @@ export function weiboCardFoot(w: WeiboItemView): string {
   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
   <b class="wb-cmt-count" data-count>${w.commentCount}</b>
 </button>`
-  return `<footer class="wb-foot">${like}${cmt}</footer>`
+  return `<footer class="wb-foot">${like}${cmt}${isAdmin ? weiboAdminBar(w) : ''}</footer>`
 }
 
 /** 管理员登录时的发言身份行（文章/微博评论表单共用，免填昵称） */
@@ -495,14 +504,15 @@ export function weiboCards(o: {
   items: WeiboItemView[]
   avatarHtml: string
   allowComments?: boolean
-  /** 登录管理员昵称：评论表单免填昵称，以作者身份发言 */
+  /** 登录管理员昵称：评论表单免填昵称，以作者身份发言；传入即在卡片上渲染管理操作（编辑/置顶/删除） */
   adminName?: string
 }): string {
   const name = o.settings.siteName || '微博'
   const allowComments = o.allowComments !== false
+  const isAdmin = !!o.adminName
   return o.items
     .map((w) => {
-      const foot = weiboCardFoot(w)
+      const foot = weiboCardFoot(w, isAdmin)
       const panel = weiboCommentPanel(w, allowComments, o.adminName)
       return `<article class="wb-card${w.pinned ? ' is-pinned' : ''}" id="wb-${w.id}">
   <header class="wb-head">

@@ -235,6 +235,18 @@ img { max-width: 100%; height: auto; }
 .wb-action:hover { color: var(--pp-accent); border-color: var(--pp-accent); }
 .wb-action b { font-weight: 500; font-variant-numeric: tabular-nums; }
 
+/* 管理员登录：卡片底栏右侧管理操作（访客 HTML 不渲染，交互在 site.js） */
+.wb-admin { margin-left: auto; display: inline-flex; gap: 2px; flex-shrink: 0; }
+.wb-admin-btn {
+  font-size: 12px; color: #6b665c; background: transparent;
+  border: none; border-radius: 4px; padding: 5px 7px; cursor: pointer;
+  transition: color 0.2s ease;
+}
+.wb-admin-btn:hover { color: var(--pp-accent); }
+.wb-admin-btn.is-danger:hover { color: #c0392b; }
+.wb-foot { flex-wrap: wrap; }
+.wb-edit { margin-top: 14px; }
+
 /* 微博卡片内折叠评论区 */
 .wb-cmt { margin-top: 12px; border-top: 1px solid var(--pp-line); padding-top: 12px; }
 .wb-cmt-list, .wb-cmt-children { list-style: none; }

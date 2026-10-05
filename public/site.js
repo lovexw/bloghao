@@ -102,6 +102,35 @@
     return d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日'
   }
 
+  /* ---------------- 发布器 / 卡片编辑共用的小工具 ---------------- */
+  // 配图缩略图串（× 删除按钮由各自容器事件委托处理）
+  function tileHtml(images) {
+    return images
+      .map(function (u, i) {
+        return (
+          '<span class="wb-composer-tile"><img src="' + esc(u) + '" alt="">' +
+          '<button type="button" class="wb-composer-tile-del" data-i="' + i + '" title="移除">×</button></span>'
+        )
+      })
+      .join('')
+  }
+
+  function uploadImage(file) {
+    var fd = new FormData()
+    fd.append('file', file)
+    return fetch('/api/admin/upload', { method: 'POST', body: fd }).then(function (r) {
+      return r.json().then(function (d) {
+        if (!r.ok) throw new Error((d && d.error) || '上传失败')
+        return d.url
+      })
+    })
+  }
+
+  // 上传前压缩（compressImage 定义在上方）
+  function uploadCompressed(file) {
+    return compressImage(file).then(uploadImage)
+  }
+
   /* ---------------- 顶部导航「分类话题」折叠菜单：点外部 / Esc 收起 ---------------- */
   function closeNavMenus(except) {
     var open = document.querySelectorAll('details.snav-dd[open]')
@@ -480,14 +509,7 @@
     function cpRender() {
       if (cpTiles) {
         cpTiles.hidden = !cpImages.length
-        cpTiles.innerHTML = cpImages
-          .map(function (u, i) {
-            return (
-              '<span class="wb-composer-tile"><img src="' + esc(u) + '" alt="">'+
-              '<button type="button" class="wb-composer-tile-del" data-i="' + i + '" title="移除">×</button></span>'
-            )
-          })
-          .join('')
+        cpTiles.innerHTML = tileHtml(cpImages)
       }
       if (cpAdd) cpAdd.textContent = '加图（' + cpImages.length + '/' + WB_MAX_IMAGES + '）'
       if (cpCount && cpText) cpCount.textContent = cpText.value.length + ' / ' + WB_MAX_CHARS
@@ -502,24 +524,6 @@
       })
     }
     if (cpText) cpText.addEventListener('input', cpRender)
-
-    function cpUpload(file) {
-      var fd = new FormData()
-      fd.append('file', file)
-      return fetch('/api/admin/upload', { method: 'POST', body: fd }).then(function (r) {
-        return r.json().then(function (d) {
-          if (!r.ok) throw new Error((d && d.error) || '上传失败')
-          return d.url
-        })
-      })
-    }
-
-    // 上传前压缩（compressImage 定义在文件顶部工具区）
-    function cpUploadCompressed(file) {
-      return compressImage(file).then(function (out) {
-        return cpUpload(out)
-      })
-    }
 
     function cpAddFiles(fileList) {
       var all = Array.prototype.slice.call(fileList || [])
@@ -540,7 +544,7 @@
       imgs.slice(0, room).forEach(function (f) {
         chain = chain.then(function () {
           if (cpAdd) cpAdd.textContent = '上传中 ' + f.name.slice(0, 12) + '…'
-          return cpUploadCompressed(f).then(function (url) {
+          return uploadCompressed(f).then(function (url) {
             cpImages.push(url)
             cpRender()
           })
@@ -626,6 +630,293 @@
     if (cpDraft) cpDraft.addEventListener('click', function () { cpPublish('draft') })
     cpRender()
   }
+
+  /* ---------------- 微博卡管理（管理员登录时卡片上的 编辑 / 置顶 / 删除） ----------------
+   * 按钮由服务端只对登录管理员渲染（weiboCards 的 adminName 参数），这里只负责交互；
+   * 写操作直接复用后台 /api/admin/weibo* 端点（session 鉴权），访客无按钮也无入口。
+   */
+  ;(function () {
+    var WB_MAX_IMAGES = 9
+    var WB_MAX_CHARS = 5000
+    // 与后端 weiboTextHtml 同口径：esc 后把 #话题# 渲染成链接（编辑保存后就地重渲染用）
+    var WB_TOPIC_RE = /(?<![\p{L}\p{N}#])#[^\s#&<>"']{1,24}(?:#|(?=\s)|$)/gu
+
+    function wbTextHtml(content) {
+      return esc(content).replace(WB_TOPIC_RE, function (m) {
+        var name = m.replace(/^#/, '').replace(/#$/, '')
+        if (!name) return esc(m)
+        return '<a class="wb-topic" href="/weibo?topic=' + encodeURIComponent(name) + '">' + esc(m) + '</a>'
+      })
+    }
+
+    // 图片网格 class 与后端 weiboImageGrid 同口径：1 张大图，2/4 张两列，其余三列
+    function imgsClass(n) {
+      return 'wb-imgs ' + (n === 1 ? 'wb-imgs-1' : n === 2 || n === 4 ? 'wb-imgs-2' : 'wb-imgs-3')
+    }
+
+    // 失败反馈：按钮文字短暂变成错误信息再还原（前台无全局 toast，评论/发布器同样是行内提示）
+    function flashBtn(btn, msg) {
+      if (!btn) return
+      var old = btn.textContent
+      btn.textContent = msg
+      btn.disabled = true
+      setTimeout(function () {
+        btn.textContent = old
+        btn.disabled = false
+      }, 3000)
+    }
+
+    // 同步置顶状态到卡片：is-pinned 类、头部「置顶」标签、按钮文案；成功后恢复按钮可点
+    function setPinned(card, pinned) {
+      card.classList.toggle('is-pinned', pinned)
+      var head = card.querySelector('.wb-head')
+      var pin = head && head.querySelector('.wb-pin')
+      if (pinned && !pin && head) {
+        pin = document.createElement('span')
+        pin.className = 'wb-pin'
+        pin.textContent = '置顶'
+        head.appendChild(pin)
+      }
+      if (!pinned && pin) pin.remove()
+      var btn = card.querySelector('[data-wb-act="pin"]')
+      if (btn) {
+        btn.textContent = pinned ? '取消置顶' : '置顶'
+        btn.disabled = false
+      }
+    }
+
+    function enterEdit(card, id) {
+      if (card.querySelector('[data-wb-edit]')) return
+      var textEl = card.querySelector('.wb-text')
+      var imgsEl = card.querySelector('.wb-imgs')
+      var foot = card.querySelector('.wb-foot')
+      var admin = card.querySelector('.wb-admin')
+      // 用内联 display 而非 hidden 属性：主题 CSS 里 .wb-imgs 等常设 display，会盖掉 [hidden]
+      if (admin) admin.style.display = 'none'
+      if (textEl) textEl.style.display = 'none'
+      if (imgsEl) imgsEl.style.display = 'none'
+
+      var form = document.createElement('form')
+      form.className = 'wb-edit'
+      form.setAttribute('data-wb-edit', '')
+      form.innerHTML =
+        '<textarea class="wb-composer-textarea" name="content" maxlength="5000" rows="5" placeholder="说点什么…"></textarea>' +
+        '<div class="wb-composer-tiles" hidden></div>' +
+        '<div class="wb-composer-foot">' +
+        '<button type="button" class="wb-composer-add">加图（0/' + WB_MAX_IMAGES + '）</button>' +
+        '<span class="wb-composer-count">0 / ' + WB_MAX_CHARS + '</span>' +
+        '<span class="wb-composer-tip" aria-live="polite"></span>' +
+        '<button type="button" class="wb-composer-draft" data-wb-edit-cancel>取消</button>' +
+        '<button type="button" class="wb-composer-publish" data-wb-edit-save>保存</button>' +
+        '</div>'
+      form.addEventListener('submit', function (e) { e.preventDefault() })
+      if (foot) card.insertBefore(form, foot)
+      else card.appendChild(form)
+
+      var ta = form.querySelector('textarea')
+      var tiles = form.querySelector('.wb-composer-tiles')
+      var addBtn = form.querySelector('.wb-composer-add')
+      var countEl = form.querySelector('.wb-composer-count')
+      var tipEl = form.querySelector('.wb-composer-tip')
+      var saveBtn = form.querySelector('[data-wb-edit-save]')
+      var cancelBtn = form.querySelector('[data-wb-edit-cancel]')
+      var images = []
+      var tipTimer = null
+
+      function tip(msg) {
+        if (!tipEl) return
+        tipEl.textContent = msg || ''
+        if (tipTimer) clearTimeout(tipTimer)
+        if (msg) tipTimer = setTimeout(function () { tipEl.textContent = '' }, 4000)
+      }
+      function renderTiles() {
+        tiles.hidden = !images.length
+        tiles.innerHTML = tileHtml(images)
+        addBtn.textContent = '加图（' + images.length + '/' + WB_MAX_IMAGES + '）'
+        countEl.textContent = ta.value.length + ' / ' + WB_MAX_CHARS
+      }
+
+      ta.addEventListener('input', renderTiles)
+      tiles.addEventListener('click', function (e) {
+        var del = e.target && e.target.closest ? e.target.closest('.wb-composer-tile-del') : null
+        if (!del) return
+        images.splice(Number(del.getAttribute('data-i')), 1)
+        renderTiles()
+      })
+
+      function addFiles(fileList) {
+        var imgs = [].slice.call(fileList || []).filter(function (f) { return /^image\//.test(f.type) })
+        if (!imgs.length) return
+        var room = WB_MAX_IMAGES - images.length
+        if (room <= 0) return tip('最多 ' + WB_MAX_IMAGES + ' 张图')
+        var label = addBtn.textContent
+        addBtn.disabled = true
+        var chain = Promise.resolve()
+        imgs.slice(0, room).forEach(function (f) {
+          chain = chain.then(function () {
+            addBtn.textContent = '上传中 ' + f.name.slice(0, 12) + '…'
+            return uploadCompressed(f).then(function (url) {
+              images.push(url)
+              renderTiles()
+            })
+          })
+        })
+        chain
+          .catch(function (err) { tip((err && err.message) || '上传失败') })
+          .finally(function () {
+            addBtn.disabled = false
+            addBtn.textContent = label
+            renderTiles()
+          })
+      }
+      addBtn.addEventListener('click', function () {
+        var input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/jpeg,image/png,image/webp,image/gif'
+        input.multiple = true
+        input.onchange = function () { addFiles(input.files) }
+        input.click()
+      })
+      // 粘贴 / 拖拽加图，与顶部发布框同款
+      form.addEventListener('paste', function (e) {
+        var files = [].slice.call((e.clipboardData && e.clipboardData.files) || [])
+        if (!files.length) return
+        e.preventDefault()
+        addFiles(files)
+      })
+      form.addEventListener('dragover', function (e) {
+        var types = e.dataTransfer && e.dataTransfer.types
+        if (!types || !Array.prototype.includes.call(types, 'Files')) return
+        e.preventDefault()
+      })
+      form.addEventListener('drop', function (e) {
+        var files = [].slice.call((e.dataTransfer && e.dataTransfer.files) || [])
+        if (!files.length) return
+        e.preventDefault()
+        addFiles(files)
+      })
+
+      function leaveEdit() {
+        form.remove()
+        if (textEl) textEl.style.display = ''
+        if (imgsEl) imgsEl.style.display = ''
+        if (admin) admin.style.display = ''
+      }
+      cancelBtn.addEventListener('click', leaveEdit)
+
+      saveBtn.addEventListener('click', function () {
+        var content = ta.value.trim()
+        if (!content && !images.length) return tip('写点什么，或者配张图吧')
+        saveBtn.textContent = '保存中…'
+        saveBtn.disabled = true
+        cancelBtn.disabled = true
+        // PUT 是全量更新：必须带上现有 images，不然配图会被清空（与后台编辑同约束）
+        fetch('/api/admin/weibo/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: content, images: images, status: 'published' }),
+        })
+          .then(function (r) {
+            return r.json().then(function (d) {
+              if (!r.ok) throw new Error((d && d.error) || '保存失败')
+              // 就地更新正文与配图（渲染与后端 weiboTextHtml / weiboImageGrid 同口径）
+              if (content) {
+                if (!textEl) {
+                  textEl = document.createElement('div')
+                  textEl.className = 'wb-text'
+                  card.insertBefore(textEl, form)
+                }
+                textEl.innerHTML = wbTextHtml(content)
+                textEl.style.display = ''
+              } else if (textEl) {
+                textEl.remove()
+                textEl = null
+              }
+              if (images.length) {
+                if (!imgsEl) {
+                  imgsEl = document.createElement('div')
+                  card.insertBefore(imgsEl, form)
+                }
+                imgsEl.className = imgsClass(images.length)
+                imgsEl.innerHTML = images
+                  .map(function (u) { return '<img src="' + esc(u) + '" loading="lazy" alt="">' })
+                  .join('')
+                imgsEl.style.display = ''
+              } else if (imgsEl) {
+                imgsEl.remove()
+                imgsEl = null
+              }
+              leaveEdit()
+            })
+          })
+          .catch(function (err) {
+            tip((err && err.message) || '保存失败，请重试')
+            saveBtn.textContent = '保存'
+            saveBtn.disabled = false
+            cancelBtn.disabled = false
+          })
+      })
+
+      // 取原稿（正文要未转义原文，DOM 里的渲染文本反解不可靠）；失败留在编辑态提示，可取消重进
+      ta.disabled = true
+      renderTiles()
+      getJSON('/api/admin/weibo/' + id)
+        .then(function (d) {
+          ta.value = (d.weibo && d.weibo.content) || ''
+          images = ((d.weibo && d.weibo.imageList) || []).slice(0, WB_MAX_IMAGES)
+          ta.disabled = false
+          renderTiles()
+          ta.focus()
+        })
+        .catch(function (err) {
+          ta.disabled = false
+          tip((err && err.message) || '加载失败，请重试')
+        })
+    }
+
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('.wb-admin-btn') : null
+      if (!btn) return
+      var admin = btn.closest('.wb-admin')
+      var card = btn.closest('.wb-card')
+      if (!admin || !card) return
+      var id = admin.getAttribute('data-wb-admin')
+      var act = btn.getAttribute('data-wb-act')
+      if (act === 'edit') {
+        enterEdit(card, id)
+      } else if (act === 'pin') {
+        var pinned = !card.classList.contains('is-pinned')
+        btn.disabled = true
+        postJSON('/api/admin/weibo/' + id + '/pin', { pinned: pinned })
+          .then(function () {
+            setPinned(card, pinned)
+            // 置顶后挪到列表最前（服务端 pinnedFirst 排序，与刷新后的顺序一致）
+            if (pinned && card.parentNode && card.parentNode.firstElementChild !== card) {
+              card.parentNode.insertBefore(card, card.parentNode.firstElementChild)
+            }
+          })
+          .catch(function (err) {
+            flashBtn(btn, (err && err.message) || '操作失败')
+          })
+      } else if (act === 'del') {
+        if (!confirm('确定删除这条微博？它的评论将一并删除，不可恢复。')) return
+        btn.textContent = '删除中…'
+        btn.disabled = true
+        fetch('/api/admin/weibo/' + id, { method: 'DELETE' })
+          .then(function (r) {
+            return r.json().then(function (d) {
+              if (!r.ok) throw new Error((d && d.error) || '删除失败')
+              card.style.transition = 'opacity .25s ease'
+              card.style.opacity = '0'
+              setTimeout(function () { card.remove() }, 260)
+            })
+          })
+          .catch(function (err) {
+            flashBtn(btn, (err && err.message) || '删除失败')
+          })
+      }
+    })
+  })()
 
   /* ---------------- 友链申请收录（/links 页表单） ---------------- */
   document.addEventListener('submit', function (e) {

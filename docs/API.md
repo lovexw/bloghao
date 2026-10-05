@@ -139,6 +139,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/admin/weibo?status=all\|published\|draft&page=1&limit=20` | 列表（置顶优先；元素附 `imageList`、`topicList`、`commentCount`） |
+| GET | `/api/admin/weibo/:id` | 单条原稿（前台卡片「编辑」的数据源，附 `imageList`、`topicList`） |
 | POST | `/api/admin/weibo` | 新建（发布或存草稿） |
 | PUT | `/api/admin/weibo/:id` | 更新（转回草稿会自动取消置顶） |
 | POST | `/api/admin/weibo/:id/pin` | Body `{pinned:true/false}` |

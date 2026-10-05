@@ -70,7 +70,7 @@ async function startDevServer() {
 }
 
 async function check(method, url, expectStatus, expectBody, opts = {}) {
-  const label = `${method} ${url}${expectBody ? '（含内容断言）' : ''}`
+  const label = `${method} ${url}${expectBody ? '（含内容断言）' : ''}${opts.notContains ? '（不含断言）' : ''}`
   try {
     const res = await fetch(`http://127.0.0.1:${PORT}${url}`, {
       method,
@@ -79,10 +79,14 @@ async function check(method, url, expectStatus, expectBody, opts = {}) {
       signal: AbortSignal.timeout(15_000),
     })
     let bodyOk = true
+    const text = expectBody || opts.notContains ? await res.text() : ''
     if (expectBody) {
-      const text = await res.text()
       bodyOk = text.includes(expectBody)
       if (!bodyOk) console.error(`  ✗ ${label}：响应中未找到「${expectBody}」`)
+    }
+    if (bodyOk && opts.notContains) {
+      bodyOk = !text.includes(opts.notContains)
+      if (!bodyOk) console.error(`  ✗ ${label}：响应中不应出现「${opts.notContains}」`)
     }
     if (res.status !== expectStatus) {
       console.error(`  ✗ ${label}：期望 ${expectStatus}，实际 ${res.status}`)
@@ -120,6 +124,9 @@ try {
   await check('GET', `/tag/${encodeURIComponent('冒烟测试')}`, 200, 'smoke-multi-tag')
   await check('GET', '/archives', 200)
   await check('GET', '/weibo', 200)
+  // 前台微博卡管理（roadmap：管理员前台管理随手记）：访客 HTML 里不得出现管理按钮
+  await check('GET', '/weibo', 200, undefined, { notContains: 'data-wb-admin' })
+  await check('GET', '/api/admin/weibo/990101', 401)
   // 回归守卫：?wb= 深链定位——历史上的今天/首页入口卡/TG 通知链到 /weibo?wb=x#wb-x，
   // 服务端必须把目标微博所在页渲染出来（17 条夹具中 990101 最老，落在第 2 页）；无效 id 回退第 1 页
   await check('GET', '/weibo?wb=990101', 200, '微博定位目标')
@@ -237,6 +244,59 @@ try {
   const grayscaleOff = reopenedHome.status === 200 && !reopenedText.includes('grayscale')
   results.push(['闭站链路：灰度已随恢复撤下', grayscaleOff])
   console.log(`  ${grayscaleOff ? '✓' : '✗'} 闭站链路：灰度已随恢复撤下`)
+
+  // ── 微博前台管理链路（登录管理员在 /weibo 页直接编辑/置顶/删除随手记）──
+  // 全程用临时数据（新建→置顶→编辑→删除），不碰夹具，可重复运行
+  console.log('\n▸ 微博前台管理链路')
+  const adminWeiboPage = await raw('GET', '/weibo', { headers: { Cookie: cookie } })
+  const adminBtnOk = adminWeiboPage.status === 200 && (await adminWeiboPage.text()).includes('data-wb-admin')
+  results.push(['微博管理：登录后 /weibo 渲染管理按钮', adminBtnOk])
+  console.log(`  ${adminBtnOk ? '✓' : '✗'} 微博管理：登录后 /weibo 渲染管理按钮`)
+
+  const wbCreate = await raw('POST', '/api/admin/weibo', {
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ content: '冒烟管理链路临时微博 #冒烟话题#', status: 'published' }),
+  })
+  const wbCreated = await wbCreate.json().catch(() => null)
+  const wbId = wbCreated && wbCreated.weibo && wbCreated.weibo.id
+  results.push(['微博管理：发布临时微博', wbCreate.status === 200 && !!wbId])
+  console.log(`  ${wbCreate.status === 200 && !!wbId ? '✓' : '✗'} 微博管理：发布临时微博（id ${wbId}）`)
+
+  if (wbId) {
+    const wbCookie = { headers: { Cookie: cookie } }
+    // 单条取原稿：前台「编辑」的数据源（正文必须是未转义原文）
+    await check('GET', `/api/admin/weibo/${wbId}`, 200, '冒烟管理链路临时微博', wbCookie)
+    // 置顶 → 深链页渲染置顶卡 → 取消置顶
+    const pinOn = await raw('POST', `/api/admin/weibo/${wbId}/pin`, {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ pinned: true }),
+    })
+    results.push(['微博管理：置顶', pinOn.status === 200])
+    console.log(`  ${pinOn.status === 200 ? '✓' : '✗'} 微博管理：置顶`)
+    await check('GET', `/weibo?wb=${wbId}`, 200, 'is-pinned', wbCookie)
+    const pinOff = await raw('POST', `/api/admin/weibo/${wbId}/pin`, {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ pinned: false }),
+    })
+    results.push(['微博管理：取消置顶', pinOff.status === 200])
+    console.log(`  ${pinOff.status === 200 ? '✓' : '✗'} 微博管理：取消置顶`)
+    // 编辑（PUT 全量更新，前台编辑保存同款请求体）→ 单条与前台页都应看到新文本
+    const wbEdit = await raw('PUT', `/api/admin/weibo/${wbId}`, {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ content: '冒烟管理链路已编辑 #冒烟话题#', images: [], status: 'published' }),
+    })
+    results.push(['微博管理：编辑保存', wbEdit.status === 200])
+    console.log(`  ${wbEdit.status === 200 ? '✓' : '✗'} 微博管理：编辑保存`)
+    await check('GET', `/api/admin/weibo/${wbId}`, 200, '冒烟管理链路已编辑', wbCookie)
+    await check('GET', `/weibo?wb=${wbId}`, 200, '冒烟管理链路已编辑', wbCookie)
+    // 删除 → 单条 404、深链定位失效但页面仍 200
+    const wbDel = await raw('DELETE', `/api/admin/weibo/${wbId}`, wbCookie)
+    results.push(['微博管理：删除', wbDel.status === 200])
+    console.log(`  ${wbDel.status === 200 ? '✓' : '✗'} 微博管理：删除`)
+    await check('GET', `/api/admin/weibo/${wbId}`, 404, undefined, wbCookie)
+    await check('GET', `/weibo?wb=${wbId}`, 200)
+  }
+
 } finally {
   if (dev && dev.exitCode === null) dev.kill('SIGTERM')
 }
