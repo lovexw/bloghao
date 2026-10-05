@@ -33,9 +33,11 @@ async function api(path, opts = {}) {
   return data
 }
 
-/* ---------- 上传前图片压缩（编辑器/封面/OG 与前台发布器共用逻辑，两端各自落地） ----------
- * JPEG/PNG/WebP 且大于阈值时：最长边压到 MAX_DIM、JPEG 质量 0.82 转 JPEG；
- * GIF（动图会压丢帧）与小于阈值的图原样返回。失败时返回原文件，不阻塞上传。 */
+/* ---------- 上传前图片压缩与 WebP 转换（编辑器/封面/OG 与前台发布器共用逻辑，两端各自落地） ----------
+ * JPEG/PNG/WebP 且大于阈值时：最长边压到 MAX_DIM，优先转 WebP（质量 0.82，比 JPEG 约再省 1/4 体积，
+ * 透明也不丢——透明 PNG / 带 alpha 的 WebP 都能转）；旧浏览器 canvas 编码不了 WebP（toBlob 静默回退
+ * 成 PNG），按产物 type 识别后走原 JPEG/PNG 口径：非 PNG 一律 JPEG，透明 PNG 只在超尺寸时缩 PNG。
+ * GIF（动图会压丢帧）与小于阈值的图原样返回；产物不比原图小也用原图。失败时返回原文件，不阻塞上传。 */
 const IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 300 * 1024, QUALITY: 0.82 }
 
 async function compressImage(file) {
@@ -43,17 +45,23 @@ async function compressImage(file) {
     if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= IMG_COMPRESS.MIN_BYTES) return file
     const bmp = await createImageBitmap(file)
     const scale = Math.min(1, IMG_COMPRESS.MAX_DIM / Math.max(bmp.width, bmp.height))
-    // PNG 透明图不转 JPEG（会糊成黑底），仅超尺寸时缩到 PNG；其余统一 JPEG
-    const toJpeg = file.type !== 'image/png' || !hasAlpha(bmp)
-    if (scale >= 1 && !toJpeg) return file
     const w = Math.max(1, Math.round(bmp.width * scale))
     const h = Math.max(1, Math.round(bmp.height * scale))
     const cv = document.createElement('canvas')
     cv.width = w
     cv.height = h
     cv.getContext('2d').drawImage(bmp, 0, 0, w, h)
-    const blob = await new Promise((r) => cv.toBlob(r, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY))
+    const webp = await new Promise((r) => cv.toBlob(r, 'image/webp', IMG_COMPRESS.QUALITY))
+    if (webp?.type === 'image/webp') {
+      bmp.close?.()
+      if (webp.size >= file.size) return file
+      const name = (file.name || 'image').replace(/\.[^.]+$/, '') + '.webp'
+      return new File([webp], name, { type: 'image/webp' })
+    }
+    const toJpeg = file.type !== 'image/png' || !hasAlpha(bmp)
     bmp.close?.()
+    if (scale >= 1 && !toJpeg) return file
+    const blob = await new Promise((r) => cv.toBlob(r, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY))
     if (!blob || blob.size >= file.size) return file
     const name = (file.name || 'image').replace(/\.[^.]+$/, '') + (toJpeg ? '.jpg' : '.png')
     return new File([blob], name, { type: toJpeg ? 'image/jpeg' : 'image/png' })

@@ -37,9 +37,10 @@
     })
   }
 
-  /* ---------------- 上传前图片压缩（前台发布器，与后台同参数） ----------------
-   * JPEG/PNG/WebP 超过 300KB 或最长边超 2000px 时压成 JPEG（质量 0.82）；
-   * PNG 含透明保持 PNG 只缩尺寸；GIF 动图会压丢帧，原样直传；失败回退原文件。 */
+  /* ---------------- 上传前图片压缩与 WebP 转换（前台发布器，与后台同参数） ----------------
+   * JPEG/PNG/WebP 超 300KB：最长边压到 2000px，优先转 WebP（质量 0.82，比 JPEG 约再省 1/4，
+   * 透明不丢）；旧浏览器编码不了 WebP 时回退原 JPEG/PNG 口径（透明 PNG 只缩尺寸不转格式）；
+   * GIF 动图会压丢帧原样直传；产物不比原图小则用原图；失败回退原文件。 */
   var IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 300 * 1024, QUALITY: 0.82 }
 
   function hasAlphaSampled(bmp) {
@@ -57,20 +58,28 @@
       createImageBitmap(file)
         .then(function (bmp) {
           var scale = Math.min(1, IMG_COMPRESS.MAX_DIM / Math.max(bmp.width, bmp.height))
-          var toJpeg = file.type !== 'image/png' || !hasAlphaSampled(bmp)
-          if (scale >= 1 && !toJpeg) return resolve(file)
           var w = Math.max(1, Math.round(bmp.width * scale))
           var h = Math.max(1, Math.round(bmp.height * scale))
           var cv = document.createElement('canvas')
           cv.width = w
           cv.height = h
           cv.getContext('2d').drawImage(bmp, 0, 0, w, h)
-          cv.toBlob(function (blob) {
+          cv.toBlob(function (webp) {
+            if (webp && webp.type === 'image/webp') {
+              bmp.close && bmp.close()
+              if (webp.size >= file.size) return resolve(file)
+              var wname = (file.name || 'image').replace(/\.[^.]+$/, '') + '.webp'
+              return resolve(new File([webp], wname, { type: 'image/webp' }))
+            }
+            var toJpeg = file.type !== 'image/png' || !hasAlphaSampled(bmp)
             bmp.close && bmp.close()
-            if (!blob || blob.size >= file.size) return resolve(file)
-            var name = (file.name || 'image').replace(/\.[^.]+$/, '') + (toJpeg ? '.jpg' : '.png')
-            resolve(new File([blob], name, { type: toJpeg ? 'image/jpeg' : 'image/png' }))
-          }, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY)
+            if (scale >= 1 && !toJpeg) return resolve(file)
+            cv.toBlob(function (blob) {
+              if (!blob || blob.size >= file.size) return resolve(file)
+              var name = (file.name || 'image').replace(/\.[^.]+$/, '') + (toJpeg ? '.jpg' : '.png')
+              resolve(new File([blob], name, { type: toJpeg ? 'image/jpeg' : 'image/png' }))
+            }, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY)
+          }, 'image/webp', IMG_COMPRESS.QUALITY)
         })
         .catch(function () {
           resolve(file)
