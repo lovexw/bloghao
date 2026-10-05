@@ -50,7 +50,7 @@ import { sanitizeHtml } from './sanitize'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
-import { clampInt, cleanSlug, excerpt, extractWeiboTopics, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
+import { clampInt, cleanDisabledPlugins, cleanSlug, excerpt, extractWeiboTopics, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
 
 type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
@@ -978,6 +978,12 @@ api.put('/admin/settings', async (c) => {
       patch[key] = v === '1' || v === 'true' ? '1' : '0'
       continue
     }
+    if (key === 'pluginsDisabled') {
+      const cleaned = cleanDisabledPlugins(v)
+      if (cleaned === null) return jsonError('插件 ID 只能包含字母、数字、_ 或 -')
+      patch[key] = cleaned
+      continue
+    }
     if (key === 'notifyNewComment' || key === 'rssFullText' || key === 'backupEnabled' || key === 'statsEnabled') {
       patch[key] = v === '1' || v === 'true' ? '1' : '0'
       continue
@@ -1347,6 +1353,11 @@ api.post('/public/links/apply', async (c) => {
 
 api.get('/meta/themes', (c) =>
   c.json({
-    themes: Object.values(THEMES).map((t) => ({ id: t.id, name: t.name, description: t.description })),
+    themes: Object.values(THEMES).map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      colors: t.colors ?? null,
+    })),
   })
 )

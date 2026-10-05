@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanSlug, clampInt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, jsonItemLikePattern, plainText } from '../src/utils.ts'
+import { cleanDisabledPlugins, cleanSlug, clampInt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, jsonItemLikePattern, plainText } from '../src/utils.ts'
 
 // ── SSR 时间统一北京时间（回归：0-8 点发布的内容曾显示成前一天）──
 test('fmtDate 按 UTC+8 取墙上日期：UTC 16:30 = 北京次日 00:30', () => {
@@ -41,6 +41,24 @@ test('cleanSlug 清洗空白与非法字符', () => {
   assert.equal(cleanSlug('  --a--b--  '), 'a-b')
   assert.equal(cleanSlug('   '), '')
   assert.equal(cleanSlug('hello-world_1'), 'hello-world_1')
+})
+
+// ── 插件停用列表清洗（后台「插件」页启停写 settings.pluginsDisabled）──
+test('cleanDisabledPlugins 去空白去重并保序', () => {
+  assert.equal(cleanDisabledPlugins('a, b,,c ,a'), 'a,b,c')
+  assert.equal(cleanDisabledPlugins(' hello-plugin , wechat-collect '), 'hello-plugin,wechat-collect')
+  assert.equal(cleanDisabledPlugins(''), '')
+  assert.equal(cleanDisabledPlugins(',,,'), '')
+  assert.equal(cleanDisabledPlugins('A_1-b'), 'A_1-b')
+})
+
+test('cleanDisabledPlugins 非法字符与超长 ID 拒绝/截断', () => {
+  // 含非法字符整体拒绝，由 API 层返回 400，避免静默丢弃造成「看似保存成功」
+  assert.equal(cleanDisabledPlugins('a;rm -rf'), null)
+  assert.equal(cleanDisabledPlugins('中文插件'), null)
+  assert.equal(cleanDisabledPlugins('a,b;,'), null)
+  // 单个 ID 超过 64 位截断，超量不设限（插件数量本身有限）
+  assert.equal(cleanDisabledPlugins(`${'x'.repeat(70)}`), 'x'.repeat(64))
 })
 
 // ── LIKE 通配符转义（回归：% _ 未声明 ESCAPE 时搜索恒为空）──

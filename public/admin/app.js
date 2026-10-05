@@ -127,15 +127,37 @@ const I = {
   comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2z"/></svg>',
+  palette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9c0 2.2-1.6 3.4-3.5 3.4h-1.7a1.9 1.9 0 0 0-1.4 3.2c.5.6.3 2.4-2.4 2.4z"/><circle cx="7.6" cy="11.8" r="1"/><circle cx="10.4" cy="7.6" r="1"/><circle cx="15.2" cy="7.9" r="1"/></svg>',
+  plug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v4M15 3v4"/><path d="M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0V7z"/><path d="M12 16v5"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="7.5" cy="7.5" r="1.7"/><circle cx="16.5" cy="7.5" r="1.7"/><circle cx="7.5" cy="16.5" r="1.7"/><circle cx="16.5" cy="16.5" r="1.7"/></svg>',
   fold: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"/></svg>',
 }
 
-const THEME_SWATCH = {
-  wechat: { bg: '#ededed', bar: '#b23a29', card: '#ffffff', card2: '#e8f7ef', card3: '#f2f2f2' },
-  paper: { bg: '#f7f4ee', bar: '#a03c2e', card: '#fffdf8', card2: '#efe9db', card3: '#f1ede2' },
-  minimal: { bg: '#ffffff', bar: '#111111', card: '#f5f5f5', card2: '#efefef', card3: '#f7f7f7' },
-  midnight: { bg: '#0f1115', bar: '#58a6ff', card: '#161a22', card2: '#1d232e', card3: '#181d26' },
-}
+/* ---------------- 侧边栏菜单 ----------------
+ * 分组标签 + 高亮「写作」CTA；type: ext 外链 / cta 写作按钮 / group 分组标题 / 普通项为菜单叶子。
+ * 预留 children 字段：未来「设置」拆子页或市场子页时，给叶子加 children 即可在其下渲染二级菜单。
+ * badge 为函数：渲染时实时取待审数（state 由各页面加载时写入）。 */
+const MENU = [
+  { type: 'ext', href: '/', label: '查看主页', icon: 'home' },
+  { type: 'cta', id: 'editor', href: '#/editor/new', label: '写作', icon: 'edit' },
+  { type: 'group', label: '数据' },
+  { id: 'home', href: '#/', label: '概览', icon: 'home' },
+  { id: 'stats', href: '#/stats', label: '统计', icon: 'chart' },
+  { type: 'group', label: '内容' },
+  { id: 'posts', href: '#/posts', label: '文章', icon: 'post' },
+  { id: 'weibo', href: '#/weibo', label: '微博', icon: 'weibo' },
+  { id: 'comments', href: '#/comments', label: '评论', icon: 'comment', badge: () => state.pendingComments || 0 },
+  { id: 'media', href: '#/media', label: '媒体', icon: 'image' },
+  { id: 'categories', href: '#/categories', label: '分类', icon: 'folder' },
+  { id: 'links', href: '#/links', label: '友链', icon: 'link', badge: () => state.pendingLinks || 0 },
+  { type: 'group', label: '系统' },
+  { id: 'appearance', href: '#/appearance', label: '皮肤', icon: 'palette' },
+  { id: 'plugins', href: '#/plugins', label: '插件', icon: 'plug' },
+  { id: 'settings', href: '#/settings', label: '设置', icon: 'gear' },
+]
+
+/* 移动端底部栏固定项（其余入口收进「更多」抽屉） */
+const MOBILE_TAB_IDS = ['home', 'editor', 'posts', 'comments']
 
 /* ---------------- 登录 / 初始化 ---------------- */
 function authView(mode) {
@@ -187,25 +209,34 @@ function authView(mode) {
 }
 
 /* ---------------- 布局骨架 ---------------- */
+function sideItemHtml(item, active) {
+  const badge = item.badge ? item.badge() : 0
+  return `<a class="side-item${active === item.id ? ' is-active' : ''}" href="${item.href}" title="${item.label}">${I[item.icon]}<span>${item.label}</span>${badge ? `<span class="side-badge">${badge}</span>` : ''}</a>`
+}
+
+/** 桌面侧栏与移动端「更多」抽屉共用同一份 MENU 渲染（分组标签 + 外链 + 写作 CTA） */
+function sideNavHtml(active) {
+  return MENU.map((m) => {
+    if (m.type === 'group') return `<div class="side-group">${m.label}</div>`
+    if (m.type === 'ext')
+      return `<a class="side-item side-item-home" href="${m.href}" target="_blank" rel="noopener" title="${m.label}">${I[m.icon]}<span>${m.label}</span></a><div class="side-sep"></div>`
+    if (m.type === 'cta') return `<a class="side-cta" href="${m.href}" title="${m.label}">${I[m.icon]}<span>${m.label}</span></a>`
+    return sideItemHtml(m, active)
+  }).join('')
+}
+
 async function shellView(active, contentHTML) {
-  const pending = state.pendingComments || 0
-  const pendingLinks = state.pendingLinks || 0
   const sideMini = localStorage.getItem('admin-side') === 'mini'
+  // 移动端底部栏只放高频项，其余收进「更多」抽屉；不在栏内的待审数聚合成红点
+  const barItems = MOBILE_TAB_IDS.map((id) => MENU.find((m) => m.id === id)).filter(Boolean)
+  const moreDot = MENU.reduce((sum, m) => (m.badge && !MOBILE_TAB_IDS.includes(m.id) ? sum + m.badge() : sum), 0)
   $app.innerHTML = `<div class="shell${sideMini ? ' side-mini' : ''}">
     <aside class="sidebar">
       <div class="side-logo"><img src="/favicon.svg" alt=""><span>博客号</span><button class="side-fold" id="btn-side-fold" title="${sideMini ? '展开侧栏' : '收起侧栏'}">${I.fold}</button></div>
-      <nav class="side-nav">
-        <a class="side-item side-item-home" href="/" target="_blank" rel="noopener" title="查看主页">${I.home}<span>查看主页</span></a>
-        <a class="side-item${active === 'home' ? ' is-active' : ''}" href="#/" title="概览">${I.home}<span>概览</span></a>
-        <a class="side-item${active === 'stats' ? ' is-active' : ''}" href="#/stats" title="统计">${I.chart}<span>统计</span></a>
-        <a class="side-item${active === 'posts' ? ' is-active' : ''}" href="#/posts" title="文章">${I.post}<span>文章</span></a>
-        <a class="side-item${active === 'weibo' ? ' is-active' : ''}" href="#/weibo" title="微博">${I.weibo}<span>微博</span></a>
-        <a class="side-item${active === 'links' ? ' is-active' : ''}" href="#/links" title="友链">${I.link}<span>友链</span>${pendingLinks ? `<span class="side-badge">${pendingLinks}</span>` : ''}</a>
-        <a class="side-item${active === 'categories' ? ' is-active' : ''}" href="#/categories" title="分类">${I.folder}<span>分类</span></a>
-        <a class="side-item${active === 'editor' ? ' is-active' : ''}" href="#/editor/new" title="写作">${I.edit}<span>写作</span></a>
-        <a class="side-item${active === 'comments' ? ' is-active' : ''}" href="#/comments" title="评论">${I.comment}<span>评论</span>${pending ? `<span class="side-badge">${pending}</span>` : ''}</a>
-        <a class="side-item${active === 'media' ? ' is-active' : ''}" href="#/media" title="媒体">${I.image}<span>媒体</span></a>
-        <a class="side-item${active === 'settings' ? ' is-active' : ''}" href="#/settings" title="设置">${I.gear}<span>设置</span></a>
+      <nav class="side-nav">${sideNavHtml(active)}</nav>
+      <nav class="tab-bar">
+        ${barItems.map((m) => sideItemHtml(m, active)).join('')}
+        <button class="side-item tab-more" id="btn-more" type="button">${I.more}<span>更多</span>${moreDot ? '<span class="tab-dot"></span>' : ''}</button>
       </nav>
       <div class="side-user">
         ${state.settings?.avatarUrl ? `<img class="side-user-avatar" src="${esc(state.settings.avatarUrl)}" alt="">` : `<span class="side-user-avatar">${esc((state.user.display_name || state.user.username).charAt(0).toUpperCase())}</span>`}
@@ -214,6 +245,12 @@ async function shellView(active, contentHTML) {
       </div>
     </aside>
     <main class="main">${contentHTML}</main>
+    <div class="sheet-mask" id="sheet-mask">
+      <div class="side-sheet" role="dialog" aria-label="全部菜单">
+        <div class="side-sheet-head"><span>全部菜单</span><button class="side-sheet-close" id="btn-sheet-close" type="button">✕</button></div>
+        <nav class="side-sheet-nav">${sideNavHtml(active)}</nav>
+      </div>
+    </div>
   </div>`
   document.getElementById('btn-side-fold').addEventListener('click', (e) => {
     const mini = $app.querySelector('.shell').classList.toggle('side-mini')
@@ -226,6 +263,21 @@ async function shellView(active, contentHTML) {
     location.hash = '#/'
     boot()
   })
+  // 「更多」抽屉：点遮罩/关闭按钮/任意菜单项都收起；打开时锁 body 滚动
+  const mask = document.getElementById('sheet-mask')
+  const closeSheet = () => {
+    mask.classList.remove('is-open')
+    document.body.classList.remove('no-scroll')
+  }
+  document.getElementById('btn-more').addEventListener('click', () => {
+    mask.classList.add('is-open')
+    document.body.classList.add('no-scroll')
+  })
+  document.getElementById('btn-sheet-close').addEventListener('click', closeSheet)
+  mask.addEventListener('click', (e) => {
+    if (e.target === mask) closeSheet()
+  })
+  mask.querySelectorAll('.side-sheet-nav a').forEach((a) => a.addEventListener('click', closeSheet))
 }
 
 /* ---------------- 概览 ---------------- */
@@ -1431,29 +1483,202 @@ async function viewMedia() {
   if (next) next.addEventListener('click', () => (location.hash = `#/media?page=${page + 1}`))
 }
 
-/* ---------------- 设置 ---------------- */
-async function viewSettings() {
+/* ---------------- 皮肤 ---------------- */
+const SWATCH_FALLBACK = ['#eeeeee', '#b23a29', '#ffffff', '#eeeeee', '#eeeeee']
+
+function swatchOf(t) {
+  return Array.isArray(t.colors) && t.colors.length >= 5 ? t.colors : SWATCH_FALLBACK
+}
+
+function swatchHtml(c) {
+  return `<div class="theme-preview" style="background:${c[0]}">
+      <div class="tp-bar" style="background:${c[1]}"></div>
+      <div class="tp-card" style="background:${c[2]}"></div>
+      <div class="tp-card2" style="background:${c[3]}"></div>
+      <div class="tp-card3" style="background:${c[4]}"></div>
+    </div>`
+}
+
+async function fetchCatalog() {
+  try {
+    const r = await fetch('/market/catalog.json', { credentials: 'same-origin' })
+    if (r.ok) return await r.json()
+  } catch {
+    /* 目录缺失时市场 tab 显示空态 */
+  }
+  return null
+}
+
+async function viewAppearance() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || '')
+  const tab = q.get('tab') === 'market' ? 'market' : 'mine'
   let themes
   try {
     ;[{ settings: state.settings }, themes] = await Promise.all([api('/admin/settings'), api('/meta/themes')])
   } catch (e) {
     return handleApiErr(e)
   }
-  const s = state.settings
-  const themeCards = themes.themes
-    .map((t) => {
-      const c = THEME_SWATCH[t.id] || { bg: '#eee', bar: '#b23a29', card: '#fff', card2: '#eee', card3: '#eee' }
-      return `<div class="theme-card${s.theme === t.id ? ' is-active' : ''}" data-theme="${t.id}">
-      <div class="theme-preview" style="background:${c.bg};">
-        <div class="tp-bar" style="background:${c.bar};"></div>
-        <div class="tp-card" style="background:${c.card};"></div>
-        <div class="tp-card2" style="background:${c.card2};"></div>
-        <div class="tp-card3" style="background:${c.card3};"></div>
-      </div>
+  const list = themes.themes || []
+  const catalog = tab === 'market' ? await fetchCatalog() : null
+
+  const mine = list
+    .map(
+      (t) => `<div class="theme-card${state.settings.theme === t.id ? ' is-active' : ''}" data-theme="${esc(t.id)}">
+      ${swatchHtml(swatchOf(t))}
       <div class="theme-meta"><div class="theme-name"><span>${esc(t.name)}</span></div><div class="theme-desc">${esc(t.description)}</div></div>
     </div>`
-    })
+    )
     .join('')
+  const market = (catalog?.themes || [])
+    .map((t) => {
+      const installed = list.some((x) => x.id === t.id)
+      return `<a class="theme-card mk-card" href="${esc(t.link || '/')}" target="_blank" rel="noopener">
+      ${swatchHtml(swatchOf(t))}
+      <div class="theme-meta"><div class="theme-name"><span>${esc(t.name)}</span>${installed ? '<span class="mk-badge">已安装</span>' : ''}</div><div class="theme-desc">${esc(t.description || '查看介绍与安装说明')}</div></div>
+    </a>`
+    })
+    .join('') || '<div class="empty-box">市场目录暂时空着，更多皮肤敬请期待</div>'
+
+  await shellView(
+    'appearance',
+    `<div class="page-head"><div><div class="page-title">皮肤</div><div class="page-sub">给博客换一身好看的衣服，选中即刻生效</div></div>
+      <a class="btn" href="/" target="_blank" rel="noopener">预览主页 ↗</a></div>
+    <div class="toolbar"><div class="tabs">
+      <a class="tab${tab === 'mine' ? ' is-active' : ''}" href="#/appearance">我的皮肤</a>
+      <a class="tab${tab === 'market' ? ' is-active' : ''}" href="#/appearance?tab=market">皮肤市场</a>
+    </div></div>
+    ${tab === 'mine' ? `<div class="panel" style="padding:20px;"><div class="settings-grid" id="theme-grid">${mine}</div></div>` : `<div class="panel" style="padding:20px;"><div class="settings-grid">${market}</div></div>`}`
+  )
+
+  if (tab !== 'mine') return
+  // 点击卡片立即启用：乐观高亮，保存失败回退并提示
+  let applying = false
+  $app.querySelectorAll('.theme-card').forEach((card) =>
+    card.addEventListener('click', async () => {
+      if (applying || card.classList.contains('is-active')) return
+      applying = true
+      const prev = $app.querySelector('.theme-card.is-active')
+      card.classList.add('is-active')
+      try {
+        const d = await api('/admin/settings', { method: 'PUT', body: { theme: card.dataset.theme } })
+        state.settings = d.settings
+        prev?.classList.remove('is-active')
+        toast(`已启用皮肤「${card.dataset.name || card.dataset.theme}」`)
+      } catch (e) {
+        card.classList.remove('is-active')
+        prev?.classList.add('is-active')
+        handleApiErr(e)
+      } finally {
+        applying = false
+      }
+    })
+  )
+}
+
+/* ---------------- 插件 ---------------- */
+async function viewPlugins() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || '')
+  const tab = q.get('tab') === 'market' ? 'market' : 'installed'
+  try {
+    state.settings = (await api('/admin/settings')).settings
+  } catch (e) {
+    return handleApiErr(e)
+  }
+  const off = new Set((state.settings.pluginsDisabled || '').split(',').filter(Boolean))
+  let manifest = []
+  try {
+    const r = await fetch('/plugins/manifest.json', { credentials: 'same-origin' })
+    if (r.ok) {
+      const l = await r.json()
+      if (Array.isArray(l)) manifest = l
+    }
+  } catch {
+    /* 清单缺失按空处理，不影响页面 */
+  }
+  // 清单兼容旧版纯文件名与新对象两种形态
+  const installed = manifest
+    .map((e) => (typeof e === 'string' ? { id: e.replace(/\.js$/, ''), file: e } : e))
+    .filter((p) => p && p.id)
+  const catalog = tab === 'market' ? await fetchCatalog() : null
+
+  const rows = installed
+    .map(
+      (p) => `<div class="pl-row">
+      <span class="pl-ico">${esc((p.title || p.id).charAt(0).toUpperCase())}</span>
+      <div class="pl-main">
+        <div class="pl-name">${esc(p.title || p.id)}${p.version ? `<span class="pl-ver">v${esc(p.version)}</span>` : ''}</div>
+        <div class="pl-desc">${esc(p.description || '暂无介绍')}${p.author ? ` · ${esc(p.author)}` : ''}</div>
+      </div>
+      <label class="switch"><input type="checkbox" data-id="${esc(p.id)}" ${off.has(p.id) ? '' : 'checked'}><span class="track"></span></label>
+    </div>`
+    )
+    .join('') || '<div class="empty-box">还没有安装插件，去插件市场看看</div>'
+  const market = (catalog?.plugins || [])
+    .map((p) => {
+      const has = installed.some((x) => x.id === p.id)
+      return `<a class="pl-row mk-row" href="${esc(p.link || '/')}" target="_blank" rel="noopener">
+      <span class="pl-ico">${esc((p.name || p.id).charAt(0).toUpperCase())}</span>
+      <div class="pl-main">
+        <div class="pl-name">${esc(p.name || p.id)}${has ? '<span class="mk-badge">已安装</span>' : ''}</div>
+        <div class="pl-desc">${esc(p.description || '查看介绍与安装说明')}</div>
+      </div>
+      <span class="pl-go">查看 ↗</span>
+    </a>`
+    })
+    .join('') || '<div class="empty-box">市场目录暂时空着，更多插件敬请期待</div>'
+
+  await shellView(
+    'plugins',
+    `<div class="page-head"><div><div class="page-title">插件</div><div class="page-sub">写作编辑器里的小工具</div></div></div>
+    <div class="toolbar"><div class="tabs">
+      <a class="tab${tab === 'installed' ? ' is-active' : ''}" href="#/plugins">已安装</a>
+      <a class="tab${tab === 'market' ? ' is-active' : ''}" href="#/plugins?tab=market">插件市场</a>
+    </div></div>
+    ${
+      tab === 'installed'
+        ? `<div class="panel">
+      <div class="panel-head">编辑器插件<span class="panel-head-sub">停用后下次打开编辑器生效 · 开发新插件见 docs/PLUGINS.md</span></div>
+      <div class="panel-body" id="pl-list">${rows}</div>
+    </div>`
+        : `<div class="panel">
+      <div class="panel-head">插件市场<span class="panel-head-sub">持续收录中 · 自己动手见 docs/PLUGINS.md</span></div>
+      <div class="panel-body">${market}</div>
+    </div>`
+    }`
+  )
+
+  if (tab !== 'installed') return
+  $app.querySelectorAll('#pl-list input[type=checkbox]').forEach((cb) =>
+    cb.addEventListener('change', async () => {
+      const id = cb.dataset.id
+      const next = new Set(off)
+      if (cb.checked) next.delete(id)
+      else next.add(id)
+      cb.disabled = true
+      try {
+        const d = await api('/admin/settings', { method: 'PUT', body: { pluginsDisabled: [...next].join(',') } })
+        state.settings = d.settings
+        off.clear()
+        for (const v of next) off.add(v)
+        toast(cb.checked ? '插件已启用' : '插件已停用，下次打开编辑器生效')
+      } catch (e) {
+        cb.checked = !cb.checked
+        handleApiErr(e)
+      } finally {
+        cb.disabled = false
+      }
+    })
+  )
+}
+
+/* ---------------- 设置 ---------------- */
+async function viewSettings() {
+  try {
+    state.settings = (await api('/admin/settings')).settings
+  } catch (e) {
+    return handleApiErr(e)
+  }
+  const s = state.settings
 
   await shellView(
     'settings',
@@ -1498,12 +1723,6 @@ async function viewSettings() {
           </div>
           <input type="hidden" id="st-ogImageDefault" value="${esc(s.ogImageDefault || '')}">
         </div>
-      </div>
-    </div>
-
-    <div class="panel" style="padding:20px;">
-      <div class="form-section"><h3>外观</h3><div class="sec-desc">选择一个主题，保存后立即生效（新增主题见 docs/THEMES.md）</div>
-        <div class="settings-grid" id="theme-grid">${themeCards}</div>
       </div>
     </div>
 
@@ -1593,13 +1812,6 @@ async function viewSettings() {
         </div>
       </div>
     </div>`
-  )
-
-  $app.querySelectorAll('.theme-card').forEach((card) =>
-    card.addEventListener('click', () => {
-      $app.querySelectorAll('.theme-card').forEach((c) => c.classList.remove('is-active'))
-      card.classList.add('is-active')
-    })
   )
 
   function renderFavSlot(url) {
@@ -1893,6 +2105,8 @@ async function navigate() {
     else if (name === 'categories') await viewCategories()
     else if (name === 'comments') await viewComments()
     else if (name === 'media') await viewMedia()
+    else if (name === 'appearance') await viewAppearance()
+    else if (name === 'plugins') await viewPlugins()
     else if (name === 'settings') await viewSettings()
     else if (name === 'editor') await viewEditor(parts[1] || 'new')
     else await viewHome()
@@ -1908,7 +2122,11 @@ async function viewEditor(id) {
   // 编辑器是独立的全屏页面，不套 shell
   $app.innerHTML = '<div class="editor-page" id="editor-root"><div style="margin:auto;color:var(--sub);">加载编辑器…</div></div>'
   try {
-    await mountEditor(document.getElementById('editor-root'), id === 'new' ? null : Number(id))
+    const disabledPlugins = String(state.settings?.pluginsDisabled || '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+    await mountEditor(document.getElementById('editor-root'), id === 'new' ? null : Number(id), { disabledPlugins })
   } catch (e) {
     // 401 交给统一拦截回登录页；其余失败渲染明确的错误态，别把用户晾在「加载编辑器…」
     if (e?.status === 401) throw e

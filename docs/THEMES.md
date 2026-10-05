@@ -8,6 +8,7 @@
 src/themes/
 ├── registry.ts     ← 主题注册表（新主题在这里加一行；ThemeModule 接口也在这里）
 ├── wechat.ts / wechat.css
+├── journal.ts / journal.css
 ├── paper.ts / paper.css
 ├── minimal.ts / minimal.css
 └── midnight.ts / midnight.css
@@ -159,11 +160,14 @@ import * as mytheme from './mytheme'
 
 export const THEMES: Record<string, ThemeModule> = {
   // …已有主题
-  mytheme: { ...mytheme, id: 'mytheme', name: '我的主题', description: '一句话描述' } as ThemeModule,
+  mytheme: { ...mytheme, id: 'mytheme', name: '我的主题', description: '一句话描述',
+    // 可选：后台「皮肤」卡片预览色板 [背景, 强调条, 卡面, 卡面2, 卡面3]
+    colors: ['#faf8f4', '#b23a29', '#ffffff', '#f2ede4', '#f7f3ec'],
+  } as ThemeModule,
 }
 ```
 
-保存后（本地 `npm run dev` 即时生效）到后台「设置 → 外观」就能看到并切换。**入参的权威定义**是 `registry.ts` 的 `ThemeModule` 接口与 `pages.ts` 的调用处——改版后以它们为准，抄现成主题（如 `wechat.ts`）最省事。
+保存后（本地 `npm run dev` 即时生效）到后台「皮肤」页（「系统」分组下）就能看到并一键启用；同时可把它登记进 `public/market/catalog.json`，让它出现在「皮肤市场」。**入参的权威定义**是 `registry.ts` 的 `ThemeModule` 接口与 `pages.ts` 的调用处——改版后以它们为准，抄现成主题（如 `wechat.ts`）最省事。
 
 ## 公共积木（来自 `src/render.ts`，鼓励复用）
 

@@ -28,6 +28,8 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   backupEnabled: '1',
   // 访客统计采集开关（后台「统计」页；关闭后前台不打点，见 src/stats.ts）
   statsEnabled: '1',
+  // 编辑器插件停用名单（后台「插件」页；逗号分隔的 manifest id，空 = 全部启用）
+  pluginsDisabled: '',
 }
 
 export async function getSettings(db: D1Database): Promise<SettingsMap> {

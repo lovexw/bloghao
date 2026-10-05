@@ -225,17 +225,22 @@ function renderPluginButtons(ctx) {
   }
 }
 
-async function loadPlugins(ctx) {
+async function loadPlugins(ctx, disabledIds) {
   try {
     const res = await fetch('/plugins/manifest.json', { credentials: 'same-origin' })
     if (!res.ok) return
     const list = await res.json()
     if (!Array.isArray(list)) return
-    for (const f of list) {
+    const off = new Set(disabledIds || [])
+    for (const entry of list) {
+      // 清单兼容两种形态：旧版纯文件名字符串，新版对象 { id, file, ... }（后台「插件」页按 id 启停）
+      const file = typeof entry === 'string' ? entry : entry && entry.file
+      const id = typeof entry === 'string' ? entry.replace(/\.js$/, '') : entry && entry.id
+      if (!file || (id && off.has(id))) continue
       try {
-        await import('/plugins/' + f)
+        await import('/plugins/' + file)
       } catch (e) {
-        console.warn('插件加载失败：', f, e)
+        console.warn('插件加载失败：', file, e)
       }
     }
   } catch {
@@ -427,7 +432,7 @@ export function flushEditorSave() {
   return flushSave ? flushSave() : Promise.resolve()
 }
 
-export async function mountEditor(root, postId) {
+export async function mountEditor(root, postId, opts = {}) {
   cleanupEditor?.()
   flushSave = null
   const post = {
@@ -1442,7 +1447,8 @@ export async function mountEditor(root, postId) {
     },
     ...pluginCtx,
   }
-  loadPlugins(pluginCtx)
+  // opts.disabledPlugins：后台「插件」页停用的 manifest id 列表（app.js 从 settings 解析传入）
+  loadPlugins(pluginCtx, opts.disabledPlugins)
 
   updateCount()
   refreshToolbarState()

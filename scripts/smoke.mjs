@@ -133,6 +133,9 @@ try {
   await check('GET', '/', 200, 'twitter:card')
   await check('GET', '/', 200, 'og:image')
   await check('GET', '/admin/', 200)
+  // 皮肤/插件市场：编辑器插件清单与市场目录是后台「插件 / 皮肤」页的数据源，必须可访问且是合法 JSON
+  await check('GET', '/plugins/manifest.json', 200, 'hello-sign')
+  await check('GET', '/market/catalog.json', 200, 'themes')
   await check('GET', '/post/no-such-post-should-404', 404)
   // 访客统计：公开打点 200、后台聚合接口未登录必须 401（在 /admin/* 鉴权保护之下）
   await check('POST', '/api/public/track', 200, 'ok', {

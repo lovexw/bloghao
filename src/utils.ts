@@ -100,6 +100,20 @@ export function clampInt(v: unknown, min: number, max: number, fallback: number)
   return Math.min(max, Math.max(min, n))
 }
 
+/** 插件停用列表（settings 的 pluginsDisabled，逗号分隔的 manifest id）清洗：去空白、保序去重、
+ *  逐项过字符集白名单（与插件文件名/id 约定一致：字母数字_-）。
+ *  含非法字符时返回 null，由调用方决定拒绝（400）还是忽略 */
+export function cleanDisabledPlugins(raw: string): string | null {
+  const ids: string[] = []
+  for (const part of String(raw ?? '').split(',')) {
+    const id = part.trim().slice(0, 64)
+    if (!id) continue
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) return null
+    if (!ids.includes(id)) ids.push(id)
+  }
+  return ids.join(',')
+}
+
 /* ---------------- 微博话题 ----------------
  * 识别正文里的 #话题#（成对井号）与独立成词的 #话题（后面跟空白或到行尾）。
  * 要求 # 前不是字母/数字/#，避免把 C# 、手机#1 之类误判成话题。

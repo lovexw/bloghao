@@ -9,6 +9,8 @@ export interface ThemeModule {
   name: string
   description: string
   css: string
+  /** 后台「皮肤」卡片预览色板 [背景, 强调条, 卡面, 卡面2, 卡面3]；缺省时后台用灰色兜底 */
+  colors?: string[]
   home(d: {
     settings: Record<string, string>
     posts: import('../render').HomePostView[]
@@ -124,30 +126,35 @@ export const THEMES: Record<string, ThemeModule> = {
     id: 'wechat',
     name: '微信公众号',
     description: '订阅号卡片流 + 公众号文章页排版，明亮清爽',
+    colors: ['#ededed', '#b23a29', '#ffffff', '#e8f7ef', '#f2f2f2'],
   } as ThemeModule,
   journal: {
     ...journal,
     id: 'journal',
     name: '手账',
     description: '奶油纸面、和纸胶带、拍立得与贴纸，把博客写成一本手账',
+    colors: ['#faf5ea', '#e06a3c', '#fffdf6', '#fde7e2', '#e7f0da'],
   } as ThemeModule,
   paper: {
     ...paper,
     id: 'paper',
     name: '纸墨',
     description: '宋体排印、印章红点缀，安安静静读书的纸面',
+    colors: ['#f7f4ee', '#a03c2e', '#fffdf8', '#efe9db', '#f1ede2'],
   } as ThemeModule,
   minimal: {
     ...minimal,
     id: 'minimal',
     name: '极简',
     description: '黑白灰、大标题、大留白，内容即全部',
+    colors: ['#ffffff', '#111111', '#f5f5f5', '#efefef', '#f7f7f7'],
   } as ThemeModule,
   midnight: {
     ...midnight,
     id: 'midnight',
     name: '夜航',
     description: '深夜星图蓝 + 等宽字体点缀的开发者日志风',
+    colors: ['#0f1115', '#58a6ff', '#161a22', '#1d232e', '#181d26'],
   } as ThemeModule,
 }
 

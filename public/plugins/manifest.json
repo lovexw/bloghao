@@ -1,4 +1,18 @@
 [
-  "hello-plugin.js",
-  "wechat-collect.js"
+  {
+    "id": "hello-sign",
+    "file": "hello-plugin.js",
+    "title": "文末小尾巴",
+    "description": "在正文末尾插入一段「— 完 —」签名区，演示插件 API 用法",
+    "version": "1.0.0",
+    "author": "BlogHao"
+  },
+  {
+    "id": "wechat-collect",
+    "file": "wechat-collect.js",
+    "title": "采集公众号文章",
+    "description": "粘贴公众号链接，服务端抓正文、转存配图并生成草稿",
+    "version": "1.0.0",
+    "author": "BlogHao"
+  }
 ]

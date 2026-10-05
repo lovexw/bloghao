@@ -23,11 +23,15 @@ window.BlogHao &&
   })
 ```
 
-2. 在 `public/plugins/manifest.json` 中登记：
+2. 在 `public/plugins/manifest.json` 中登记（对象格式，带元数据；`id` 建议与 `registerPlugin` 的 `name` 一致）：
 
 ```json
-["hello-plugin.js", "quote-of-day.js"]
+[
+  { "id": "quote-of-day", "file": "quote-of-day.js", "title": "插入每日一句", "description": "正文里插入一枚鼓励签", "version": "1.0.0", "author": "你" }
+]
 ```
+
+> 兼容旧格式：纯文件名字符串数组 `["quote-of-day.js"]` 依然有效，只是后台「插件」页会缺少标题/描述/版本展示。`id` 只能包含字母、数字、`_`、`-`。
 
 3. 刷新编辑器页面，工具栏末尾出现新按钮。
 
@@ -46,7 +50,11 @@ window.BlogHao &&
 
 ## 加载机制
 
-编辑器初始化时读取 `/plugins/manifest.json`（数组，按序加载），逐个 `import('/plugins/<文件名>')`。单个插件加载失败只会在控制台告警，不影响编辑器与其他插件。
+编辑器初始化时读取 `/plugins/manifest.json`（数组，按序加载），逐个 `import('/plugins/<file>')`。单个插件加载失败只会在控制台告警，不影响编辑器与其他插件。
+
+**启停**：后台「插件」页可以随时停用某个插件（写入 settings 的 `pluginsDisabled` 名单），编辑器加载时跳过名单内的 id，下次打开编辑器生效——不再需要手改 manifest 重新部署。
+
+**市场**：`public/market/catalog.json` 是后台「皮肤 / 插件」页「市场」标签页的数据源（内置精选目录，`{ themes: [...], plugins: [...] }`，条目 `{ id, name, description, link }`）。收录新作品 = 往里加一条；未来切换成远程目录时前端只需换数据来源。
 
 **建议**：插件自己的状态（如设置项）存 `localStorage`（加前缀 `bloghao-plugin-<name>-`），不要请求外部服务——CSP 与规范都鼓励完全本地化。
 
@@ -73,4 +81,4 @@ window.BlogHao &&
 
 - 编辑器 Markdown 快捷输入钩子（输入 `> ` 自动转引用等）
 - 服务端钩子（发布/评论事件回调），用于接入统计、TG 通知等
-- 后台「插件管理」页：一键启停，无需手改 manifest
+- 远程市场目录与更顺畅的安装体验（Workers 无法运行时写代码文件，主题/插件安装仍以源码方式为主）
