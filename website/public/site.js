@@ -36,4 +36,37 @@
   // 年份
   var y = document.getElementById('year')
   if (y) y.textContent = String(new Date().getFullYear())
+
+  // 博客号目录：数据来自 data/showcase.json（去仓库提 issue 即可上榜）
+  var grid = document.getElementById('showcase-grid')
+  if (grid) {
+    fetch('./data/showcase.json', { cache: 'no-cache' })
+      .then(function (r) {
+        return r.json()
+      })
+      .then(function (sites) {
+        if (!Array.isArray(sites) || !sites.length) {
+          grid.innerHTML = '<div class="showcase-empty">第一个博客号还没有出现，等你来开。</div>'
+          return
+        }
+        grid.innerHTML = sites
+          .map(function (s) {
+            var name = String(s.name || '博客号').slice(0, 30)
+            var url = String(s.url || '#')
+            var desc = String(s.desc || '').slice(0, 60)
+            var ch = name.trim().charAt(0).toUpperCase() || '博'
+            return (
+              '<a class="showcase-card reveal is-in" href="' + url.replace(/"/g, '%22') + '" target="_blank" rel="noopener">' +
+              '<span class="showcase-avatar">' + ch + '</span>' +
+              '<span class="showcase-main"><span class="showcase-name">' + name.replace(/</g, '&lt;') + '</span>' +
+              '<span class="showcase-desc">' + desc.replace(/</g, '&lt;') + '</span></span>' +
+              '</a>'
+            )
+          })
+          .join('')
+      })
+      .catch(function () {
+        grid.innerHTML = '<div class="showcase-empty">目录暂时加载失败，刷新再试试。</div>'
+      })
+  }
 })()

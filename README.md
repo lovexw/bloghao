@@ -135,7 +135,7 @@ bloghao-blog/
 ├── tests/              # 回归测试（npm test，CI 强制执行）
 ├── scripts/            # smoke.mjs 本地冒烟；emlog-migrate 一次性迁移工具（留档）
 ├── migration-memos/    # Memos 旧站 → 微博 的一次性迁移工具（已完成，留档）
-├── website/            # 「博客号」官网静态页（bloghao.pages.dev，与本站运行无关）
+├── website/            # 「博客号」官网（bloghao.com，Cloudflare Pages 部署，与本站运行无关）
 ├── docs/               # 全部文档
 └── schema.sql          # D1 表结构（幂等）
 ```
@@ -197,7 +197,7 @@ npm run deploy    # schema 有更新时再执行一次 npx wrangler d1 execute D
 
 ## 🤝 相关仓库
 
-- **官方仓库**：[lovexw/bloghao-blog](https://github.com/lovexw/bloghao-blog)（本仓库）——2.0 起整合作者实例线的全部增强，欢迎提 Issue / PR；官网源码在仓库内 `website/` 目录（[bloghao.pages.dev](https://bloghao.pages.dev)）
+- **官方仓库**：[lovexw/bloghao-blog](https://github.com/lovexw/bloghao-blog)（本仓库）——2.0 起整合作者实例线的全部增强，欢迎提 Issue / PR；官网源码在仓库内 `website/` 目录（**[bloghao.com](https://bloghao.com)**，Cloudflare Pages 部署，官网「博客号目录」上榜请提 Issue）
 - **作者实例**：[lovexw/bloghao-xwblog](https://github.com/lovexw/bloghao-xwblog)——[blog.xiaowuleyi.com](https://blog.xiaowuleyi.com) 的源仓库，与官方仓库保持同源，提交信息沿用 `theme:` / `mobile:` / `feat:` / `docs:` 前缀的中文风格
 
 ## 📄 License

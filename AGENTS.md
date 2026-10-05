@@ -5,6 +5,7 @@
 ## 线上站点（文档里以此为准）
 
 - 正式地址：**https://blog.xiaowuleyi.com**（已绑定到本仓库的 Worker），后台 `/admin/`
+- 官网：**https://bloghao.com**（Cloudflare Pages 项目 `bloghao`，源码在仓库 `website/`——纯静态无构建，与博客系统运行无关；Pages 默认域 bloghao.pages.dev）
 - Cloudflare 资源：Worker `xwblog`、D1 `xwblog-db`、R2 `xwblog-images`（binding 均见 wrangler.jsonc）
 - 使用手册 docs/GUIDE.md、部署教程 docs/DEPLOY.md——涉及访问地址、备份命令时写上面的正式域名与资源名
 
@@ -56,6 +57,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 - 发布流程：提交后**双推**——`git push origin main && git push upstream main`，两仓库始终指向同一提交（同分支同内容，两仓库各自维护 README 会造成同步冲突，故统一一份官方口吻文档）
 - README / docs / 官网以「博客号 BlogHao」官方项目口吻书写，对两个仓库都自洽；线上地址 blog.xiaowuleyi.com 在文档中一律表述为「在线示例」
 - 旧「同步上游」流程已废止：bloghao-blog 不再独立演进，**不要**从 upstream pull 覆盖本地
+- 原独立官网仓库 `github.com/lovexw/bloghao` 已并入本仓库 `website/`（GitHub 上将归档）：不要向它推送、不要从它同步，官网改动一律在本仓库 `website/` 进行
 - 提交信息沿用 `theme:` / `mobile:` / `docs:` / `brand:` 等前缀的中文风格
 
 ## 全站移动端适配（长期约定）
@@ -74,4 +76,5 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 - `src/themes/`：四套主题 + `registry.ts` 注册表，新主题见 docs/THEMES.md；`wechat` 为默认主题
 - `src/pages.ts` 渲染公开页，`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）
 - `public/admin/`：后台（app.js 路由与页面，editor.js 写作编辑器，admin.css 样式）
+- `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao-blog 的 issues；官网 UI 改动同样过 390px 移动端检查
 - 编辑器内容样式（`.ed-editor`）与文章页（`.rich`）需保持视觉一致——改一处记得镜像另一处

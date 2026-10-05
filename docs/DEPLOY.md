@@ -176,3 +176,12 @@ A：把后台「设置 → 站点链接」改成新域名并保存。
 
 **Q：想改端口/项目名？**
 A：项目名改 `wrangler.jsonc` 的 `name`；本地端口 `npm run dev -- --port 9000`。
+
+## 11. 附：官网（bloghao.com）是怎么部署的（维护者备忘）
+
+博客号官网是与博客系统互相独立的纯静态站点，源码在仓库 `website/` 目录，部署在 Cloudflare **Pages** 项目 `bloghao`（即 bloghao.pages.dev），自定义域绑定为 `bloghao.com`：
+
+- **改动发布**：修改 `website/public/` 后 push 到 GitHub，Pages 项目连着 `bloghao-blog` 仓库（构建输出目录 `website/public`）会自动部署；也可手动 `cd website && npx wrangler pages deploy public`
+- **「博客号目录」**：数据在 `website/public/data/showcase.json`，访客通过官网入口向 [bloghao-blog](https://github.com/lovexw/bloghao-blog) 提 Issue 申请上榜，审核通过后把站点加进 JSON 即可
+- **在线示例**：官网指向的演示站（bloghao-blog.0471666.workers.dev）是引擎的另一套独立 Worker 部署，专供访客体验；作者实例 blog.xiaowuleyi.com 不作演示用
+- 官网与本博客 Worker 互不影响，部署 / 回滚都在 Workers & Pages 的 `bloghao` 项目里操作

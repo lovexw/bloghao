@@ -22,12 +22,13 @@
     <nav class="nav-links">
       <a href="#features">特性</a>
       <a href="#themes">主题</a>
+      <a href="#showcase">目录</a>
       <a href="#editor">编辑器</a>
       <a href="#start">快速开始</a>
       <a href="#docs">文档</a>
     </nav>
     <div class="nav-cta">
-      <a class="nav-demo" href="https://blog.xiaowuleyi.com" target="_blank" rel="noopener">在线示例 ↗</a>
+      <a class="nav-demo" href="https://bloghao-blog.0471666.workers.dev" target="_blank" rel="noopener">在线示例 ↗</a>
       <a class="btn btn-ghost" href="https://github.com/lovexw/bloghao-blog" target="_blank" rel="noopener">
         <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub
@@ -50,7 +51,7 @@
       </p>
       <div class="hero-cta reveal">
         <a class="btn btn-primary btn-lg" href="#start">☁️ 五分钟开个博客号</a>
-        <a class="btn btn-lg" href="https://blog.xiaowuleyi.com" target="_blank" rel="noopener">先看看示例博客 ↗</a>
+        <a class="btn btn-lg" href="https://bloghao-blog.0471666.workers.dev" target="_blank" rel="noopener">先看看示例博客 ↗</a>
       </div>
       <figure class="hero-shot reveal">
         <div class="shot-frame">
@@ -150,6 +151,31 @@
     </div>
   </section>
 
+  <!-- ================= 博客号目录（showcase） ================= -->
+  <section class="section" id="showcase">
+    <div class="wrap">
+      <h2 class="sec-title reveal">他们也在写博客号</h2>
+      <p class="sec-sub reveal">用博客号搭建的站点，都会出现在这里。开号即上榜，下一个是你吗？</p>
+      <div class="showcase-grid" id="showcase-grid">
+        <div class="showcase-empty reveal">目录加载中…</div>
+      </div>
+      <p class="showcase-cta reveal">
+        开了博客号？<a href="https://github.com/lovexw/bloghao-blog/issues/new?title=%E6%8F%90%E4%BA%A4%E6%88%91%E7%9A%84%E5%8D%9A%E5%AE%A2%E5%8F%B7" target="_blank" rel="noopener">提交你的站点 →</a>
+        一步入库，全球可见。
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= 路线图 ================= -->
+  <section class="section section-roadmap">
+    <div class="wrap roadmap reveal">
+      <span class="roadmap-tag">🚧 即将上线</span>
+      <div class="roadmap-items">
+        <span>🎙️ 中文播客聚合 —— 让你的文字与声音同框</span>
+      </div>
+    </div>
+  </section>
+
   <!-- ================= 编辑器 & 阅读 ================= -->
   <section class="section" id="editor">
     <div class="wrap split">
@@ -164,8 +190,8 @@
           <li>管理后台有<b>概览统计、媒体库、微博、评论、友链管理</b>，麻雀虽小</li>
         </ul>
         <div class="split-cta">
-          <a class="btn btn-primary" href="https://blog.xiaowuleyi.com" target="_blank" rel="noopener">去示例博客看看 ↗</a>
-          <a class="btn" href="https://blog.xiaowuleyi.com/admin/" target="_blank" rel="noopener">进后台转一圈 ↗</a>
+          <a class="btn btn-primary" href="https://bloghao-blog.0471666.workers.dev/post/hello-bloghao" target="_blank" rel="noopener">看一篇示例文章 ↗</a>
+          <a class="btn" href="https://bloghao-blog.0471666.workers.dev/admin/" target="_blank" rel="noopener">进后台转一圈 ↗</a>
         </div>
       </div>
       <div class="split-media reveal">
@@ -193,9 +219,9 @@ npx wrangler login</code></pre>
         </li>
         <li>
           <b>创建资源（D1 数据库 + R2 图床）</b>
-          <pre><code>npx wrangler d1 create xwblog-db
-npx wrangler r2 bucket create xwblog-images
-# 把返回的 database_id 填进 wrangler.jsonc（资源名称可自定，与配置保持一致）</code></pre>
+          <pre><code>npx wrangler d1 create bloghao-db
+npx wrangler r2 bucket create bloghao-images
+# 把返回的 database_id 填进 wrangler.jsonc</code></pre>
         </li>
         <li>
           <b>初始化数据库并部署</b>
@@ -204,7 +230,7 @@ npm run deploy</code></pre>
         </li>
         <li>
           <b>创建管理员，开写！</b>
-          <p class="step-note">访问 <code>https://xwblog.你的子域.workers.dev/admin/</code>，首次进入即创建管理员账号，欢迎文章已就位。</p>
+          <p class="step-note">访问 <code>https://bloghao.你的子域.workers.dev/admin/</code>，首次进入即创建管理员账号，欢迎文章已就位。</p>
         </li>
       </ol>
       <p class="reveal steps-more">推上 GitHub 后可开启自动部署（Actions 已内置）→ <a href="https://github.com/lovexw/bloghao-blog/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">完整部署教程</a></p>
@@ -258,7 +284,7 @@ npm run deploy</code></pre>
     <span>© <span id="year">2026</span> 博客号 BlogHao · MIT License</span>
     <span class="footer-links">
       <a href="https://github.com/lovexw/bloghao-blog" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://blog.xiaowuleyi.com" target="_blank" rel="noopener">示例博客</a>
+      <a href="https://bloghao-blog.0471666.workers.dev" target="_blank" rel="noopener">示例博客</a>
       <a href="https://developers.weixin.qq.com/doc/service/guide/product/plugin_spec.html" target="_blank" rel="noopener">微信排版规范</a>
     </span>
   </div>
