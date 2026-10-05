@@ -209,12 +209,17 @@ const IC = {
 /* ---------------- 插件系统 ---------------- */
 const plugins = []
 let pluginSlotEl = null
+let pluginDisabledIds = [] // 本次挂载的停用名单（renderPluginButtons 过滤用）
 let saveSelectionHook = null // mountEditor 注入；renderPluginButtons 在模块作用域，拿不到内部的 saveSelection
 
 function renderPluginButtons(ctx) {
   if (!pluginSlotEl) return
   pluginSlotEl.innerHTML = ''
+  const off = new Set(pluginDisabledIds)
   for (const p of plugins) {
+    // 停用过滤放渲染层：ES module import 有缓存，首次挂载加载过的插件无法靠「不 import」卸载，
+    // 只清空重载 + 这里过滤才能让「停用立即生效」
+    if (p.id && off.has(p.id)) continue
     const b = document.createElement('button')
     b.className = 'ed-btn'
     b.type = 'button'
@@ -440,9 +445,18 @@ export function flushEditorSave() {
   return flushSave ? flushSave() : Promise.resolve()
 }
 
+/** 路由离开编辑器时由 app.js 调用：摘除全局监听与挂起的自动保存。
+ *  此前清理只在「下一次挂载」时才发生，期间 beforeunload 残留会让任意页面关标签都弹离开确认 */
+export function disposeEditor() {
+  if (cleanupEditor) cleanupEditor()
+}
+
 export async function mountEditor(root, postId, opts = {}) {
   cleanupEditor?.()
   flushSave = null
+  // 每次挂载重置插件注册表：模块级数组跨挂载残留，已停用/已下线的插件按钮会一直留着
+  plugins.length = 0
+  pluginDisabledIds = Array.isArray(opts.disabledPlugins) ? opts.disabledPlugins.map(String) : []
   const post = {
     id: null,
     slug: '',
@@ -788,7 +802,11 @@ export async function mountEditor(root, postId, opts = {}) {
   }
 
   async function ensureSaved() {
-    if (dirty || !post.id) await save(false).catch(() => null)
+    if (dirty || !post.id) {
+      const saved = await save(false).catch(() => null)
+      // 保存失败返回 null：调用方必须中止（预览旧版本会造成「已保存」的错觉）
+      if (!saved) return null
+    }
     return post
   }
 
@@ -807,7 +825,14 @@ export async function mountEditor(root, postId, opts = {}) {
       titleEl.focus()
       return toast('发布前先取个标题吧', true)
     }
-    if (mdMode) await exitMdMode()
+    if (mdMode) {
+      // Markdown → HTML 转换失败要明确告知（弱网/接口 500 时不能「点了没反应」）
+      try {
+        await exitMdMode()
+      } catch (e) {
+        return toast(e?.message || '正文转换失败，请重试', true)
+      }
+    }
     // 记下发布前的真实状态：保存失败时精确回滚（不能猜，也不能写反）
     const prevStatus = post.status
     const prevPublishAt = post.publish_at
@@ -842,14 +867,6 @@ export async function mountEditor(root, postId, opts = {}) {
       post.publish_at = prevPublishAt
       toast(e.message, true)
     }
-  }
-
-  async function unpublish() {
-    post.status = 'draft'
-    post.publish_at = null
-    await save({ status: 'draft' }).catch(() => (post.status = 'published'))
-    document.getElementById('ed-publish').textContent = '发布'
-    toast('已转为草稿')
   }
 
   /* ---------- 工具栏行为 ---------- */
@@ -1347,6 +1364,8 @@ export async function mountEditor(root, postId, opts = {}) {
   cleanupEditor = () => {
     document.removeEventListener('selectionchange', onSelectionChange)
     window.removeEventListener('beforeunload', beforeUnload)
+    // 挂起的自动保存一并取消：路由已切走，定时器再触发只会打在已卸载的 DOM 上
+    clearTimeout(saveTimer)
     flushSave = null
   }
 
@@ -1381,7 +1400,8 @@ export async function mountEditor(root, postId, opts = {}) {
   document.getElementById('ed-publish').addEventListener('click', publish)
   document.getElementById('ed-preview').addEventListener('click', async () => {
     const p = await ensureSaved()
-    if (!p || !p.slug) return toast('先写点内容再预览', true)
+    if (!p) return toast('保存失败，无法预览最新内容', true)
+    if (!p.slug) return toast('先写点内容再预览', true)
     window.open(`/post/${p.slug}?preview=1`, '_blank')
   })
   document.getElementById('ed-check').addEventListener('click', () => {

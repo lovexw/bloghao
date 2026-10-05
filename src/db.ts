@@ -1,5 +1,5 @@
 import type { CategoryRow, CommentRow, FriendLinkRow, PageRow, PostRow, SettingsMap, WeiboRow } from './types'
-import { clampInt, excerpt, jsonItemLikePattern, WEIBO_MAX_TOPICS } from './utils'
+import { clampInt, excerpt, jsonItemLikePattern, likePattern, WEIBO_MAX_TOPICS } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
   siteName: '博客号 BlogHao',
@@ -99,7 +99,7 @@ export interface ListPostsResult {
 }
 
 export async function listPosts(db: D1Database, opts: ListPostsOptions = {}): Promise<ListPostsResult> {
-  const page = clampInt(opts.page, 1, 100000, 1)
+  const page = clampInt(opts.page, 1, 1000, 1)
   const limit = clampInt(opts.limit, 1, 100, 10)
   const where: string[] = []
   const binds: unknown[] = []
@@ -109,10 +109,9 @@ export async function listPosts(db: D1Database, opts: ListPostsOptions = {}): Pr
     binds.push(opts.status)
   }
   if (opts.q) {
-    // \% 和 \_ 是字面转义，必须声明 ESCAPE '\' 才生效，否则搜「100%」这类词恒为空
+    // \% \_ 是字面转义，\ 本身必须先转义成 \\：声明了 ESCAPE '\' 后，搜「a\b」「尾随\」才不跑偏
     where.push("(title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')")
-    const like = `%${opts.q.replace(/[%_]/g, (m) => '\\' + m)}%`
-    binds.push(like, like, like)
+    binds.push(likePattern(opts.q), likePattern(opts.q), likePattern(opts.q))
   }
   if (opts.tag) {
     where.push("tags LIKE ? ESCAPE '\\'")
@@ -462,10 +461,16 @@ export function parseWeiboImages(v: unknown): string[] {
     .slice(0, WEIBO_MAX_IMAGES)
 }
 
+/** 读侧图片列表：写侧 parseWeiboImages 已做 scheme 白名单，这里再过滤一道（幂等纵深防御：
+ *  备份恢复 / 手工改库进来的异常 URL 不会流进 <img src>），最多 9 张 */
 export function weiboImageList(row: Pick<WeiboRow, 'images'>): string[] {
   try {
     const a = JSON.parse(row.images || '[]')
-    return Array.isArray(a) ? a.filter((x: unknown) => typeof x === 'string' && x.trim()).slice(0, WEIBO_MAX_IMAGES) : []
+    return Array.isArray(a)
+      ? a.filter((x: unknown) => typeof x === 'string' && x.trim())
+          .filter((s: string) => s.startsWith('/images/') || /^https?:\/\//i.test(s))
+          .slice(0, WEIBO_MAX_IMAGES)
+      : []
   } catch {
     return []
   }
@@ -527,7 +532,7 @@ export async function listWeibo(
     pinnedFirst?: boolean
   } = {}
 ): Promise<ListWeiboResult> {
-  const page = clampInt(opts.page, 1, 100000, 1)
+  const page = clampInt(opts.page, 1, 1000, 1)
   const limit = clampInt(opts.limit, 1, 100, 15)
   const { conds, binds } = weiboConditions(opts)
   const whereSql = conds.length ? 'WHERE ' + conds.join(' AND ') : ''

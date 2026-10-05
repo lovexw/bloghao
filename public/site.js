@@ -37,6 +37,23 @@
     })
   }
 
+  /* localStorage 安全读写：隐私加固浏览器/扩展下访问 localStorage 属性本身会抛 SecurityError，
+   * 裸调用会把顶层 IIFE 打断（全站交互瘫痪），这里统一吞掉降级为「记不住但能用」 */
+  function storeGet(k) {
+    try {
+      return localStorage.getItem(k)
+    } catch (e) {
+      return null
+    }
+  }
+  function storeSet(k, v) {
+    try {
+      localStorage.setItem(k, v)
+    } catch (e) {
+      /* 隐私模式等存不进去就忽略 */
+    }
+  }
+
   /* ---------------- 上传前图片压缩与 WebP 转换（前台发布器，与后台同参数） ----------------
    * JPEG/PNG/WebP 超 300KB：最长边压到 2000px，优先转 WebP（质量 0.82，比 JPEG 约再省 1/4，
    * 透明不丢）；旧浏览器编码不了 WebP 时回退原 JPEG/PNG 口径（透明 PNG 只缩尺寸不转格式）；
@@ -150,7 +167,7 @@
   document.querySelectorAll('.like-btn').forEach(function (btn) {
     var isWeibo = btn.getAttribute('data-type') === 'weibo'
     var targetId = isWeibo ? btn.getAttribute('data-id') : btn.getAttribute('data-slug')
-    if (targetId && localStorage.getItem('bloghao-liked-' + (isWeibo ? 'wb-' + targetId : targetId)) === '1') {
+    if (targetId && storeGet('bloghao-liked-' + (isWeibo ? 'wb-' + targetId : targetId)) === '1') {
       btn.classList.add('liked')
     }
   })
@@ -165,11 +182,11 @@
     var url = isWeibo
       ? '/api/public/like/weibo/' + encodeURIComponent(targetId)
       : '/api/public/like/' + encodeURIComponent(targetId)
-    var liked = localStorage.getItem(key) === '1'
+    var liked = storeGet(key) === '1'
     btn.dataset.busy = '1'
     postJSON(url, { delta: liked ? -1 : 1 })
       .then(function (d) {
-        localStorage.setItem(key, liked ? '0' : '1')
+        storeSet(key, liked ? '0' : '1')
         btn.classList.toggle('liked', !liked)
         var count = btn.querySelector('[data-count]')
         if (count && typeof d.likes === 'number') count.textContent = String(d.likes)
@@ -638,14 +655,16 @@
   ;(function () {
     var WB_MAX_IMAGES = 9
     var WB_MAX_CHARS = 5000
-    // 与后端 weiboTextHtml 同口径：esc 后把 #话题# 渲染成链接（编辑保存后就地重渲染用）
-    var WB_TOPIC_RE = /(?<![\p{L}\p{N}#])#[^\s#&<>"']{1,24}(?:#|(?=\s)|$)/gu
+    // 与后端 weiboTextHtml 同口径：esc 后把 #话题# 渲染成链接（编辑保存后就地重渲染用）。
+    // 用捕获组消费「# 前的字符」代替 lookbehind——Safari ≤ 16.3 不支持 lookbehind，
+    // 正则字面量在解析期就抛 SyntaxError，会让整个 site.js 瘫掉（匹配语义与服务端一致）
+    var WB_TOPIC_RE = /(^|[^\p{L}\p{N}#])(#[^\s#&<>"']{1,24}(?:#|(?=\s)|$))/gu
 
     function wbTextHtml(content) {
-      return esc(content).replace(WB_TOPIC_RE, function (m) {
-        var name = m.replace(/^#/, '').replace(/#$/, '')
-        if (!name) return esc(m)
-        return '<a class="wb-topic" href="/weibo?topic=' + encodeURIComponent(name) + '">' + esc(m) + '</a>'
+      return esc(content).replace(WB_TOPIC_RE, function (m, lead, tag) {
+        var name = tag.replace(/^#/, '').replace(/#$/, '')
+        if (!name) return m
+        return lead + '<a class="wb-topic" href="/weibo?topic=' + encodeURIComponent(name) + '">' + esc(tag) + '</a>'
       })
     }
 
@@ -857,7 +876,9 @@
           })
       })
 
-      // 取原稿（正文要未转义原文，DOM 里的渲染文本反解不可靠）；失败留在编辑态提示，可取消重进
+      // 取原稿（正文要未转义原文，DOM 里的渲染文本反解不可靠）；失败留在编辑态提示，可取消重进。
+      // 原稿加载完成前禁用保存：PUT 是全量更新，加载失败时保存会用空正文/空配图覆盖原稿
+      saveBtn.disabled = true
       ta.disabled = true
       renderTiles()
       getJSON('/api/admin/weibo/' + id)
@@ -865,12 +886,13 @@
           ta.value = (d.weibo && d.weibo.content) || ''
           images = ((d.weibo && d.weibo.imageList) || []).slice(0, WB_MAX_IMAGES)
           ta.disabled = false
+          saveBtn.disabled = false
           renderTiles()
           ta.focus()
         })
         .catch(function (err) {
           ta.disabled = false
-          tip((err && err.message) || '加载失败，请重试')
+          tip((err && err.message) || '加载失败，请取消后重新进编辑')
         })
     }
 

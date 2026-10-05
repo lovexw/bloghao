@@ -29,6 +29,11 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 - 净化器**不放行 `id` 属性**（DOM clobbering 会打瘫评论区）；`<meta data-og-image>` 是唯一例外，改 OG 卡图功能时同步 tests/sanitize.test.ts 与 docs/API.md 白名单摘要
 - markdown.ts 的 `inline()` 收到的文本已经 `escLine` 转义过，属性上下文只能用 `escQuote` 补引号，**严禁再过 `escAttr`**（会把 `&` 打成 `&amp;amp;`，含参数的链接/图片 URL 全坏）
 - 图片转存（collect.ts）**只认文件魔数**（`sniffImageExt`），不信任源站 Content-Type / URL 参数；`/images/` 路由必须保留 `X-Content-Type-Options: nosniff`
+- sanitizeHtml 的**透传段统一过 `escapeStrayLt`**：未终结的标签前缀（`<img src=x onerror=…` 无 `>`）与未闭合 `<!--` 曾原样透传，浏览器会把后续页面标记当 img 属性（内联事件复活）或把整页吞进注释——改净化器别拆这个防护
+- RSS/WXR 等 XML 输出（rss.ts、export.ts）的 `xmlEsc`/`cdata` 入口**统一剥控制字符**（XML 1.0 禁 U+0000-0008/000B/000C/000E-001F，CDATA 内同样非法）：一条脏数据曾能打挂整份 feed；`<loc>` 对 siteUrl 过 xmlEsc，slug 进 URL 统一 `encodeURIComponent`
+- 上传 mime 白名单查表**必须 `Object.prototype.hasOwnProperty.call(IMAGE_MIMES, mime)`**（`IMAGE_MIMES['constructor']` 是继承属性可穿透校验），api.ts upload 与 external.ts storeImage/saveTgImage 三处同款
+- `:id` 路由参数一律 `api.ts parseId()`（非法 404），别 `Number()` 后直传 D1——NaN bind 是 500
+- PUT /admin/posts/:id 是**缺键即保留**语义（readPostPayload 的 `has` 标志）：列表页状态切换只发 `{status}`，新增部分更新字段要同步 has 列表与 PUT 赋值——冒烟「文章状态切换保留正文」守着，别改回全量覆盖
 
 **时间口径（tests/utils.test.ts）**
 
@@ -37,17 +42,26 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 
 **SQL / 输入（tests/utils.test.ts）**
 
-- `LIKE` 模式里凡是 `\` 转义了 `%`/`_`，SQL 必须声明 `ESCAPE '\'`，否则转义不生效；JSON 数组列（tags/topics）匹配用 `jsonItemLikePattern`（带引号精确匹配 + 转义）
+- `LIKE` 模式里凡是 `\` 转义了 `%`/`_`，SQL 必须声明 `ESCAPE '\'`，且 `\` 本身要先转义成 `\\`（搜索用 `utils.ts likePattern`，JSON 数组列用 `jsonItemLikePattern`，两函数同口径）
 - 正文长度上限按 **UTF-8 字节**（`new TextEncoder().encode(...)`），不是字符数
 - 自定义 slug 落库前过 `cleanSlug`；主题等枚举值校验用 `Object.prototype.hasOwnProperty.call(THEMES, v)`（防原型链属性穿透）
 
 **后台交互（public/admin/，无自动化测试，靠约定）**
 
 - 后台所有请求走 `api()`：401 会话过期已统一拦截回登录页（勿在别处重复处理，也别动 `state.user` 的判断顺序——登录表单的密码错误提示依赖它）；每个写操作按钮必须 try/catch + toast，请求期间 disabled 防连击
+- 后台 SPA 经 wrangler assets 直出不经过 Worker，CSP 靠 admin/index.html 的 **meta 兜底**（前台在 pages.ts baseHeaders）：后台模板/弹窗里**禁止新增内联事件属性（onclick 等）与内联 `<script>`**，交互一律 addEventListener
+- 操作回调里刷新列表统一 `navigate()`（自带 pendingRoute/navSeq 防串页守卫），别直接 `viewX()`——慢响应会把用户从新页面拽回旧页面
+- editor.js 的 `plugins` 数组是模块级：`mountEditor` 开头清空 + `renderPluginButtons` 按停用名单过滤（ES module import 有缓存，只靠「不 import」卸不掉已加载插件）；路由离开编辑器调 `disposeEditor()` 摘除全局监听与挂起定时器
+- settings 的三个密钥（externalToken/telegramBotToken/telegramWebhookSecret）**GET 与 PUT 响应都打码**，明文只在生成时返回一次；新增敏感键记得进 `SECRET_SETTINGS`
 - 侧边栏菜单由 app.js 顶部 `MENU` 配置数组渲染（分组标签 + 待审徽标），桌面侧栏、移动端底部栏与「更多」抽屉共用同一份数据——**新增后台页面要同时登记 `MENU`、`navigate()` 与 `MOBILE_TAB_IDS`（不放底栏的会自动进抽屉）**，别再往模板里手写 `<a>`
 - 插件 manifest（public/plugins/manifest.json）是对象格式 `{ id, file, title, description, version, author }`（editor.js 兼容旧字符串格式）；停用名单存 settings `pluginsDisabled`（`utils.ts cleanDisabledPlugins` 校验，id 只允许 `[A-Za-z0-9_-]`），皮肤/插件市场目录在 `public/market/catalog.json`
 - 编辑器 `save()` 是串行队列（勿改回早退模式——会丢发布意图造成假成功）；新弹窗一律用现成的 `modal()`（自带 Esc 关闭与焦点管理）
 - 输入框回车提交必须判 `e.isComposing || e.keyCode === 229`（中文输入法组词回车）
+
+**前台 site.js 兼容（全文件是一个 IIFE，一处解析错误全站交互瘫痪）**
+
+- 保持 ES5 风格（var/function）：**禁用 lookbehind 正则**（`(?<!…)` Safari ≤ 16.3 解析期抛 SyntaxError）——微博话题正则用捕获组消费前导字符的写法，改正则先跑 tests 外的 18 用例对照（与服务端 weiboTextHtml 同口径）
+- **禁止裸调 localStorage**：隐私加固浏览器访问该属性即抛 SecurityError，一律走 `storeGet/storeSet`（内部 try/catch）
 
 **部署链路**
 

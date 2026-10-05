@@ -297,6 +297,62 @@ try {
     await check('GET', `/weibo?wb=${wbId}`, 200)
   }
 
+  // ── 文章列表「发布/下架」守卫（2026-10 安全复查 P0 回归）：PUT 缺键即保留 ──
+  // 列表页状态切换只发 {status}，服务端必须保留正文/标签/分类——曾经整包 {...post}
+  // 提交（列表项无 content 键）导致正文标签分类被清空且假成功
+  console.log('\n▸ 文章状态切换保留正文')
+  const pCreate = await raw('POST', '/api/admin/posts', {
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({
+      title: '冒烟：状态切换守卫',
+      content: '<p>守卫正文不能被清掉</p>',
+      tags: ['冒烟守卫'],
+      status: 'draft',
+    }),
+  })
+  const pCreated = await pCreate.json().catch(() => null)
+  const pId = pCreated && pCreated.post && pCreated.post.id
+  results.push(['状态切换：建临时草稿', pCreate.status === 200 && !!pId])
+  console.log(`  ${pCreate.status === 200 && !!pId ? '✓' : '✗'} 状态切换：建临时草稿（id ${pId}）`)
+  if (pId) {
+    const pCookie = { headers: { Cookie: cookie } }
+    // 只发 {status}（列表页 toggle 的真实载荷形态），随后逐项核对内容未丢
+    const toggle = await raw('PUT', `/api/admin/posts/${pId}`, {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ status: 'published' }),
+    })
+    results.push(['状态切换：只发 status 的 PUT', toggle.status === 200])
+    console.log(`  ${toggle.status === 200 ? '✓' : '✗'} 状态切换：只发 status 的 PUT`)
+    await check('GET', `/api/admin/posts/${pId}`, 200, '守卫正文不能被清掉', pCookie)
+    await check('GET', `/api/admin/posts/${pId}`, 200, '冒烟守卫', pCookie)
+    // SETTING 回显打码：写入真实 Token 后，保存/读取的回显都必须是打码形态而非明文
+    const seedToken = await raw('PUT', '/api/admin/settings', {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ telegramBotToken: 'smoke-secret-12345' }),
+    })
+    const seededBody = await seedToken.json().catch(() => null)
+    const seedMaskOk =
+      seedToken.status === 200 && seededBody?.settings?.telegramBotToken === '••••••••'
+    results.push(['状态切换：settings 保存后密钥打码回显', seedMaskOk])
+    console.log(`  ${seedMaskOk ? '✓' : '✗'} 状态切换：settings 保存后密钥打码回显`)
+    // 打码占位符整表提交 = 保持原值（前端整表提交不会被占位符写坏库）
+    const reSave = await raw('PUT', '/api/admin/settings', {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ telegramBotToken: '••••••••', footerText: '冒烟临时页脚' }),
+    })
+    const reSaved = await reSave.json().catch(() => null)
+    const reMaskOk = reSave.status === 200 && reSaved?.settings?.telegramBotToken === '••••••••'
+    results.push(['状态切换：打码占位符提交不覆盖真实值', reMaskOk])
+    console.log(`  ${reMaskOk ? '✓' : '✗'} 状态切换：打码占位符提交不覆盖真实值`)
+    await raw('PUT', '/api/admin/settings', {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ telegramBotToken: '', footerText: '由 博客号 驱动 · 住在 Cloudflare 上' }),
+    })
+    const cleanup = await raw('DELETE', `/api/admin/posts/${pId}`, pCookie)
+    results.push(['状态切换：清理临时文章', cleanup.status === 200])
+    console.log(`  ${cleanup.status === 200 ? '✓' : '✗'} 状态切换：清理临时文章`)
+  }
+
 } finally {
   if (dev && dev.exitCode === null) dev.kill('SIGTERM')
 }

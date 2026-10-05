@@ -160,6 +160,14 @@ function sanitizeAttrs(tag: string, raw: string): string {
   return out
 }
 
+/** 透传段的裸 `<` 防护：未终结的标签前缀（`<img src=x onerror=…`，无 `>`）与未闭合注释
+ *  `<!--` 不会被标签正则匹配、会原样进输出——浏览器会把后续页面标记当成该 img 的属性
+ *  （内联事件处理器借此复活）或把后面整页吞进注释。把「< 后紧跟字母 / </ / <! / <?」
+ *  的孤立 < 转义为 &lt;（`3<5`、`<3` 这类正常文本不受影响） */
+function escapeStrayLt(segment: string): string {
+  return segment.replace(/<(?=[a-zA-Z/!?])/g, '&lt;')
+}
+
 export function sanitizeHtml(input: string): string {
   if (!input) return ''
   const re = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^"'>])*?)(\/?)>/g
@@ -167,7 +175,7 @@ export function sanitizeHtml(input: string): string {
   let last = 0
   let m: RegExpExecArray | null
   while ((m = re.exec(input))) {
-    out += input.slice(last, m.index)
+    out += escapeStrayLt(input.slice(last, m.index))
     last = re.lastIndex
     if (m[0].startsWith('<!--')) continue
 
@@ -203,7 +211,7 @@ export function sanitizeHtml(input: string): string {
     const attrs = sanitizeAttrs(name, attrsRaw)
     out += `<${name}${attrs}>`
   }
-  out += input.slice(last)
+  out += escapeStrayLt(input.slice(last))
   return out
 }
 

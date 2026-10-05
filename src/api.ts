@@ -108,18 +108,30 @@ api.post('/auth/setup', async (c) => {
   const password = body?.password || ''
   if (!/^[a-zA-Z0-9_-]{2,24}$/.test(username)) return jsonError('用户名需为 2-24 位字母、数字、_ 或 -')
   if (password.length < 8 || password.length > 64) return jsonError('密码长度需为 8-64 位')
-  const { hash, salt } = await hashPassword(password)
-  const now = Date.now()
-  const res = await c.env.DB.prepare(
-    'INSERT INTO users (username, password_hash, salt, display_name, avatar, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  )
-    .bind(username, hash, salt, (body?.displayName || username).slice(0, 32), '', now, now)
+  // 原子占位锁：countUsers 是 check-then-insert，并发首个请求都能通过检查，
+  // 靠 settings 一次性 INSERT 的 changes 判定唯一归属，杜绝双管理员
+  const lock = await c.env.DB
+    .prepare("INSERT INTO settings (key, value) VALUES ('setupLock', '1') ON CONFLICT(key) DO NOTHING")
     .run()
-  const userId = Number(res.meta.last_row_id)
-  await seedWelcomePost(c.env.DB, userId)
-  const token = await createSession(c.env.DB, userId)
-  c.header('Set-Cookie', sessionCookie(token))
-  return c.json({ ok: true, user: { id: userId, username, display_name: body?.displayName || username, avatar: '' } })
+  if ((lock.meta.changes ?? 0) !== 1) return jsonError('管理员已存在', 403)
+  try {
+    const { hash, salt } = await hashPassword(password)
+    const now = Date.now()
+    const res = await c.env.DB.prepare(
+      'INSERT INTO users (username, password_hash, salt, display_name, avatar, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    )
+      .bind(username, hash, salt, (body?.displayName || username).slice(0, 32), '', now, now)
+      .run()
+    const userId = Number(res.meta.last_row_id)
+    await seedWelcomePost(c.env.DB, userId)
+    const token = await createSession(c.env.DB, userId)
+    c.header('Set-Cookie', sessionCookie(token))
+    return c.json({ ok: true, user: { id: userId, username, display_name: body?.displayName || username, avatar: '' } })
+  } catch (e) {
+    // 建号中途失败要释放锁，否则首次安装被永久卡死
+    await c.env.DB.prepare("DELETE FROM settings WHERE key = 'setupLock'").run().catch(() => undefined)
+    throw e
+  }
 })
 
 api.post('/auth/login', async (c) => {
@@ -215,6 +227,12 @@ api.get('/admin/visits', async (c) => {
 /* ---------------- 文章管理 ---------------- */
 const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS)
 
+/** 路由 :id 参数 → 正整数；非法返回 null（调用方 404），防 NaN 直传 D1 变 500 */
+function parseId(raw: string | undefined): number | null {
+  const n = Number(raw)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
 async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
   const raw = await c.req.json().catch(() => null)
   if (!raw || typeof raw !== 'object') return null
@@ -224,8 +242,26 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
   // 上限按 UTF-8 字节数（与常量名、collect 一致）：100 万个 CJK 字符实际可存 ~3MB
   if (new TextEncoder().encode(content).length > MAX_CONTENT_BYTES) return { tooBig: true as const }
   const status = b.status === 'published' ? 'published' : b.status === 'scheduled' ? 'scheduled' : 'draft'
-  // 定时发布目标时间（毫秒）：不填或非法时由 PUT 沿用旧值；已过去的时间等价于「到点即发」
-  const publishAt = Number.isFinite(Number(b.publishAt)) && Number(b.publishAt) > 0 ? Math.floor(Number(b.publishAt)) : null
+  // 定时发布目标时间（毫秒）：不填或非法时由 PUT 沿用旧值；已过去的时间等价于「到点即发」。
+  // 上限钳制在 [-24h, +5y]：防 1e300 之类异常值入库（超出 int64，定时扫描永不命中卡死在 scheduled）
+  const rawPublishAt = Number(b.publishAt)
+  const publishAt =
+    Number.isFinite(rawPublishAt) && rawPublishAt > 0
+      ? Math.floor(Math.min(Math.max(rawPublishAt, Date.now() - 86_400_000), Date.now() + 5 * 365 * 86_400_000))
+      : null
+  // PUT 部分更新语义：字段缺失 ≠ 空值。文章列表接口不带回 content/tags/categoryId，
+  // 列表页的状态切换只发 {status}——缺这些键时 PUT 必须保留旧值而不是清空（has 记录来源）
+  const has = {
+    title: 'title' in b,
+    slug: 'slug' in b,
+    content: 'content' in b,
+    summary: 'summary' in b,
+    cover: 'cover' in b,
+    tags: 'tags' in b,
+    status: 'status' in b,
+    pinned: 'pinned' in b,
+    categoryId: 'categoryId' in b,
+  }
   const tags = Array.isArray(b.tags)
     ? b.tags
         .filter((t): t is string => typeof t === 'string')
@@ -249,6 +285,7 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
     slug: cleanSlug(String(b.slug ?? '')),
     categoryId,
     publishAt,
+    has,
   }
 }
 
@@ -261,7 +298,7 @@ api.get('/admin/posts', async (c) => {
   const r = await listPosts(c.env.DB, {
     status,
     q: c.req.query('q') || undefined,
-    page: clampInt(c.req.query('page'), 1, 100000, 1),
+    page: clampInt(c.req.query('page'), 1, 1000, 1),
     limit: clampInt(c.req.query('limit'), 1, 100, 20),
   })
   const catNames = await categoryNameMap(c.env.DB, r.items.map((p) => p.id))
@@ -322,43 +359,49 @@ api.post('/admin/posts', async (c) => {
 })
 
 api.get('/admin/posts/:id', async (c) => {
-  const row = await getPostById(c.env.DB, Number(c.req.param('id')))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('文章不存在', 404)
+  const row = await getPostById(c.env.DB, id)
   if (!row) return jsonError('文章不存在', 404)
   const categoryId = await getPostCategoryId(c.env.DB, row.id)
   return c.json({ post: { ...row, tagList: parseTags(row), categoryId } })
 })
 
 api.put('/admin/posts/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('文章不存在', 404)
   const existing = await getPostById(c.env.DB, id)
   if (!existing) return jsonError('文章不存在', 404)
   const p = await readPostPayload(c)
   if (!p) return jsonError('请求格式错误')
   if ('tooBig' in p) return jsonError('正文过长（上限约 1MB）')
-  const title = p.title || '无标题'
-  const slug = p.slug && p.slug !== existing.slug ? await uniqueSlug(c.env.DB, p.slug, id) : existing.slug
+  // 缺键即保留（编辑器恒发全量；列表页状态切换只发 status——缺 content/tags 等键时不能清空）
+  const title = p.has.title ? p.title || '无标题' : existing.title
+  const slug = p.has.slug && p.slug && p.slug !== existing.slug ? await uniqueSlug(c.env.DB, p.slug, id) : existing.slug
+  const content = p.has.content ? sanitizeHtml(p.content) : existing.content
+  const summary = p.has.summary ? p.summary || (p.status === 'published' ? excerpt(content, 80) : '') : existing.summary
+  const cover = p.has.cover ? p.cover : existing.cover
+  const tags = p.has.tags ? JSON.stringify(p.tags) : existing.tags
+  const status = p.has.status ? p.status : existing.status
+  const pinned = p.has.pinned ? p.pinned : existing.pinned
   // 草稿也保留已有 published_at：采集插件会把原文发布时间写入草稿，
   // 自动保存不能把它抹掉；发布时若草稿已有时间则沿用。
   // publish_at 只在 scheduled 状态下有意义：定时保存写入目标时间，
   // 转发布/草稿时清空；scheduled 但没给时间则保留旧值（自动保存场景）
-  const publishedAt =
-    p.status === 'published' ? (existing.published_at ?? Date.now()) : existing.published_at
-  const publishAt =
-    p.status === 'scheduled'
-      ? (p.publishAt ?? existing.publish_at ?? null)
-      : null
+  const publishedAt = status === 'published' ? (existing.published_at ?? Date.now()) : existing.published_at
+  const publishAt = status === 'scheduled' ? (p.publishAt ?? existing.publish_at ?? null) : null
   await c.env.DB.prepare(
     `UPDATE posts SET slug = ?, title = ?, content = ?, summary = ?, cover = ?, tags = ?, status = ?, pinned = ?, published_at = ?, publish_at = ?, updated_at = ? WHERE id = ?`
   )
     .bind(
       slug,
       title,
-      sanitizeHtml(p.content),
-      p.summary || (p.status === 'published' ? excerpt(p.content, 80) : ''),
-      p.cover,
-      JSON.stringify(p.tags),
-      p.status,
-      p.pinned,
+      content,
+      summary,
+      cover,
+      tags,
+      status,
+      pinned,
       publishedAt,
       publishAt,
       Date.now(),
@@ -369,12 +412,13 @@ api.put('/admin/posts/:id', async (c) => {
   if (p.categoryId != null) {
     const cat = await getCategoryById(c.env.DB, p.categoryId)
     if (cat) await setPostCategory(c.env.DB, id, cat.id)
-  } else {
+  } else if (p.has.categoryId) {
+    // 显式传了 null/空 = 清除分类；完全没传这个键 = 保持现有分类不动
     await setPostCategory(c.env.DB, id, null)
   }
   const categoryId = await getPostCategoryId(c.env.DB, id)
   // 广播发布事件：只在草稿/定时 → 已发布的跃迁时触发，重复编辑已发布文章不重推
-  if (p.status === 'published' && existing.status !== 'published' && row) {
+  if (status === 'published' && existing.status !== 'published' && row) {
     c.executionCtx.waitUntil(
       firePostPublished(c.env, { slug: row.slug, title: row.title, summary: row.summary, via: 'admin' })
     )
@@ -383,7 +427,8 @@ api.put('/admin/posts/:id', async (c) => {
 })
 
 api.post('/admin/posts/:id/pin', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('文章不存在', 404)
   const body = await c.req.json<{ pinned?: boolean }>().catch(() => null)
   await c.env.DB.prepare('UPDATE posts SET pinned = ?, updated_at = ? WHERE id = ?')
     .bind(body?.pinned ? 1 : 0, Date.now(), id)
@@ -392,7 +437,8 @@ api.post('/admin/posts/:id/pin', async (c) => {
 })
 
 api.delete('/admin/posts/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('文章不存在', 404)
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM posts WHERE id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM comments WHERE post_id = ?').bind(id),
@@ -424,7 +470,7 @@ api.get('/admin/weibo', async (c) => {
   const status = statusParam === 'published' || statusParam === 'draft' ? statusParam : 'all'
   const r = await listWeibo(c.env.DB, {
     status,
-    page: clampInt(c.req.query('page'), 1, 100000, 1),
+    page: clampInt(c.req.query('page'), 1, 1000, 1),
     limit: clampInt(c.req.query('limit'), 1, 100, 20),
     pinnedFirst: true,
   })
@@ -444,8 +490,8 @@ api.get('/admin/weibo', async (c) => {
 
 /* 单条取原稿（前台卡片「编辑」用：正文要拿未转义原文，DOM 里的渲染文本反解不可靠） */
 api.get('/admin/weibo/:id', async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return jsonError('这条微博不存在', 404)
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('这条微博不存在', 404)
   const row = await getWeiboById(c.env.DB, id)
   if (!row) return jsonError('这条微博不存在', 404)
   return c.json({ weibo: { ...row, imageList: weiboImageList(row), topicList: weiboTopicList(row) } })
@@ -466,7 +512,8 @@ api.post('/admin/weibo', async (c) => {
 })
 
 api.put('/admin/weibo/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('这条微博不存在', 404)
   const existing = await getWeiboById(c.env.DB, id)
   if (!existing) return jsonError('这条微博不存在', 404)
   const p = await readWeiboPayload(c)
@@ -485,16 +532,22 @@ api.put('/admin/weibo/:id', async (c) => {
 })
 
 api.post('/admin/weibo/:id/pin', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('这条微博不存在', 404)
   const body = await c.req.json<{ pinned?: boolean }>().catch(() => null)
   const existing = await getWeiboById(c.env.DB, id)
   if (!existing) return jsonError('这条微博不存在', 404)
-  if (body?.pinned) {
+  if (body?.pinned && !existing.pinned) {
     if (existing.status !== 'published') return jsonError('草稿不能置顶，先发布吧')
-    if (!existing.pinned) {
-      const n = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM weibo WHERE pinned = 1').first<{ n: number }>()
-      if ((n?.n ?? 0) >= WEIBO_MAX_PINNED) return jsonError(`最多置顶 ${WEIBO_MAX_PINNED} 条微博，先取消一条吧`)
-    }
+    // 条件更新原子占位：并发置顶时只有凑满名额的那次生效（count-then-update 有竞态窗口）
+    const res = await c.env.DB.prepare(
+      `UPDATE weibo SET pinned = 1, updated_at = ? WHERE id = ?
+       AND (SELECT COUNT(*) FROM weibo WHERE pinned = 1 AND id != ?) < ?`
+    )
+      .bind(Date.now(), id, id, WEIBO_MAX_PINNED)
+      .run()
+    if ((res.meta.changes ?? 0) !== 1) return jsonError(`最多置顶 ${WEIBO_MAX_PINNED} 条微博，先取消一条吧`)
+    return c.json({ ok: true })
   }
   await c.env.DB.prepare('UPDATE weibo SET pinned = ?, updated_at = ? WHERE id = ?')
     .bind(body?.pinned ? 1 : 0, Date.now(), id)
@@ -503,7 +556,8 @@ api.post('/admin/weibo/:id/pin', async (c) => {
 })
 
 api.delete('/admin/weibo/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('这条微博不存在', 404)
   // 微博删除后其下的评论一并清除
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM comments WHERE weibo_id = ?').bind(id),
@@ -646,7 +700,8 @@ api.post('/admin/links/fetch-icon', async (c) => {
 
 /** 收录（pending → approved）；没图标的转到后台异步抓，不卡响应 */
 api.post('/admin/links/:id/approve', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('友链不存在', 404)
   const existing = await getFriendLinkById(c.env.DB, id)
   if (!existing) return jsonError('友链不存在', 404)
   await c.env.DB.prepare("UPDATE friend_links SET status = 'approved', updated_at = ? WHERE id = ?")
@@ -665,7 +720,8 @@ api.post('/admin/links/:id/approve', async (c) => {
 })
 
 api.post('/admin/links/:id/refresh-icon', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('友链不存在', 404)
   const existing = await getFriendLinkById(c.env.DB, id)
   if (!existing) return jsonError('友链不存在', 404)
   const icon = await fetchLinkIcon(c.env, existing.url)
@@ -692,7 +748,8 @@ api.post('/admin/links/reorder', async (c) => {
 })
 
 api.put('/admin/links/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('友链不存在', 404)
   const existing = await getFriendLinkById(c.env.DB, id)
   if (!existing) return jsonError('友链不存在', 404)
   const p = await readLinkPayload(c)
@@ -707,7 +764,8 @@ api.put('/admin/links/:id', async (c) => {
 })
 
 api.delete('/admin/links/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('友链不存在', 404)
   await c.env.DB.prepare('DELETE FROM friend_links WHERE id = ?').bind(id).run()
   return c.json({ ok: true })
 })
@@ -740,7 +798,8 @@ api.post('/admin/categories', async (c) => {
 })
 
 api.put('/admin/categories/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('分类不存在', 404)
   const existing = await getCategoryById(c.env.DB, id)
   if (!existing) return jsonError('分类不存在', 404)
   const body = await c.req.json<{ name?: string; slug?: string; sort?: number }>().catch(() => null)
@@ -759,7 +818,8 @@ api.put('/admin/categories/:id', async (c) => {
 })
 
 api.delete('/admin/categories/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('分类不存在', 404)
   // 分类删除后文章变为未分类，文章本身不受影响
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM post_categories WHERE category_id = ?').bind(id),
@@ -797,7 +857,8 @@ api.post('/admin/pages', async (c) => {
 })
 
 api.put('/admin/pages/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('页面不存在', 404)
   const existing = await getPageById(c.env.DB, id)
   if (!existing) return jsonError('页面不存在', 404)
   const body = await c.req
@@ -819,7 +880,8 @@ api.put('/admin/pages/:id', async (c) => {
 })
 
 api.delete('/admin/pages/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('页面不存在', 404)
   await c.env.DB.prepare('DELETE FROM pages WHERE id = ?').bind(id).run()
   return c.json({ ok: true })
 })
@@ -893,7 +955,12 @@ api.post('/admin/upload', async (c) => {
   const file = body && typeof body === 'object' ? ((body as Record<string, unknown>)['file'] as unknown) : null
   if (!(file instanceof File)) return jsonError('缺少文件字段 file')
   const mime = file.type || 'application/octet-stream'
-  const ext = IMAGE_MIMES[mime] || VIDEO_MIMES[mime]
+  // hasOwnProperty 挡原型链：IMAGE_MIMES['constructor'] 是继承属性（truthy），声明类型可借此穿透校验
+  const ext = Object.prototype.hasOwnProperty.call(IMAGE_MIMES, mime)
+    ? IMAGE_MIMES[mime]
+    : Object.prototype.hasOwnProperty.call(VIDEO_MIMES, mime)
+      ? VIDEO_MIMES[mime]
+      : undefined
   if (!ext) return jsonError('仅支持 JPG / PNG / WebP / GIF 图片与 MP4 / WebM 视频')
   if (file.size > MAX_UPLOAD_BYTES) return jsonError('文件超过 25MB 限制')
   const now = new Date()
@@ -909,7 +976,7 @@ api.post('/admin/upload', async (c) => {
 })
 
 api.get('/admin/uploads', async (c) => {
-  const page = clampInt(c.req.query('page'), 1, 100000, 1)
+  const page = clampInt(c.req.query('page'), 1, 1000, 1)
   const limit = 24
   const [listRes, countRes] = await Promise.all([
     c.env.DB.prepare('SELECT * FROM uploads ORDER BY created_at DESC LIMIT ? OFFSET ?')
@@ -926,7 +993,8 @@ api.get('/admin/uploads', async (c) => {
 
 api.delete('/admin/uploads', async (c) => {
   const key = c.req.query('key') || ''
-  if (!key.startsWith('u/')) return jsonError('非法的文件 Key')
+  // og/ 与 u/ 同为媒体库可管理的图床目录（OG 分享卡图），前缀白名单挡住 backups/ 等其余 key
+  if (!key.startsWith('u/') && !key.startsWith('og/')) return jsonError('非法的文件 Key')
   await Promise.all([
     c.env.IMAGES.delete(key),
     c.env.DB.prepare('DELETE FROM uploads WHERE key = ?').bind(key).run(),
@@ -959,7 +1027,7 @@ api.post('/admin/og-image', async (c) => {
 api.get('/admin/comments', async (c) => {
   const status = c.req.query('status')
   const type = c.req.query('type') // post = 文章评论，weibo = 微博评论，guestbook = 留言板
-  const page = clampInt(c.req.query('page'), 1, 100000, 1)
+  const page = clampInt(c.req.query('page'), 1, 1000, 1)
   const limit = 20
   const where: string[] = []
   const binds: unknown[] = []
@@ -993,7 +1061,8 @@ api.get('/admin/comments', async (c) => {
 
 /** 后台回复评论（文章/微博通用）：挂在同一条顶层评论下，直接展示并带「作者」徽标 */
 api.post('/admin/comments/:id/replies', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('评论不存在', 404)
   const body = await c.req.json<{ content?: string }>().catch(() => null)
   const content = String(body?.content || '').trim().slice(0, 1000)
   if (!content) return jsonError('回复内容不能为空')
@@ -1021,7 +1090,8 @@ api.post('/admin/comments/:id/replies', async (c) => {
 })
 
 api.put('/admin/comments/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('评论不存在', 404)
   const body = await c.req.json<{ status?: string }>().catch(() => null)
   const status = body?.status === 'pending' ? 'pending' : 'approved'
   await c.env.DB.prepare('UPDATE comments SET status = ? WHERE id = ?').bind(status, id).run()
@@ -1029,7 +1099,8 @@ api.put('/admin/comments/:id', async (c) => {
 })
 
 api.delete('/admin/comments/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('评论不存在', 404)
   // 回复（楼中楼）一并删除
   await c.env.DB.prepare('DELETE FROM comments WHERE id = ? OR parent_id = ?').bind(id, id).run()
   return c.json({ ok: true })
@@ -1120,13 +1191,20 @@ api.put('/admin/settings', async (c) => {
     patch[key] = v.slice(0, 500)
   }
   await saveSettings(c.env.DB, patch)
-  return c.json({ ok: true, settings: await getSettings(c.env.DB) })
+  const saved = await getSettings(c.env.DB)
+  // 与 GET 同口径：密钥只在生成时返回一次明文，此后任何回显都打码（防代理/扩展被动收集）
+  for (const key of SECRET_SETTINGS) {
+    if (saved[key]) saved[key] = SECRET_MASK
+  }
+  return c.json({ ok: true, settings: saved })
 })
 
 /* ---------------- 订阅与备份 ---------------- */
 
 /** 手动触发一次全量备份（与每晚 Cron 同一逻辑），返回文件 Key 与体积 */
 api.post('/admin/backup', async (c) => {
+  // 全表导出整包进内存，连点可在同一 isolate 堆叠多个全量导出（128MB 上限）——全局窗口内只放一次
+  if (!rateLimit('backup:global', 1, 10 * 60_000)) return jsonError('备份刚刚执行过，请 10 分钟后再试', 429)
   const r = await runBackup(c.env)
   if (!r.skipped && !r.ok) return jsonError('备份失败：' + (r.error || '未知错误'), 500)
   return c.json({ ok: r.ok, skipped: !!r.skipped, key: r.key, bytes: r.bytes, error: r.error })
@@ -1161,14 +1239,15 @@ api.put('/admin/password', async (c) => {
 api.post('/admin/tools/md', async (c) => {
   const body = await c.req.json<{ md?: string }>().catch(() => null)
   const md = String(body?.md ?? '')
-  if (md.length > MAX_CONTENT_BYTES) return jsonError('内容过长')
+  // 与正文接口同口径按 UTF-8 字节计（length 是 UTF-16 码元数，全 emoji 输入会虚增 3-4 倍余量）
+  if (new TextEncoder().encode(md).length > MAX_CONTENT_BYTES) return jsonError('内容过长')
   return c.json({ html: mdToHtml(md) })
 })
 
 api.post('/admin/tools/sanitize', async (c) => {
   const body = await c.req.json<{ html?: string }>().catch(() => null)
   const html = String(body?.html ?? '')
-  if (html.length > MAX_CONTENT_BYTES) return jsonError('内容过长')
+  if (new TextEncoder().encode(html).length > MAX_CONTENT_BYTES) return jsonError('内容过长')
   return c.json({ html: sanitizeHtml(html) })
 })
 
@@ -1178,7 +1257,7 @@ api.get('/public/posts', async (c) => {
   const r = await listPosts(c.env.DB, {
     status: 'published',
     tag,
-    page: clampInt(c.req.query('page'), 1, 100000, 1),
+    page: clampInt(c.req.query('page'), 1, 1000, 1),
     limit: clampInt(c.req.query('limit'), 1, 50, 10),
   })
   return c.json({
@@ -1356,7 +1435,11 @@ api.post('/public/like/weibo/:id', async (c) => {
   )
     .bind(delta, delta, id)
     .run()
-  const row = await getWeiboById(c.env.DB, id)
+  // 回读同口径只认已发布：草稿/不存在的统一返回 0（草稿历史点赞数不外泄）
+  const row = await c.env.DB
+    .prepare("SELECT likes FROM weibo WHERE id = ? AND status = 'published'")
+    .bind(id)
+    .first<{ likes: number }>()
   return c.json({ ok: true, likes: row?.likes ?? 0 })
 })
 
@@ -1458,7 +1541,11 @@ api.post('/public/like/:slug', async (c) => {
   )
     .bind(delta, delta, slug)
     .run()
-  const row = await getPostBySlug(c.env.DB, slug)
+  // 回读同口径只认已发布：草稿/不存在的统一返回 0（草稿历史点赞数不外泄）
+  const row = await c.env.DB
+    .prepare("SELECT likes FROM posts WHERE slug = ? AND status = 'published'")
+    .bind(slug)
+    .first<{ likes: number }>()
   return c.json({ ok: true, likes: row?.likes ?? 0 })
 })
 

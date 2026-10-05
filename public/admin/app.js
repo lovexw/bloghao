@@ -1,5 +1,5 @@
 /* 博客号后台 SPA（原生 ES Module，无构建依赖） */
-import { flushEditorSave, mountEditor } from './editor.js'
+import { flushEditorSave, mountEditor, disposeEditor } from './editor.js'
 
 const $app = document.getElementById('app')
 const $toastSlot = document.getElementById('toast-slot')
@@ -161,8 +161,15 @@ const MENU = [
 /* 移动端底部栏固定项（其余入口收进「更多」抽屉） */
 const MOBILE_TAB_IDS = ['home', 'editor', 'posts', 'comments']
 
+/* 导航防串页：并发导航时慢响应不得覆盖新页面。navigate 记录 pendingRoute（当前应渲染的路由），
+ * shellView 渲染前比对——数据返回时路由已切走的旧视图直接放弃；navSeq 兜住「离开编辑器
+ * 先保存再切页」这类 await 之间的切换 */
+let navSeq = 0
+let pendingRoute = null
+
 /* ---------------- 登录 / 初始化 ---------------- */
 function authView(mode) {
+  pendingRoute = null // 登录态下不允许任何迟到的 shell 视图渲染
   const isSetup = mode === 'setup'
   $app.innerHTML = `<div class="auth-wrap"><div class="auth-card">
     <div class="auth-logo">
@@ -228,6 +235,9 @@ function sideNavHtml(active) {
 }
 
 async function shellView(active, contentHTML) {
+  if (!state.user) return
+  // 路由已切走（或已登出）时放弃本次渲染，防慢响应把旧页面盖回来
+  if (active !== pendingRoute) return
   const sideMini = localStorage.getItem('admin-side') === 'mini'
   // 移动端底部栏只放高频项，其余收进「更多」抽屉；不在栏内的待审数聚合成红点
   const barItems = MOBILE_TAB_IDS.map((id) => MENU.find((m) => m.id === id)).filter(Boolean)
@@ -436,12 +446,15 @@ async function viewStats() {
   ).join('')
   const hasData = s.pv > 0 || s.uv > 0
   const pages = s.topPages
-    .map(
-      (p) => `<a class="stat-row" href="${esc(p.path)}" target="_blank" rel="noopener">
+    .map((p) => {
+      // 归一化防协议相对 URL（//evil.com 是跨站链接）：path 是访客打点上报的公开字段，
+      // 服务端已拒 // 开头，这里对历史脏数据兜底强制站内路径
+      const href = '/' + String(p.path || '').replace(/^\/+/, '')
+      return `<a class="stat-row" href="${esc(href)}" target="_blank" rel="noopener">
         <span class="stat-row-main"><span class="stat-row-title">${esc(p.title || p.path)}</span><span class="stat-row-sub">${esc(p.path)}</span></span>
         <span class="stat-row-num">${p.pv}<small>浏览 · ${p.uv} 人</small></span>
       </a>`
-    )
+    })
     .join('')
   const trendBody = hasData
     ? `<div class="chart-legend"><span><i class="lg-bar"></i>浏览量</span><span><i class="lg-line"></i>访客数</span></div>${trendChart(s.series)}`
@@ -594,7 +607,7 @@ async function viewPosts() {
       try {
         await api(`/admin/posts/${id}/pin`, { method: 'POST', body: { pinned: !post.pinned } })
         toast(post.pinned ? '已取消置顶' : '已置顶')
-        viewPosts()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -602,13 +615,14 @@ async function viewPosts() {
     row.querySelector('[data-act=toggle]').addEventListener('click', async () => {
       const publish = post.status !== 'published'
       try {
-        // 定时文章点「发布」立即发出并清掉定时时间
+        // 只发语义字段（status）：列表项没有 content/categoryId，整包 {...post} 会被服务端
+        // 当成「清空正文/标签/分类」的全量更新（服务端缺键即保留，这里配合只发状态）
         await api(`/admin/posts/${id}`, {
           method: 'PUT',
-          body: { ...post, status: publish ? 'published' : 'draft', publishAt: publish ? null : post.publishAt ?? null },
+          body: { status: publish ? 'published' : 'draft' },
         })
         toast(publish ? '已发布 🎉' : '已转为草稿')
-        viewPosts()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -618,7 +632,7 @@ async function viewPosts() {
       try {
         await api(`/admin/posts/${id}`, { method: 'DELETE' })
         toast('已删除')
-        viewPosts()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -790,7 +804,7 @@ async function viewWeibo() {
         await api('/admin/weibo', { method: 'POST', body: { content, images, status } })
         toast(status === 'published' ? '已发布 🎉' : '草稿已保存')
       }
-      viewWeibo()
+      navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
     } catch (e) {
       toast(e.message, true)
     } finally {
@@ -808,7 +822,7 @@ async function viewWeibo() {
   document.getElementById('wb-draft')?.addEventListener('click', () => saveWeibo('draft'))
   document.getElementById('wb-cancel')?.addEventListener('click', () => {
     wbEditing = null
-    viewWeibo()
+    navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
   })
 
   const prev = document.getElementById('pg-prev')
@@ -821,13 +835,13 @@ async function viewWeibo() {
     const w = d.items.find((x) => String(x.id) === String(id))
     row.querySelector('[data-act=edit]').addEventListener('click', () => {
       wbEditing = { id: w.id, content: w.content, images: [...w.imageList], status: w.status }
-      viewWeibo()
+      navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
     })
     row.querySelector('[data-act=pin]')?.addEventListener('click', async () => {
       try {
         await api(`/admin/weibo/${id}/pin`, { method: 'POST', body: { pinned: !w.pinned } })
         toast(w.pinned ? '已取消置顶' : '已置顶，将显示在微博页最前')
-        viewWeibo()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -837,7 +851,7 @@ async function viewWeibo() {
       try {
         await api(`/admin/weibo/${id}`, { method: 'PUT', body: { content: w.content, images: w.imageList, status: publish ? 'published' : 'draft' } })
         toast(publish ? '已发布 🎉' : '已转为草稿')
-        viewWeibo()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -847,7 +861,7 @@ async function viewWeibo() {
       try {
         await api(`/admin/weibo/${id}`, { method: 'DELETE' })
         toast('已删除')
-        viewWeibo()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -926,7 +940,7 @@ async function viewLinks() {
   async function flMove(id, dir) {
     try {
       await api('/admin/links/reorder', { method: 'POST', body: { id, dir } })
-      viewLinks()
+      navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
     } catch (e) {
       toast(e.message, true)
     }
@@ -940,7 +954,7 @@ async function viewLinks() {
       try {
         await api(`/admin/links/${id}/approve`, { method: 'POST' })
         toast(link.icon ? '已收录 🎉' : '已收录 🎉 正在后台获取图标')
-        viewLinks()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -951,7 +965,7 @@ async function viewLinks() {
       try {
         await api(`/admin/links/${id}/refresh-icon`, { method: 'POST' })
         toast('图标已更新')
-        viewLinks()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (err) {
         toast(err.message, true)
         btn.textContent = '图标'
@@ -963,7 +977,7 @@ async function viewLinks() {
       try {
         await api(`/admin/links/${id}`, { method: 'PUT', body: { ...link, status: 'pending' } })
         toast('已移回待审核')
-        viewLinks()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -973,7 +987,7 @@ async function viewLinks() {
       try {
         await api(`/admin/links/${id}`, { method: 'DELETE' })
         toast('已删除')
-        viewLinks()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -1093,7 +1107,7 @@ function flModal(link) {
       else await api('/admin/links', { method: 'POST', body })
       toast('已保存')
       m.close()
-      viewLinks()
+      navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
     } catch (e) {
       toast(e.message, true)
       saveBtn.disabled = false
@@ -1282,7 +1296,7 @@ async function viewPages() {
   const move = async (id, dir) => {
     try {
       await api('/admin/pages/reorder', { method: 'POST', body: { id, dir } })
-      viewPages()
+      navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
     } catch (e) {
       toast(e.message, true)
     }
@@ -1302,7 +1316,7 @@ async function viewPages() {
       try {
         await api(`/admin/pages/${id}`, { method: 'DELETE' })
         toast('已删除')
-        viewPages()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -1343,7 +1357,7 @@ function pageModal(page) {
       else await api(`/admin/pages/${page.id}`, { method: 'PUT', body })
       toast('已保存')
       m.close()
-      viewPages()
+      navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
     } catch (e) {
       toast(e.message, true)
       btn.disabled = false
@@ -1451,7 +1465,7 @@ async function viewComments() {
       try {
         await api(`/admin/comments/${cm.id}/replies`, { method: 'POST', body: { content } })
         toast('已回复')
-        viewComments()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
         sendBtn.disabled = false
@@ -1461,7 +1475,7 @@ async function viewComments() {
       try {
         await api(`/admin/comments/${cm.id}`, { method: 'PUT', body: { status: 'approved' } })
         toast('已展示')
-        viewComments()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -1470,7 +1484,7 @@ async function viewComments() {
       try {
         await api(`/admin/comments/${cm.id}`, { method: 'PUT', body: { status: 'pending' } })
         toast('已隐藏')
-        viewComments()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -1480,7 +1494,7 @@ async function viewComments() {
       try {
         await api(`/admin/comments/${cm.id}`, { method: 'DELETE' })
         toast('已删除')
-        viewComments()
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
       }
@@ -1553,12 +1567,14 @@ async function viewMedia() {
           <div style="background:#f6f6f6;border-radius:8px;overflow:hidden;margin-bottom:14px;display:flex;align-items:center;justify-content:center;max-height:300px;">
             <img src="${esc(item.dataset.url)}" style="max-width:100%;max-height:300px;">
           </div>
-          <label class="auth-field" style="margin-bottom:10px;"><label>访问地址</label><input class="input" readonly value="${esc(item.dataset.url)}" onclick="this.select()"></label>
+          <label class="auth-field" style="margin-bottom:10px;"><label>访问地址</label><input class="input" id="mi-url" readonly value="${esc(item.dataset.url)}"></label>
         </div>
         <div class="modal-foot">
           <button class="btn btn-danger" id="mi-del">删除</button>
           <button class="btn btn-primary" id="mi-copy">复制地址</button>
         </div>`)
+      // 事件绑定，不在属性里拼 JS（CSP 禁内联脚本）
+      m.mask.querySelector('#mi-url').addEventListener('click', (e) => e.currentTarget.select())
       // 图片加载失败说明是视频：换成 <video>（事件绑定，不在属性里拼 JS）
       m.mask.querySelector('.modal-body img')?.addEventListener('error', (e) => {
         const v = document.createElement('video')
@@ -1599,12 +1615,22 @@ function swatchOf(t) {
   return Array.isArray(t.colors) && t.colors.length >= 5 ? t.colors : SWATCH_FALLBACK
 }
 
+/** 目录色板颜色：只放行 #RGB/#RRGGBB[AA] 形态，防目录数据（未来若改远程源）借 style 属性注入 CSS */
+function cssColor(v) {
+  return /^#[0-9a-fA-F]{3,8}$/.test(String(v || '')) ? v : 'transparent'
+}
+
+/** 市场条目链接：只放行 http(s) 完整地址，其余退回站内根路径（防 javascript: 等协议混进 href） */
+function safeHttpUrl(u) {
+  return /^https?:\/\//i.test(String(u || '')) ? u : '/'
+}
+
 function swatchHtml(c) {
-  return `<div class="theme-preview" style="background:${c[0]}">
-      <div class="tp-bar" style="background:${c[1]}"></div>
-      <div class="tp-card" style="background:${c[2]}"></div>
-      <div class="tp-card2" style="background:${c[3]}"></div>
-      <div class="tp-card3" style="background:${c[4]}"></div>
+  return `<div class="theme-preview" style="background:${cssColor(c[0])}">
+      <div class="tp-bar" style="background:${cssColor(c[1])}"></div>
+      <div class="tp-card" style="background:${cssColor(c[2])}"></div>
+      <div class="tp-card2" style="background:${cssColor(c[3])}"></div>
+      <div class="tp-card3" style="background:${cssColor(c[4])}"></div>
     </div>`
 }
 
@@ -1641,7 +1667,7 @@ async function viewAppearance() {
   const market = (catalog?.themes || [])
     .map((t) => {
       const installed = list.some((x) => x.id === t.id)
-      return `<a class="theme-card mk-card" href="${esc(t.link || '/')}" target="_blank" rel="noopener">
+      return `<a class="theme-card mk-card" href="${esc(safeHttpUrl(t.link))}" target="_blank" rel="noopener">
       ${swatchHtml(swatchOf(t))}
       <div class="theme-meta"><div class="theme-name"><span>${esc(t.name)}</span>${installed ? '<span class="mk-badge">已安装</span>' : ''}</div><div class="theme-desc">${esc(t.description || '查看介绍与安装说明')}</div></div>
     </a>`
@@ -1734,7 +1760,7 @@ async function viewPlugins() {
   const market = (catalog?.plugins || [])
     .map((p) => {
       const has = installed.some((x) => x.id === p.id)
-      return `<a class="pl-row mk-row" href="${esc(p.link || '/')}" target="_blank" rel="noopener">
+      return `<a class="pl-row mk-row" href="${esc(safeHttpUrl(p.link))}" target="_blank" rel="noopener">
       <span class="pl-ico">${esc((p.name || p.id).charAt(0).toUpperCase())}</span>
       <div class="pl-main">
         <div class="pl-name">${esc(p.name || p.id)}${has ? '<span class="mk-badge">已安装</span>' : ''}</div>
@@ -1924,7 +1950,7 @@ async function viewSettings() {
         <div class="form-item">
           <label>API Token（开放接口密钥，重新生成后旧 Token 立即失效）</label>
           <div class="fav-row">
-            <input class="input" id="st-externalToken" readonly style="flex:1;min-width:200px;font-family:ui-monospace,monospace;" value="${esc(s.externalToken || '')}" placeholder="未生成，点右侧按钮" onclick="this.select()">
+            <input class="input" id="st-externalToken" readonly style="flex:1;min-width:200px;font-family:ui-monospace,monospace;" value="${esc(s.externalToken || '')}" placeholder="未生成，点右侧按钮">
             <button class="btn btn-sm" id="btn-token-gen" type="button">${s.externalToken ? '重新生成' : '生成 Token'}</button>
             <button class="btn btn-sm btn-ghost" id="btn-token-copy" type="button" ${s.externalToken ? '' : 'disabled'}>复制</button>
           </div>
@@ -2150,6 +2176,7 @@ async function viewSettings() {
   })
 
   const tokenInput = document.getElementById('st-externalToken')
+  tokenInput.addEventListener('click', () => tokenInput.select()) // 事件绑定（CSP 禁内联脚本）
   document.getElementById('btn-token-gen').addEventListener('click', async () => {
     if (tokenInput.value && !(await confirmBox('重新生成后旧 Token 立即失效，已配置的外部工具需要更换新 Token。确定？'))) return
     try {
@@ -2280,15 +2307,19 @@ function handleApiErr(e) {
 }
 
 async function navigate() {
+  const seq = ++navSeq
   const h = location.hash.replace(/^#\/?/, '')
   const [path] = h.split('?')
   const parts = path.split('/')
   const name = parts[0] || 'home'
   clearTimeout(postsSearchTimer)
   // 离开编辑器：有未保存修改先自动保存再切页（此时编辑器 DOM 还在，能取到最新内容）；
-  // 保存失败只提示不阻塞导航，避免把用户困在编辑器里
+  // 保存失败只提示不阻塞导航，避免把用户困在编辑器里。随后摘除编辑器的全局监听与挂起定时器
   if (currentRoute === 'editor' && name !== 'editor') {
     await flushEditorSave().catch(() => toast('离开时自动保存失败，内容可能没存上，请回去检查', true))
+    disposeEditor()
+    // 保存期间用户又切了页：本次导航过期，放弃
+    if (seq !== navSeq) return
   }
   if (name !== 'weibo') wbEditing = null
 
@@ -2296,6 +2327,7 @@ async function navigate() {
     authView(state.needsSetup ? 'setup' : 'login')
     return
   }
+  pendingRoute = name
   try {
     if (name === 'home') await viewHome()
     else if (name === 'stats') await viewStats()
@@ -2316,6 +2348,8 @@ async function navigate() {
     handleApiErr(e)
     return
   }
+  // 渲染期间路由又变了：currentRoute 保持与新路由一致，由新导航负责更新
+  if (seq !== navSeq) return
   currentRoute = name
 }
 

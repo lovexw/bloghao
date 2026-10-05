@@ -145,6 +145,12 @@ export function jsonItemLikePattern(name: string): string {
   return `%${JSON.stringify(name).replace(/[%_\\]/g, (m) => '\\' + m)}%`
 }
 
+/** 搜索 LIKE 模式：\ % _ 三个字符都要转义（声明 ESCAPE '\' 后，\ 本身不转义，
+ *  搜「a\b」「尾随\」时模式语义就变了）。与 jsonItemLikePattern 同口径 */
+export function likePattern(q: string): string {
+  return `%${q.replace(/[\\%_]/g, (m) => '\\' + m)}%`
+}
+
 /** 友链网址规整：补全 https:// 前缀，只接受 http(s)，失败返回空串 */
 export function normalizeLinkUrl(input: string): string {
   let s = input.trim().slice(0, 500)

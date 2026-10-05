@@ -75,3 +75,10 @@ test('cleanTitle 剥控制字符并截断', () => {
   assert.equal(cleanTitle('好'.repeat(300)), '好'.repeat(200))
   assert.equal(cleanTitle(null), '')
 })
+
+// ── 回归（2026-10 安全复查）：协议相对 URL 是跨站链接，访客可借打点把它塞进后台统计页 ──
+test('cleanPath 拒绝协议相对 URL（// 开头不进统计）', () => {
+  assert.equal(cleanPath('//evil.com/x'), '')
+  assert.equal(cleanPath('///evil'), '')
+  assert.equal(cleanPath('/正常/path'), '/正常/path')
+})

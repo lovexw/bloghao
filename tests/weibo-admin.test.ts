@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { weiboCards, type WeiboItemView } from '../src/render.ts'
-import { DEFAULT_SETTINGS } from '../src/db.ts'
+import { friendLinkCards, weiboCards, type WeiboItemView } from '../src/render.ts'
+import { DEFAULT_SETTINGS, weiboImageList } from '../src/db.ts'
 
 // ── 前台微博卡管理（编辑/置顶/删除）：按钮只在管理员登录时渲染（weiboCards 的 adminName 参数）──
 const item: WeiboItemView = {
@@ -53,4 +53,22 @@ test('卡片正文与 id 均经转义：正文 HTML 不逃逸、不破坏 data-w
   })
   assert.ok(!html.includes('<script>'))
   assert.match(html, /data-wb-admin="7"/)
+})
+
+// ── 回归（2026-10 安全复查）：读侧 scheme 白名单（备份恢复/手工改库进来的脏 URL 不流进 img/a）──
+test('weiboImageList 读侧过滤：只留站内 /images/ 与 http(s) 外链', () => {
+  assert.deepEqual(
+    weiboImageList({ images: JSON.stringify(['/images/u/a.jpg', 'javascript:alert(1)', 'https://x.com/b.png', 'data:text/html,x', 42]) }),
+    ['/images/u/a.jpg', 'https://x.com/b.png']
+  )
+  assert.deepEqual(weiboImageList({ images: '不是 JSON' }), [])
+})
+
+test('friendLinkCards url/icon 过 scheme 白名单，非法时退化为无链接卡片', () => {
+  const good = friendLinkCards([{ name: '好站', url: 'https://a.com', description: '', icon: '' }])
+  assert.ok(good.includes('href="https://a.com"'))
+  const bad = friendLinkCards([{ name: '坏链', url: 'javascript:alert(1)', description: '', icon: 'javascript:alert(2)' }])
+  assert.ok(!bad.includes('javascript:'), 'javascript: 不得出现在输出里')
+  assert.ok(bad.includes('fl-card'), '内容照常展示')
+  assert.ok(bad.includes('fl-ico-letter'), '图标非法时退回字母图标')
 })

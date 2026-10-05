@@ -66,7 +66,8 @@ async function insertWeibo(db: D1Database, content: string, images: string[], st
 /** 图片字节进 R2 图床并登记 uploads 表，返回站内地址 */
 async function storeImage(env: Env, buf: ArrayBuffer, mime: string, name: string): Promise<string | null> {
   mime = (mime || '').split(';')[0].trim().toLowerCase()
-  const ext = IMAGE_MIMES[mime]
+  // hasOwnProperty 挡原型链属性（constructor 等）穿透白名单
+  const ext = Object.prototype.hasOwnProperty.call(IMAGE_MIMES, mime) ? IMAGE_MIMES[mime] : undefined
   if (!ext || buf.byteLength === 0 || buf.byteLength > MAX_UPLOAD_BYTES) return null
   const now = new Date()
   const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -342,7 +343,7 @@ async function saveTgImage(env: Env, botToken: string, fileId: string): Promise<
     const buf = await res.arrayBuffer()
     if (!buf.byteLength || buf.byteLength > MAX_UPLOAD_BYTES) return null
     let mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
-    if (!IMAGE_MIMES[mime]) {
+    if (!Object.prototype.hasOwnProperty.call(IMAGE_MIMES, mime)) {
       const byPath = /\.(jpe?g|png|webp|gif)$/i.exec(path)?.[1]?.toLowerCase()
       if (!byPath) return null
       mime = `image/${byPath === 'jpg' || byPath === 'jpeg' ? 'jpeg' : byPath}`

@@ -53,7 +53,7 @@ import { clampInt, esc, excerpt, readingMinutes } from './utils'
 type C = Context<{ Bindings: Env; Variables: { user: SessionUser | null } }>
 
 const CSP =
-  "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http:; media-src 'self' https:; script-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'none'"
+  "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http:; media-src 'self' https:; script-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'; object-src 'none'"
 
 function baseHeaders(c: C) {
   c.header('Content-Security-Policy', CSP)
@@ -65,14 +65,21 @@ function baseHeaders(c: C) {
 // 浏览量去重：同一 IP 对同一篇文章 1 小时内只计 1 次（进程内缓存，尽力而为），
 // 否则每次刷新/爬虫抓取都会 +1
 const viewSeen = new Map<string, number>()
+const VIEW_SEEN_MAX = 5000
 function shouldCountView(ip: string, postId: number): boolean {
   const now = Date.now()
   const key = `${ip}:${postId}`
   const last = viewSeen.get(key)
   if (last && now - last < 3600_000) return false
   viewSeen.set(key, now)
-  if (viewSeen.size > 5000) {
+  // 淘汰在插入时执行（与 auth.rateLimit 同款）：先清过期项，仍超容量丢最旧的，保证 Map 有界
+  if (viewSeen.size > VIEW_SEEN_MAX) {
     for (const [k, t] of viewSeen) if (now - t > 3600_000) viewSeen.delete(k)
+    while (viewSeen.size > VIEW_SEEN_MAX) {
+      const oldest = viewSeen.keys().next().value
+      if (oldest === undefined) break
+      viewSeen.delete(oldest)
+    }
   }
   return true
 }
@@ -138,7 +145,7 @@ async function renderList(
   const tag = c.req.param('tag') || url.searchParams.get('tag') || undefined
   const q = (url.searchParams.get('q') || '').trim().slice(0, 60)
   const categorySlug = opts.mode === 'category' ? c.req.param('slug') || '' : ''
-  const pageNum = clampInt(url.searchParams.get('page'), 1, 100000, 1)
+  const pageNum = clampInt(url.searchParams.get('page'), 1, 1000, 1)
   const perPage = clampInt(settings.postsPerPage, 1, 50, 10)
   // 列表排序：最新（默认，置顶优先）/ 最多阅读 / 最多点赞 / 最多留言 / 随机
   const sortParam = (url.searchParams.get('sort') || '').trim()
@@ -279,7 +286,7 @@ export async function renderPost(c: C): Promise<Response> {
     if (!isPreview || !user) return renderNotFound(c)
   }
 
-  const [comments, related, categories, categoryId, user, tags, pages] = await Promise.all([
+  const [comments, related, categories, categoryId, user, tags, pages, commentTotal] = await Promise.all([
     listApprovedComments(c.env.DB, row.id),
     relatedPosts(c.env.DB, row),
     navCategories(c),
@@ -287,6 +294,8 @@ export async function renderPost(c: C): Promise<Response> {
     getSessionUser(c.env.DB, c.req.raw),
     navTags(c),
     navPages(c),
+    // 计数独立取（列表 LIMIT 500，超限后 length 会少报，JSON-LD commentCount 同口径）
+    commentCount(c, row.id),
   ])
   const categoryRow = categoryId ? await c.env.DB.prepare('SELECT name, slug FROM categories WHERE id = ?').bind(categoryId).first<{ name: string; slug: string }>() : null
 
@@ -300,7 +309,7 @@ export async function renderPost(c: C): Promise<Response> {
     comments,
     slug: row.slug,
     allowComments: settings.allowComments === '1' && row.status === 'published',
-    count: comments.length,
+    count: commentTotal,
     isAdmin: !!user,
     // 管理员登录：表单免填昵称，以作者身份发言
     adminName: user ? (user.display_name || user.username || '').slice(0, 24) : undefined,
@@ -326,7 +335,7 @@ export async function renderPost(c: C): Promise<Response> {
     categories,
     tags,
     pages,
-    comments: { html: commentsBlock, count: comments.length },
+    comments: { html: commentsBlock, count: commentTotal },
     related: related.map((p) => toHomePost(p, parseTags(p))),
   })
   c.header('Cache-Control', 'no-cache')
@@ -346,7 +355,7 @@ export async function renderPost(c: C): Promise<Response> {
         publishedAt: row.published_at,
         updatedAt: row.updated_at,
         tags: parseTags(row),
-        commentCount: comments.length,
+        commentCount: commentTotal,
       })
   return c.html(
     page({
@@ -490,24 +499,26 @@ export async function renderGuestbook(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
-  const [comments, categories, tags, pages, user] = await Promise.all([
+  const [comments, categories, tags, pages, user, gbCount] = await Promise.all([
     listGuestbookComments(c.env.DB),
     navCategories(c),
     navTags(c),
     navPages(c),
     getSessionUser(c.env.DB, c.req.raw),
+    // 留言总数独立取：列表 LIMIT 500，超限后 length 会少报
+    c.env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE post_id = 0 AND weibo_id = 0 AND status = 'approved'").first<{ n: number }>(),
   ])
   const html = theme.guestbook({
     settings,
     categories,
     tags,
     pages,
-    count: comments.length,
+    count: gbCount?.n ?? comments.length,
     html: commentsHtml({
       comments,
       slug: '',
       allowComments: settings.allowComments === '1',
-      count: comments.length,
+      count: gbCount?.n ?? comments.length,
       isAdmin: !!user,
       // 管理员登录：表单免填昵称，以作者身份发言
       adminName: user ? (user.display_name || user.username || '').slice(0, 24) : undefined,
@@ -539,7 +550,7 @@ export async function renderWeibo(c: C): Promise<Response> {
   const url = new URL(c.req.url)
   const perPage = 15
   const topic = (url.searchParams.get('topic') || '').trim().slice(0, 24)
-  const pageParam = clampInt(url.searchParams.get('page'), 1, 100000, 1)
+  const pageParam = clampInt(url.searchParams.get('page'), 1, 1000, 1)
   // ?wb=<id> 深链定位：历史上的今天、首页入口卡、TG 通知都链到 /weibo?wb=x#wb-x，而目标条目常不在第 1
   // 页——服务端先算出所在页直接渲染，浏览器原生锚点才滚动得到；定位失败（已删/非已发布）回退 ?page=
   let pageNum = pageParam

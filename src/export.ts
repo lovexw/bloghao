@@ -238,7 +238,11 @@ exportRoutes.get('/wxr', async (c) => {
 
   const xmlEsc = (s: string) =>
     String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  const cdata = (s: string) => `<![CDATA[${String(s ?? '').replace(/]]>/g, ']]&gt;')}]]>`
+  const cdata = (s: string) =>
+    // WXR 与 RSS 同口径：CDATA 内剥 XML 非法控制字符 + 防 ]]> 提前闭合
+    `<![CDATA[${String(s ?? '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
   const rfc822 = (ts: number | null) => new Date(ts ?? Date.now()).toUTCString()
 
   const items = posts

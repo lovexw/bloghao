@@ -72,6 +72,7 @@ function openCollectDialog(ctx) {
     }
 
     async function collect() {
+      if (go.disabled) return // 采集中：Enter 键不走按钮 disabled，需自行拦防双发产生重复草稿
       const url = input.value.trim()
       if (!url) {
         input.focus()
@@ -85,8 +86,10 @@ function openCollectDialog(ctx) {
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url }),
-          // 多图文章服务端要逐张转存，放宽到 2 分钟
-          signal: AbortSignal.timeout(120000),
+          // 多图文章服务端要逐张转存，放宽到 2 分钟；旧浏览器没有 AbortSignal.timeout 就不设超时
+          ...(typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+            ? { signal: AbortSignal.timeout(120000) }
+            : {}),
         })
         const d = await res.json().catch(() => ({}))
         if (!res.ok || !d.ok || !d.post || !d.post.id) {

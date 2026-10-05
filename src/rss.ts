@@ -2,8 +2,12 @@ import type { PostRow, SettingsMap } from './types'
 import { sanitizeHtml } from './sanitize'
 import { esc, fmtDate } from './utils'
 
+/** XML 1.0 禁止的控制字符（CDATA 内同样非法）：一条脏数据（如 RTF 粘贴产物）会让整份 feed 非法 */
+const XML_CTRL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g
+
 function xmlEsc(s: string): string {
   return s
+    .replace(XML_CTRL_RE, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -17,7 +21,7 @@ function rfc822(ts: number | null): string {
 
 /** CDATA 包裹 HTML 全文：正文已过 sanitize，仅需防 ]]> 提前闭合 */
 function cdata(html: string): string {
-  return `<![CDATA[${html.replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
+  return `<![CDATA[${html.replace(XML_CTRL_RE, '').replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
 }
 
 export function buildRss(settings: SettingsMap, posts: PostRow[], siteUrl: string): string {
@@ -31,8 +35,8 @@ export function buildRss(settings: SettingsMap, posts: PostRow[], siteUrl: strin
           : ''
       return `    <item>
       <title>${xmlEsc(p.title)}</title>
-      <link>${xmlEsc(siteUrl)}/post/${xmlEsc(p.slug)}</link>
-      <guid isPermaLink="true">${xmlEsc(siteUrl)}/post/${xmlEsc(p.slug)}</guid>
+      <link>${xmlEsc(siteUrl)}/post/${encodeURIComponent(p.slug)}</link>
+      <guid isPermaLink="true">${xmlEsc(siteUrl)}/post/${encodeURIComponent(p.slug)}</guid>
       <pubDate>${rfc822(p.published_at)}</pubDate>
       <description>${xmlEsc(p.summary)}</description>${encoded}
     </item>`
@@ -90,7 +94,7 @@ export function buildSitemap(
 ${urls
   .map(
     (u) => `  <url>
-    <loc>${u.loc}</loc>
+    <loc>${xmlEsc(u.loc)}</loc>
     ${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ''}
   </url>`
   )

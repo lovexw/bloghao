@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanDisabledPlugins, cleanSlug, clampInt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate, jsonItemLikePattern, plainText } from '../src/utils.ts'
+import { cleanDisabledPlugins, cleanSlug, clampInt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate, jsonItemLikePattern, likePattern, plainText } from '../src/utils.ts'
 
 // ── SSR 时间统一北京时间（回归：0-8 点发布的内容曾显示成前一天）──
 test('fmtDate 按 UTC+8 取墙上日期：UTC 16:30 = 北京次日 00:30', () => {
@@ -95,4 +95,12 @@ test('extractWeiboTopics 防误判：紧贴字母/汉字的 # 不算话题开头
   assert.deepEqual(extractWeiboTopics('#生活#与#代码#'), ['生活'])
   // 空格分隔的独立 #话题# 正常成对提取
   assert.deepEqual(extractWeiboTopics('#生活# 和 #代码#'), ['生活', '代码'])
+})
+
+// ── 回归（2026-10 安全复查）：ESCAPE '\' 声明下 \ 本身不转义会让搜索模式语义跑偏 ──
+test('likePattern 转义 \\ % _ 三个字符', () => {
+  assert.equal(likePattern('a\\b'), '%a\\\\b%')
+  assert.equal(likePattern('100%'), '%100\\%%')
+  assert.equal(likePattern('猫_dog'), '%猫\\_dog%')
+  assert.equal(likePattern('普通词'), '%普通词%')
 })

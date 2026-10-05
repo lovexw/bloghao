@@ -54,3 +54,15 @@ test('meta data-og-image 站内路径原样保留', () => {
 test('meta 无 data-og-image 仍被丢弃', () => {
   assert.equal(sanitizeHtml('<meta charset="utf-8">'), '')
 })
+
+// ── 回归（2026-10 安全复查）：未终结的标签前缀 / 未闭合注释曾被原样透传 ——
+// 浏览器会把后续页面标记当成该 img 的属性（onerror 内联事件复活）或把整页吞进注释 ──
+test('未终结的标签前缀与未闭合注释被转义，正常文本里的 < 不误伤', () => {
+  assert.equal(sanitizeHtml('<img src=x onerror=alert(1)'), '&lt;img src=x onerror=alert(1)')
+  assert.equal(sanitizeHtml('a <!-- b'), 'a &lt;!-- b')
+  assert.equal(sanitizeHtml('a </b'), 'a &lt;/b')
+  assert.equal(sanitizeHtml('3 < 5 且 <3 心形'), '3 < 5 且 <3 心形')
+  // 完整标签仍走既有白名单路径，不受影响
+  assert.equal(sanitizeHtml('<p onclick=alert(1)>hi</p>'), '<p>hi</p>')
+  assert.equal(sanitizeHtml('<b>ok</b>'), '<b>ok</b>')
+})

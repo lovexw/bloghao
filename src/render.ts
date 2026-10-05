@@ -325,20 +325,38 @@ export interface FriendLinkView {
   icon: string
 }
 
-/** 友链卡片：有图标用图标，没有用站名首字 */
+/** 机器可读时间戳：<time datetime> 用。无效时间戳（备份恢复/导入的脏数据）兜成空串，
+ *  直接 toISOString() 会抛 RangeError 让整页 500 */
+function safeIso(ts: number): string {
+  const d = new Date(ts)
+  return Number.isFinite(d.getTime()) ? d.toISOString() : ''
+}
+
+/** 友链卡片：有图标用图标，没有用站名首字。url/icon 渲染前过 scheme 白名单——
+ *  写侧已拦 javascript: 等协议，这里兜底防备份恢复/导入路径的脏数据流进 href/src */
 export function friendLinkCards(items: FriendLinkView[]): string {
+  const safeUrl = (u: string): string => (/^(https?:\/\/|\/)/i.test(u) ? u : '')
   return items
     .map((l) => {
-      const ico = l.icon
-        ? `<span class="fl-ico"><img src="${esc(l.icon)}" loading="lazy" alt=""></span>`
+      const url = safeUrl(l.url)
+      const icon = safeUrl(l.icon)
+      const ico = icon
+        ? `<span class="fl-ico"><img src="${esc(icon)}" loading="lazy" alt=""></span>`
         : `<span class="fl-ico fl-ico-letter" aria-hidden="true">${esc((l.name || '链').trim().charAt(0))}</span>`
-      return `<a class="fl-card" href="${esc(l.url)}" target="_blank" rel="noopener">
-  ${ico}
-  <span class="fl-main">
+      const main = `<span class="fl-main">
     <span class="fl-name">${esc(l.name)}</span>
     ${l.description ? `<span class="fl-desc">${esc(l.description)}</span>` : ''}
-  </span>
+  </span>`
+      // url 非法时退化为无链接卡片（内容照常展示，不输出可疑 href）
+      return url
+        ? `<a class="fl-card" href="${esc(url)}" target="_blank" rel="noopener">
+  ${ico}
+  ${main}
 </a>`
+        : `<span class="fl-card">
+  ${ico}
+  ${main}
+</span>`
     })
     .join('\n')
 }
@@ -519,7 +537,7 @@ export function weiboCards(o: {
     <span class="wb-avatar">${o.avatarHtml}</span>
     <div class="wb-who">
       <span class="wb-name">${esc(name)}</span>
-      <time class="wb-time" datetime="${new Date(w.created_at).toISOString()}">${weiboTime(w.created_at)}</time>
+      <time class="wb-time" datetime="${safeIso(w.created_at)}">${weiboTime(w.created_at)}</time>
     </div>
     ${w.pinned ? '<span class="wb-pin">置顶</span>' : ''}
   </header>
@@ -545,7 +563,7 @@ export function weiboHomeEntry(o: { items: WeiboItemView[]; total: number }): st
       return `<a class="wb-home-item" href="/weibo?wb=${w.id}#wb-${w.id}">
   <div class="wb-home-main">
     <p class="wb-home-text">${esc(short)}</p>
-    <time class="wb-home-time" datetime="${new Date(w.created_at).toISOString()}">${weiboTime(w.created_at)}</time>
+    <time class="wb-home-time" datetime="${safeIso(w.created_at)}">${weiboTime(w.created_at)}</time>
   </div>
   ${thumb}
 </a>`
