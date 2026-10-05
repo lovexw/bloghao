@@ -41,9 +41,14 @@ import {
 import { extractOgImage, sanitizeHtml } from './sanitize'
 import { getTheme, THEMES } from './themes/registry'
 import type { Env, PostRow, SessionUser, SettingsMap } from './types'
-import { clampInt, esc, excerpt, readingMinutes } from './utils'
+import { clampInt, esc, excerpt, isDemo, readingMinutes } from './utils'
 
 type C = Context<{ Bindings: Env; Variables: { user: SessionUser | null } }>
+
+/** 演示站包装：所有公开页强制 noindex（内容是每两小时重置的种子数据，不该进搜索引擎索引）；生产模式原样透传 */
+function pageOpts(c: C, o: Parameters<typeof page>[0]): Parameters<typeof page>[0] {
+  return isDemo(c.env) ? { ...o, noindex: true } : o
+}
 
 const CSP =
   "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http:; media-src 'self' https:; script-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'; object-src 'none'"
@@ -253,7 +258,7 @@ async function renderList(
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: theme.css,
       title,
@@ -262,7 +267,7 @@ async function renderList(
       origin: url.origin,
       noindex: opts.mode === 'search',
       body: html,
-    })
+    }))
   )
 }
 
@@ -353,7 +358,7 @@ export async function renderPost(c: C): Promise<Response> {
         commentCount: commentTotal,
       })
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: theme.css,
       title: row.title,
@@ -365,7 +370,7 @@ export async function renderPost(c: C): Promise<Response> {
       jsonLd,
       body: html,
       preview: isPreview,
-    })
+    }))
   )
 }
 
@@ -389,7 +394,7 @@ export async function renderAbout(c: C): Promise<Response> {
     })
     c.header('Cache-Control', 'no-cache')
     return c.html(
-      page({
+      page(pageOpts(c, {
         settings,
         css: theme.css,
         title: aboutRow.title,
@@ -397,7 +402,7 @@ export async function renderAbout(c: C): Promise<Response> {
         path: '/about',
         origin: new URL(c.req.url).origin,
         body: html,
-      })
+      }))
     )
   }
   const [categories, tags, pages] = await Promise.all([navCategories(c), navTags(c), navPages(c)])
@@ -411,7 +416,7 @@ export async function renderAbout(c: C): Promise<Response> {
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: theme.css,
       title: '关于我',
@@ -419,7 +424,7 @@ export async function renderAbout(c: C): Promise<Response> {
       path: '/about',
       origin: new URL(c.req.url).origin,
       body: html,
-    })
+    }))
   )
 }
 
@@ -444,7 +449,7 @@ export async function renderPage(c: C): Promise<Response> {
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: theme.css,
       title: row.title,
@@ -452,7 +457,7 @@ export async function renderPage(c: C): Promise<Response> {
       path: `/page/${row.slug}`,
       origin: new URL(c.req.url).origin,
       body: html,
-    })
+    }))
   )
 }
 
@@ -477,7 +482,7 @@ export async function renderArchive(c: C): Promise<Response> {
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: theme.css,
       title: '文章归档',
@@ -485,7 +490,7 @@ export async function renderArchive(c: C): Promise<Response> {
       path: '/archives',
       origin: new URL(c.req.url).origin,
       body: html,
-    })
+    }))
   )
 }
 
@@ -525,7 +530,7 @@ export async function renderGuestbook(c: C): Promise<Response> {
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: theme.css,
       title: '留言板',
@@ -533,7 +538,7 @@ export async function renderGuestbook(c: C): Promise<Response> {
       path: '/guestbook',
       origin: new URL(c.req.url).origin,
       body: html,
-    })
+    }))
   )
 }
 
@@ -606,7 +611,7 @@ export async function renderWeibo(c: C): Promise<Response> {
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: theme.css,
       title: '微博',
@@ -614,7 +619,7 @@ export async function renderWeibo(c: C): Promise<Response> {
       path: '/weibo',
       origin: url.origin,
       body: html,
-    })
+    }))
   )
 }
 
@@ -639,7 +644,7 @@ export async function renderLinks(c: C): Promise<Response> {
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: theme.css,
       title: '友情链接',
@@ -647,7 +652,7 @@ export async function renderLinks(c: C): Promise<Response> {
       path: '/links',
       origin: new URL(c.req.url).origin,
       body: html,
-    })
+    }))
   )
 }
 
@@ -659,7 +664,7 @@ export async function renderNotFound(c: C): Promise<Response> {
   const themeCss = t ? t.css : getTheme('wechat').css
   c.header('Cache-Control', 'no-cache')
   return c.html(
-    page({
+    page(pageOpts(c, {
       settings,
       css: themeCss,
       title: '404',
@@ -672,7 +677,7 @@ export async function renderNotFound(c: C): Promise<Response> {
   <p style="color:#999;margin:12px 0 28px;">这一页飘走了，回首页看看吧。</p>
   <a href="/" style="display:inline-block;padding:10px 28px;border-radius:999px;background:#b23a29;color:#fff;text-decoration:none;font-size:14px;">回首页</a>
 </div>`,
-    }),
+    })),
     404
   )
 }

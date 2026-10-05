@@ -105,6 +105,10 @@ input, textarea, select { font: inherit; color: inherit; }
 .auth-btn { width: 100%; padding: 10px; font-size: 15px; border-radius: 8px; }
 .auth-err { color: var(--danger); font-size: 13px; margin-top: 10px; text-align: center; min-height: 18px; }
 .auth-tip { font-size: 12px; color: var(--sub); text-align: center; margin-top: 18px; }
+/* 演示站：登录页账号公示框 + 侧栏徽标 */
+.auth-demo { background: rgba(255, 153, 0, 0.08); border: 1px solid rgba(255, 153, 0, 0.35); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; line-height: 1.7; color: var(--ink); margin-bottom: 16px; }
+.auth-demo code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+.demo-badge { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: rgba(255, 153, 0, 0.12); color: var(--warn); font-size: 11px; font-weight: 600; white-space: nowrap; }
 
 /* ---------- 布局骨架 ---------- */
 .shell { display: flex; min-height: 100vh; }

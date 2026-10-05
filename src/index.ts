@@ -9,6 +9,7 @@ import { buildRss, buildSitemap } from './rss'
 import { siteBase } from './render'
 import { purgeVisits } from './stats'
 import type { Env, SessionUser } from './types'
+import { isDemo } from './utils'
 
 const app = new Hono<{ Bindings: Env; Variables: { user: SessionUser | null } }>()
 
@@ -24,6 +25,12 @@ function ensureSchemaOnce(db: D1Database): Promise<void> {
   return schemaReady
 }
 app.use('*', async (c, next) => {
+  // 演示站：先幂等建表再自播种（空库冷启动要抢在 ensureSchema 之前——ensureSchema 是增量
+  // 迁移层，基础表不存在时自己会先炸）；播种期间并发请求短暂等待
+  if (isDemo(c.env)) {
+    const demo = await import('./demo')
+    await demo.demoEnsureSeeded(c.env)
+  }
   await ensureSchemaOnce(c.env.DB)
   await next()
 })
@@ -83,7 +90,10 @@ app.get('/sitemap.xml', async (c) => {
 })
 
 app.get('/robots.txt', (c) =>
-  c.text(`User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${new URL(c.req.url).origin}/sitemap.xml\n`)
+  isDemo(c.env)
+    ? // 演示站：不希望被搜索引擎收录（内容是种子数据，且闭站页等状态不该进索引）
+      c.text('User-agent: *\nDisallow: /\n')
+    : c.text(`User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${new URL(c.req.url).origin}/sitemap.xml\n`)
 )
 
 /* ---------------- R2 图床 ---------------- */
@@ -141,6 +151,15 @@ export default {
         } catch (e) {
           // 迁移失败不阻塞 cron：后续查询自会报错并走各自的兜底提醒
           console.error('ensureSchema (cron) failed:', e)
+        }
+        // 演示站的重置 cron（每 2 小时）优先处理：清库重灌种子数据，之后本轮到此为止
+        if (isDemo(env)) {
+          try {
+            const demo = await import('./demo')
+            if (await demo.demoScheduled(controller, env)) return
+          } catch (e) {
+            console.error('demo scheduled failed:', e)
+          }
         }
         await runScheduledPublish(env)
         if (isBackupCron) {

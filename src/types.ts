@@ -2,6 +2,8 @@ export interface Env {
   DB: D1Database
   IMAGES: R2Bucket
   ASSETS: Fetcher
+  /** 演示站模式（wrangler.demo.jsonc 注入 "1"）：生产 Worker 不设置，见 src/demo.ts */
+  DEMO_MODE?: string
 }
 
 export interface SessionUser {

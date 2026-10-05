@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:demo": "wrangler dev -c wrangler.demo.jsonc",
     "deploy": "wrangler deploy",
+    "deploy:demo": "wrangler deploy -c wrangler.demo.jsonc",
     "deploy:site": "cd website && wrangler pages deploy public",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",

@@ -12,8 +12,9 @@
     "binding": "ASSETS"
   },
 
-  // 主题 CSS 以文本形式打进 Worker，随页面内联输出（零额外请求）
-  "rules": [{ "type": "Text", "globs": ["**/*.css"] }],
+  // 主题 CSS 以文本形式打进 Worker，随页面内联输出（零额外请求）；
+  // schema.sql 同为文本（仅演示站 chunk 引用，冷启动建表见 src/demo.ts）——同类型规则必须合并一条
+  "rules": [{ "type": "Text", "globs": ["**/*.css", "**/*.sql"] }],
 
   // D1 数据库：xwblog-db（与原 bloghao-db 完全隔离）
   "d1_databases": [

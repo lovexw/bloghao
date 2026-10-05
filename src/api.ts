@@ -54,7 +54,7 @@ import { imageExtOf, MAX_UPLOAD_BYTES, saveUpload } from './store'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
-import { clampInt, cleanDisabledPlugins, cleanSlug, excerpt, extractWeiboTopics, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
+import { clampInt, cleanDisabledPlugins, cleanSlug, excerpt, extractWeiboTopics, isDemo, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
 
 type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
@@ -86,7 +86,8 @@ api.get('/health', (c) => c.json({ ok: true, time: Date.now() }))
 /* ---------------- 认证 ---------------- */
 api.get('/auth/state', async (c) => {
   const [user, n] = await Promise.all([getSessionUser(c.env.DB, c.req.raw), countUsers(c.env.DB)])
-  return c.json({ needsSetup: n === 0, user })
+  // demo 标记给后台前端用：登录页公示演示账号、禁用改密码与闭站开关
+  return c.json({ needsSetup: n === 0, user, demo: isDemo(c.env) })
 })
 
 api.post('/auth/setup', async (c) => {
@@ -1168,6 +1169,8 @@ api.put('/admin/settings', async (c) => {
     }
     patch[key] = v.slice(0, 500)
   }
+  // 演示站不允许闭站：有人开了开关，整个重置周期内所有体验者都会看到 503
+  if (isDemo(c.env)) patch.siteClosed = '0'
   await saveSettings(c.env.DB, patch)
   const saved = await getSettings(c.env.DB)
   // 与 GET 同口径：密钥只在生成时返回一次明文，此后任何回显都打码（防代理/扩展被动收集）
@@ -1190,6 +1193,8 @@ api.post('/admin/backup', async (c) => {
 
 /* ---------------- 密码 ---------------- */
 api.put('/admin/password', async (c) => {
+  // 演示站密码公示在登录页，改掉会导致整个重置周期内其他体验者进不了后台
+  if (isDemo(c.env)) return jsonError('演示站不支持修改密码', 403)
   const user = c.get('user')
   const body = await c.req.json<{ oldPassword?: string; newPassword?: string }>().catch(() => null)
   const oldPassword = body?.oldPassword || ''

@@ -13,6 +13,7 @@
 
 ```bash
 npm run dev            # 本地开发（端口被占用时自动 +1）
+npm run dev:demo       # 演示站本地预览（自动建表+播种，见 docs/DEMO.md）
 npm run typecheck      # TypeScript 类型检查，提交前必须通过
 npm test               # 回归测试（tests/，30+ 用例），提交前必须通过；CI（.github/workflows/ci.yml）每次推送强制执行
 npm run smoke          # 本地冒烟：起 wrangler dev 逐路由断言 200（含多标签文章页回归守卫），改 SQL 拼接/渲染后必跑
@@ -65,6 +66,13 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 - 保持 ES5 风格（var/function）：**禁用 lookbehind 正则**（`(?<!…)` Safari ≤ 16.3 解析期抛 SyntaxError）——微博话题正则用捕获组消费前导字符的写法，改正则先跑 tests 外的 18 用例对照（与服务端 weiboTextHtml 同口径）
 - **禁止裸调 localStorage**：隐私加固浏览器访问该属性即抛 SecurityError，一律走 `storeGet/storeSet`（内部 try/catch）
 
+**演示站（tests/demo.test.ts，docs/DEMO.md）**
+
+- 演示站只在 `DEMO_MODE` 下活（wrangler.demo.jsonc 注入，生产 Worker 不带）：所有 demo 分支必须走 `utils.ts isDemo()`（`'0'`/缺省必须为假，勿写成 truthy 宽判）；`src/demo.ts` 由 index.ts 动态 import，生产 isolate 不执行
+- 种子内容（demo-posts/demo-content/demo-images）是确定性生成：改内容后 tests/demo.test.ts 守不变量——slug 唯一干净、正文无 script/id/内联事件、评论树父子时序合法、正文图片引用必须存在于 demoImages()
+- 两个 D1 坑都在 demo 里踩过并修掉：单条 SQL 变量上限 100（多行 INSERT 每条最多 10 行×9 列）；settings 写入必须 `.run()` 收尾，裸 `await db.prepare().bind()` 是空操作不报错
+- demo 冷启动靠 `ensureTables()` 执行打进 bundle 的 schema.sql（生产建表靠部署时 d1 execute，演示站必须能从空库自己长出来）——改 schema.sql 两处（表/列定义与 db.ts 迁移清单）同步时，演示站自动跟随，无需额外动作
+
 **部署链路**
 
 - schema.sql 与 db.ts 的 SCHEMA_COLUMNS/SCHEMA_TABLES 是同一 schema 的两份表达：**加列/表必须两处同步**，且 cron（index.ts `scheduled()`）入口已强制先跑 ensureSchema——冷启动 isolate 不经过 fetch 中间件
@@ -97,6 +105,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 
 - `src/themes/`：五套主题 + `registry.ts` 注册表（八类页面参数是导出的命名类型 `HomeData`/`PostData`/…，新增主题或字段只改 registry 一处；五主题 × 八页面渲染回归在 tests/themes.test.ts，改主题先跑）；`wechat` 为默认主题
 - `src/pages.ts` 渲染公开页（含独立页面 `/page/:slug`，pages 表承载，`about` 页渲染在 `/about`）；`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）；`src/export.ts` + `src/zip.ts` + `src/html-md.ts` 是数据导出（Markdown 包流式打 zip、WXR）；`src/closed.ts` 是一键闭站 / 灰度（settings `siteClosed` / `siteGrayscale`，独立成模块是为了 Node 测试能导入——index.ts 会级联加载主题 CSS）；`src/hooks.ts` 是服务端插件钩子（总线 + 注册表 + 官方示例三合一，发布/评论事件与页脚注入，插件失败必须吞掉不影响主流程，启停存 settings `serverPluginsDisabled`）
+- `src/demo.ts` + `demo-content.ts` / `demo-posts.ts` / `demo-images.ts`：官方演示站引擎（独立 wrangler.demo.jsonc，DEMO_MODE 门控）——空库自播种、每 2 小时 cron 清库重灌、演示守卫（登录页公示 demo 账号、禁改密码、禁闭站、禁外发通知、全站 noindex）；种子内容确定性生成，文档 docs/DEMO.md
 - `public/admin/`：后台（app.js 路由与页面——侧栏菜单看顶部 `MENU` 配置数组，editor.js 写作编辑器，admin.css 样式）；「皮肤 / 插件」是独立页面（`#/appearance`、`#/plugins`），市场目录在 `public/market/catalog.json`
 - `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao 的 issues；官网 UI 改动同样过 390px 移动端检查
 - 编辑器内容样式（`.ed-editor`）与文章页（`.rich`）需保持视觉一致——改一处记得镜像另一处

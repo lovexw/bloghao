@@ -8,6 +8,7 @@ const state = {
   user: null,
   needsSetup: false,
   settings: null,
+  demo: false, // 演示站模式（/auth/state 返回 demo: true）：登录页公示演示账号、禁用改密码与闭站开关
 }
 
 /* 微博编辑态：null = 新建；点「编辑」后暂存，离开微博页时清空 */
@@ -170,12 +171,17 @@ let pendingRoute = null
 function authView(mode) {
   pendingRoute = null // 登录态下不允许任何迟到的 shell 视图渲染
   const isSetup = mode === 'setup'
+  // 演示站：登录页公示账号密码并自动填充（数据每 2 小时重置，随便玩）
+  const demoBox = !isSetup && state.demo
+    ? `<div class="auth-demo">🎓 这是<b>演示站</b>，数据每 2 小时自动重置，随便看、随便改。<br>账号 <code>demo</code> · 密码 <code>demo1234</code>（已自动填好）</div>`
+    : ''
   $app.innerHTML = `<div class="auth-wrap"><div class="auth-card">
     <div class="auth-logo">
       <img src="/favicon.svg" alt="">
       <h1>${isSetup ? '创建管理员' : '登录博客号后台'}</h1>
       <p>${isSetup ? '第一次使用，设置你的管理员账号' : esc(state.settings?.siteName || '')}</p>
     </div>
+    ${demoBox}
     <form id="auth-form">
       <div class="auth-field"><label>用户名</label><input class="input" name="username" autocomplete="username" placeholder="2-24 位字母、数字、_ 或 -" required></div>
       <div class="auth-field"><label>密码</label><input class="input" type="password" name="password" autocomplete="${isSetup ? 'new-password' : 'current-password'}" placeholder="${isSetup ? '至少 8 位' : '输入密码'}" required></div>
@@ -185,6 +191,11 @@ function authView(mode) {
     </form>
     <p class="auth-tip">住在 Cloudflare 上的小博客 · D1 存储 · R2 图床</p>
   </div></div>`
+  if (demoBox) {
+    const form = document.getElementById('auth-form')
+    form.username.value = 'demo'
+    form.password.value = 'demo1234'
+  }
   document.getElementById('auth-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     const f = e.target
@@ -243,7 +254,7 @@ async function shellView(active, contentHTML) {
   const moreDot = MENU.reduce((sum, m) => (m.badge && !MOBILE_TAB_IDS.includes(m.id) ? sum + m.badge() : sum), 0)
   $app.innerHTML = `<div class="shell${sideMini ? ' side-mini' : ''}">
     <aside class="sidebar">
-      <div class="side-logo"><img src="/favicon.svg" alt=""><span>博客号</span><button class="side-fold" id="btn-side-fold" title="${sideMini ? '展开侧栏' : '收起侧栏'}">${I.fold}</button></div>
+      <div class="side-logo"><img src="/favicon.svg" alt=""><span>博客号</span>${state.demo ? '<span class="demo-badge" title="演示站：数据每 2 小时重置">演示</span>' : ''}<button class="side-fold" id="btn-side-fold" title="${sideMini ? '展开侧栏' : '收起侧栏'}">${I.fold}</button></div>
       <nav class="side-nav">${sideNavHtml(active)}</nav>
       <nav class="tab-bar">
         ${barItems.map((m) => sideItemHtml(m, active)).join('')}
@@ -1914,10 +1925,10 @@ async function viewSettings() {
           <label class="switch"><input type="checkbox" id="st-siteGrayscale" ${s.siteGrayscale === '1' ? 'checked' : ''}><span class="track"></span></label>
         </div>
         <div class="switch-row">
-          <div><div class="switch-label">关闭站点</div><div class="switch-sub">开启后访客只能看到闭站页，RSS、评论等一并停用；后台与已登录的你不受影响</div></div>
-          <label class="switch"><input type="checkbox" id="st-siteClosed" ${s.siteClosed === '1' ? 'checked' : ''}><span class="track"></span></label>
+          <div><div class="switch-label">关闭站点</div><div class="switch-sub">开启后访客只能看到闭站页，RSS、评论等一并停用；后台与已登录的你不受影响</div>${state.demo ? '<div class="switch-sub" style="color:var(--warn);">🎓 演示站已停用此开关（防止有人把体验站关掉，其他体验者会看不了）</div>' : ''}</div>
+          <label class="switch"><input type="checkbox" id="st-siteClosed" ${s.siteClosed === '1' ? 'checked' : ''} ${state.demo ? 'disabled' : ''}><span class="track"></span></label>
         </div>
-        <div class="form-item"><label>闭站公告（展示在闭站页，支持换行；留空使用默认文案）</label><textarea class="textarea" id="st-siteClosedMessage" rows="3" maxlength="1000" placeholder="本站暂时关闭，请稍后再来。">${esc(s.siteClosedMessage || '')}</textarea></div>
+        <div class="form-item"><label>闭站公告（展示在闭站页，支持换行；留空使用默认文案）</label><textarea class="textarea" id="st-siteClosedMessage" rows="3" maxlength="1000" placeholder="本站暂时关闭，请稍后再来。" ${state.demo ? 'disabled' : ''}>${esc(s.siteClosedMessage || '')}</textarea></div>
       </div>
     </div>
 
@@ -2019,11 +2030,11 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
-      <div class="form-section"><h3>账号</h3><div class="sec-desc">修改登录密码</div>
+      <div class="form-section"><h3>账号</h3><div class="sec-desc">${state.demo ? '演示站不支持修改密码（演示账号公示在登录页，每 2 小时随数据一起重置）' : '修改登录密码'}</div>
         <div class="form-row">
-          <div class="form-item"><label>旧密码</label><input class="input" type="password" id="pw-old" autocomplete="current-password"></div>
-          <div class="form-item"><label>新密码（至少 8 位）</label><input class="input" type="password" id="pw-new" autocomplete="new-password"></div>
-          <div class="form-item" style="flex:0 0 auto;align-self:flex-end;"><button class="btn" id="btn-pw">修改密码</button></div>
+          <div class="form-item"><label>旧密码</label><input class="input" type="password" id="pw-old" autocomplete="current-password" ${state.demo ? 'disabled' : ''}></div>
+          <div class="form-item"><label>新密码（至少 8 位）</label><input class="input" type="password" id="pw-new" autocomplete="new-password" ${state.demo ? 'disabled' : ''}></div>
+          <div class="form-item" style="flex:0 0 auto;align-self:flex-end;"><button class="btn" id="btn-pw" ${state.demo ? 'disabled' : ''}>修改密码</button></div>
         </div>
       </div>
     </div>`
@@ -2377,6 +2388,7 @@ async function boot() {
     const st = await api('/auth/state')
     state.user = st.user
     state.needsSetup = st.needsSetup
+    state.demo = !!st.demo
   } catch {
     state.user = null
   }

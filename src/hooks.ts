@@ -10,7 +10,7 @@
  */
 import { getSettings } from './db'
 import type { Env, SettingsMap } from './types'
-import { excerpt } from './utils'
+import { excerpt, isDemo } from './utils'
 
 export interface HookContext {
   /** 异步事件的运行环境（页脚注入是同步渲染路径，没有 env） */
@@ -142,12 +142,14 @@ export function renderFooterHtml(settings: SettingsMap): string {
   return html
 }
 
-/** 事件广播公共件：遍历启用的插件逐个调 handler，任何失败都不影响调用方主流程 */
+/** 事件广播公共件：遍历启用的插件逐个调 handler，任何失败都不影响调用方主流程；
+ *  演示站不外发：体验者随手配置的 TG/webhook 不应让 demo Worker 对外发请求 */
 async function fireHook<P>(
   env: Env,
   pick: (plugin: ServerPlugin) => ((p: P, ctx: HookContext) => void | Promise<void>) | undefined,
   p: P
 ): Promise<void> {
+  if (isDemo(env)) return
   try {
     const settings = await getSettings(env.DB)
     const ctx: HookContext = { env, settings, base: (settings.siteUrl || '').replace(/\/+$/, '') }

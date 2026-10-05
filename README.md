@@ -125,6 +125,7 @@ npm run deploy
 npm install
 npm run db:init:local   # 初始化本地 D1（.wrangler/state，与线上互不影响）
 npm run dev             # http://127.0.0.1:8787
+npm run dev:demo        # 演示站本地预览（自动建表 + 播种一年仿真数据，见 docs/DEMO.md）
 npm run typecheck       # TypeScript 类型检查，提交前必须通过
 npm test                # 回归测试（tests/，30+ 用例），提交前必须通过
 npm run smoke           # 本地冒烟：起 wrangler dev 逐路由断言，改 SQL 拼接/渲染后必跑
@@ -165,6 +166,7 @@ bloghao/
 | [docs/API.md](docs/API.md) | API 参考：全部公开 / 管理接口 |
 | [docs/THEMES.md](docs/THEMES.md) | 主题开发指南：一套主题 = 七类页面（首页 / 文章 / 微博 / 友链 / 关于我 / 归档 / 留言板） |
 | [docs/PLUGINS.md](docs/PLUGINS.md) | 插件开发指南：编辑器插件 API 与内置「公众号采集」 |
+| [docs/DEMO.md](docs/DEMO.md) | **演示站指南**：跑一个预置一年数据、每 2 小时自动重置的在线体验站（与生产完全隔离） |
 | [docs/wechat-typography-spec.md](docs/wechat-typography-spec.md) | 微信排版规范落地对照 + 体检规则表 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 开发方向备忘：已调研未启动的功能方向（会员体系等）与待拍板决策 |
 

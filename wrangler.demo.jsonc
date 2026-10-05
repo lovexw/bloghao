@@ -1,0 +1,49 @@
+// 演示站（体验站）专用 Cloudflare 配置——与生产完全隔离的第二套资源，见 docs/DEMO.md
+//
+// 与生产 wrangler.jsonc 的区别：
+// 1. 独立 Worker 名 / D1 / R2（生产资源零接触，体验者的任何操作都落在这套 demo 资源上）
+// 2. vars.DEMO_MODE = "1"：启用播种 / 每 2 小时重置 / 演示守卫（改密码、闭站、外发通知均被禁）
+// 3. cron：每分钟定时发布扫描照旧；"23 */2 * * *" 是演示站数据重置；无备份 cron（demo 库无需备份）
+//
+// 部署三步（详见 docs/DEMO.md）：
+//   npx wrangler d1 create xwblog-demo-db      # 把输出的 database_id 填到下面
+//   npx wrangler r2 bucket create xwblog-demo-images
+//   npx wrangler deploy -c wrangler.demo.jsonc
+// 本地预览（无需建资源，自动播种到本地模拟库）：
+//   npm run dev:demo
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xwblog-demo",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // 主题 CSS 与 schema.sql 以文本打进 Worker（SQL 仅 demo 用于冷启动建表，见 src/demo.ts）；
+  // 同类型规则必须合并为一条，否则后面的规则会被 fallthrough 检查拒绝
+  "rules": [{ "type": "Text", "globs": ["**/*.css", "**/*.sql"] }],
+
+  // ⚠️ database_id 是占位符：执行 `wrangler d1 create xwblog-demo-db` 后替换为真实 id。
+  //    （本地 wrangler dev -c 用本地模拟库，不校验这个 id，可以直接跑）
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "xwblog-demo-db",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "xwblog-demo-images" }],
+
+  // "* * * * *" 每分钟定时发布扫描（演示站的「定时文章」到点真的会发布）；
+  // "23 */2 * * *" 每 2 小时清库重灌种子数据（src/demo.ts）
+  "triggers": { "crons": ["* * * * *", "23 */2 * * *"] },
+
+  // 演示站总开关：播种/重置、登录页公示演示账号、禁改密码、禁闭站、禁外发通知、noindex
+  "vars": { "DEMO_MODE": "1" },
+
+  "observability": { "enabled": true }
+}
