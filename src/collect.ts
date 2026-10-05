@@ -2,8 +2,10 @@
  * 公众号采集插件（服务端）
  *
  * POST /api/admin/collect/wechat { url }
- * 抓取 mp.weixin.qq.com 单篇图文 → 解析正文/标题/发布时间 →
+ * 抓取 mp.weixin.qq.com 单篇内容 → 解析正文/标题/发布时间 →
  * 配图与封面转存 R2 图床 → 生成一篇保留原发布时间的草稿。
+ * 支持两种内容：普通图文（js_content）与贴图/图片消息（item_show_type=8，
+ * 数据埋在内嵌 JS 里，见 parseImagePost）。
  * 编辑器里的「采集公众号文章」插件（public/plugins/wechat-collect.js）调用，
  * 草稿建好后由用户在编辑器中核对、修改，再手动发布。
  */
@@ -20,7 +22,8 @@ export const collectRoutes = new Hono<CollectEnv>()
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024 // 与手动上传一致
 const MAX_IMAGES = 30 // Workers 免费档单请求 50 个子请求，预留余量
-const MAX_HTML_BYTES = 900_000 // 文章接口上限 1MB，留余量
+const MAX_PAGE_BYTES = 5 * 1024 * 1024 // 抓取页面上限：贴图页（图片消息）内嵌 JS 数据可达 2-3MB
+const MAX_HTML_BYTES = 900_000 // 生成的草稿正文上限，与文章接口 1MB 上限留余量
 const FETCH_TIMEOUT_MS = 15_000 // 单次抓取（页面/图片）超时
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
@@ -123,7 +126,8 @@ function jsVar(html: string, name: string): string {
   )
 }
 
-function parseMeta(html: string): ArticleMeta {
+/** 导出仅为回归测试 */
+export function parseMeta(html: string): ArticleMeta {
   const title =
     tagText(match1(html, /<h1[^>]*id="activity-name"[^>]*>([\s\S]*?)<\/h1>/i)) ||
     tagText(match1(html, /<meta[^>]*property="og:title"[^>]*content="([^"]*)"/i)) ||
@@ -137,7 +141,7 @@ function parseMeta(html: string): ArticleMeta {
       match1(html, /<meta[^>]*property="og:image"[^>]*content="([^"]*)"/i)
   )
   let publishedAt: number | null = null
-  const ct = match1(html, /\bct\s*=\s*"(\d{9,13})"/)
+  const ct = match1(html, /\bct\s*=\s*['"](\d{9,13})['"]/) // 贴图页是 window.ct = '秒'，普通图文是 var ct = "…"
   if (ct) {
     publishedAt = ct.length > 10 ? Number(ct) : Number(ct) * 1000
   } else {
@@ -150,6 +154,103 @@ function parseMeta(html: string): ArticleMeta {
     cover,
     publishedAt: publishedAt !== null && Number.isFinite(publishedAt) ? publishedAt : null,
   }
+}
+
+/* ---------------- 贴图（图片消息，item_show_type=8） ---------------- */
+
+export interface ImagePostData {
+  title: string
+  account: string
+  images: string[]
+  text: string
+}
+
+/** JS 字符串字面量反转义：\xHH、\uHHHH、\n\r\t 等与 \'\"\\；未知转义保留原字符 */
+function unescapeJsString(s: string): string {
+  return s.replace(/\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|n|r|t|b|f|v|0|['"\\])/g, (_, esc: string) => {
+    if (esc[0] === 'x' || esc[0] === 'u') {
+      const code = parseInt(esc.slice(1), 16)
+      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : ''
+    }
+    const map: Record<string, string> = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', '0': '\0' }
+    return Object.prototype.hasOwnProperty.call(map, esc) ? map[esc] : esc
+  })
+}
+
+/**
+ * 解析贴图类（图片消息）页面。这类页面 DOM 里没有 js_content，图片列表
+ * picture_page_info_list 和全文（window.desc / content_noencode）都埋在内嵌
+ * JS 数据里，由前端脚本填充。不是贴图页返回 null（视频号/语音等保持原报错）。
+ * 导出仅为回归测试。
+ */
+export function parseImagePost(html: string): ImagePostData | null {
+  const isImagePost =
+    /window\.item_show_type\s*=\s*['"]8['"]/.test(html) || /picture_page_info_list\s*:\s*\[/.test(html)
+  if (!isImagePost) return null
+
+  // 图片：扫第一份 picture_page_info_list 数组。跳过字符串字面量后按 {} 深度定位，
+  // 只收条目对象顶层（深度为 1）的 cdn_url——share_cover / watermark_info 等
+  // 嵌套对象里的分享图、水印图不是正文图，必须排除
+  const images: string[] = []
+  const listStart = html.search(/picture_page_info_list\s*:\s*\[/)
+  if (listStart !== -1) {
+    let i = html.indexOf('[', listStart) + 1 // 从开括号之后起扫，arrDepth 初值 1 对应它
+    let arrDepth = 1
+    let objDepth = 0
+    while (i !== -1 && i < html.length && arrDepth > 0) {
+      const ch = html[i]
+      if (ch === "'") {
+        const end = html.indexOf("'", i + 1)
+        // 跳过字符串值（防 URL / crop_info 片段里的括号干扰深度计数），恢复点在闭引号之后
+        i = end === -1 ? html.length : end + 1
+        continue
+      }
+      if (ch === '[') arrDepth++
+      else if (ch === ']') arrDepth--
+      else if (ch === '{') objDepth++
+      else if (ch === '}') objDepth--
+      else if (objDepth === 1 && ch === 'c' && html.startsWith('cdn_url', i)) {
+        const m = /^cdn_url\s*:\s*'([^']+)'/.exec(html.slice(i, i + 700))
+        if (m) images.push(decodeEntities(m[1]))
+      }
+      i++
+    }
+  }
+
+  const title =
+    tagText(match1(html, /window\.msg_title\s*=\s*(?:window\.title\s*=\s*)?['"]([^'"\n]*)['"]/)) ||
+    tagText(match1(html, /<meta[^>]*property="og:title"[^>]*content="([^"]*)"/i))
+  const account =
+    tagText(match1(html, /nick_name:\s*['"]([^'"\n]*)['"]/)) ||
+    tagText(match1(html, /<meta[^>]*name="author"[^>]*content="([^"]*)"/i)) ||
+    tagText(match1(html, /window\.name\s*=\s*"([^"\n]*)"/))
+
+  // 全文：window.desc / content_noencode 是 JS 字符串（换行是 \x0a 转义），
+  // 同一数据可能内嵌多份，取解码后最长的一份；meta description 带同样的 \x0a
+  // 字面量，实体解码后按 JS 字符串反转义兜底
+  const candidates: string[] = []
+  for (const m of html.matchAll(/window\.desc\s*=\s*"((?:[^"\\\n]|\\.)*)"/g)) candidates.push(unescapeJsString(m[1]))
+  for (const m of html.matchAll(/content_noencode:\s*(['"])((?:[^\\\n]|\\.)*)\1/g)) candidates.push(unescapeJsString(m[2]))
+  candidates.push(
+    unescapeJsString(decodeEntities(match1(html, /<meta[^>]*name="description"[^>]*content="([^"]*)"/i))),
+    unescapeJsString(decodeEntities(match1(html, /<meta[^>]*property="og:description"[^>]*content="([^"]*)"/i)))
+  )
+  const text = candidates.reduce((a, b) => (b.length > a.length ? b : a), '').trim()
+
+  if (!images.length && !text) return null
+  return { title, account, images, text }
+}
+
+/** 贴图 → 有序块：沿用原页面版式，图片在前，文字按空行分段在后（段内单换行由 renderHtml 转 <br>） */
+export function imagePostBlocks(post: ImagePostData): Block[] {
+  return [
+    ...post.images.map((src) => ({ type: 'img' as const, src })),
+    ...post.text
+      .split(/\n\s*\n+/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((text) => ({ type: 'text' as const, text })),
+  ]
 }
 
 /* ---------------- 正文分块 ---------------- */
@@ -296,17 +397,22 @@ collectRoutes.post('/wechat', async (c) => {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
     if (!res.ok) return c.json({ error: `抓取失败（HTTP ${res.status}）` }, 502)
-    // 声明长度超限直接放弃（不回 Content-Length 的响应靠 MAX_HTML_BYTES 解析后兜底）
-    if (Number(res.headers.get('content-length') || 0) > MAX_HTML_BYTES) {
+    // 声明长度超限直接放弃（不回 Content-Length 的响应靠读完后按字符数兜底：
+    // 中文字符数恒小于 UTF-8 字节数，ASCII 两者相等，故 chars > 上限必然 bytes > 上限）
+    if (Number(res.headers.get('content-length') || 0) > MAX_PAGE_BYTES) {
       return c.json({ error: '页面过大，抓取失败' }, 502)
     }
     html = await res.text()
+    if (html.length > MAX_PAGE_BYTES) {
+      return c.json({ error: '页面过大，抓取失败' }, 502)
+    }
   } catch {
     return c.json({ error: '网络错误，抓取失败' }, 502)
   }
 
   const articleBody = findArticleBody(html)
-  if (!articleBody) {
+  const imagePost = articleBody ? null : parseImagePost(html)
+  if (!articleBody && !imagePost) {
     if (/环境异常|操作频繁|完成验证|安全验证/.test(html)) {
       return c.json({ error: '微信要求安全验证，请稍后再试，或换一个网络环境' }, 502)
     }
@@ -317,7 +423,13 @@ collectRoutes.post('/wechat', async (c) => {
   }
 
   const meta = parseMeta(html)
-  const blocks = parseBlocks(articleBody)
+  if (imagePost) {
+    if (imagePost.title) meta.title = imagePost.title
+    if (imagePost.account) meta.account = imagePost.account
+    if (!meta.cover && imagePost.images[0]) meta.cover = imagePost.images[0]
+  }
+  // imagePost 为空时 articleBody 必非空（!articleBody && !imagePost 已提前返回）
+  const blocks: Block[] = imagePost ? imagePostBlocks(imagePost) : parseBlocks(articleBody!)
 
   // 配图转存（按出现顺序，去重，限量）
   const imgUrls = [
@@ -344,7 +456,8 @@ collectRoutes.post('/wechat', async (c) => {
   }
 
   const content = sanitizeHtml(renderHtml(blocks, srcMap))
-  if (!content.replace(/<[^>]+>/g, '').trim()) {
+  // 有转存成功的配图就算非空（贴图可能只有图没有文字）
+  if (!/<img\b/i.test(content) && !content.replace(/<[^>]+>/g, '').trim()) {
     return c.json({ error: '正文为空，无法采集' }, 422)
   }
   if (new TextEncoder().encode(content).length > MAX_HTML_BYTES) {

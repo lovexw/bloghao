@@ -48,7 +48,7 @@ function openCollectDialog(ctx) {
     '<div class="auth-field"><label>文章链接</label>' +
     '<input class="input" id="wc-url" placeholder="https://mp.weixin.qq.com/s/…" autocapitalize="off" autocorrect="off" spellcheck="false"></div>' +
     '<div style="font-size:12px;color:var(--sub);margin-top:10px;line-height:1.8;">' +
-    '正文与配图会自动转存并生成草稿（保留原文发布时间），公众号内嵌视频暂不支持。<br>' +
+    '支持图文与贴图（图片消息），正文与配图会自动转存并生成草稿（保留原文发布时间），公众号内嵌视频暂不支持。<br>' +
     '采集完成后请在编辑器里核对，确认无误再发布。</div>' +
     '<div id="wc-status" style="display:none;margin-top:12px;font-size:13px;line-height:1.7;"></div>' +
     '</div>' +
