@@ -1244,6 +1244,93 @@ export async function mountEditor(root, postId, opts = {}) {
     }
   })
 
+  /* ---------- Markdown 快捷输入（富文本模式）：行首标记 + 空格 自动转块级格式 ----------
+   * `> `→引用，`# `/`## `→H2（本系统正文最高层级），`### `→H3，`#### `→H4，
+   * `- `/`* `→无序列表，`1. `→有序列表；只有 ``` / --- / *** 的段落回车 → 代码块 / 分割线。
+   * 仅对普通段落生效（标题/引用/代码块/列表内不触发），输入法组词的空格回车不触发；
+   * 删除标记与转格式都走 execCommand，⌘Z 可逐步撤销。 */
+  const MD_BLOCK_TRIGGERS = [
+    [/^#{1,2}$/, 'h2'],
+    [/^#{3}$/, 'h3'],
+    [/^#{4}$/, 'h4'],
+    [/^>$/, 'blockquote'],
+    [/^[-*]$/, 'ul'],
+    [/^\d{1,3}\.$/, 'ol'],
+  ]
+  editor.addEventListener('keydown', (e) => {
+    if (mdMode) return
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+    // 输入法组词的空格/回车（确认候选词）不触发
+    if (e.isComposing || e.keyCode === 229) return
+    const sel = window.getSelection()
+    if (!sel || !sel.rangeCount || !sel.isCollapsed) return
+    const block = currentBlock()
+    // 只在普通段落里触发：标题/引用/代码块/列表里继续输入原字符
+    if (!block || block.tagName !== 'P') return
+
+    if (e.key === ' ') {
+      const caret = sel.getRangeAt(0)
+      const pre = document.createRange()
+      pre.selectNodeContents(block)
+      pre.setEnd(caret.startContainer, caret.startOffset)
+      const prefix = pre.toString()
+      const hit = MD_BLOCK_TRIGGERS.find(([re]) => re.test(prefix))
+      if (!hit) return
+      e.preventDefault()
+      if (hit[1] === 'ul' || hit[1] === 'ol') {
+        // 列表直接建 DOM：execCommand 转列表各浏览器行为不一（WebKit 把 <ul> 嵌进 <p>，
+        // 删除标记时还会带出样式 span），纯 DOM 构造两端一致
+        const r = document.createRange()
+        r.setStart(block, 0)
+        r.setEnd(caret.startContainer, caret.startOffset)
+        r.deleteContents() // 删掉行首标记
+        const list = document.createElement(hit[1])
+        const li = document.createElement('li')
+        if (block.textContent.trim()) {
+          // 标记后面还有内容：一并挪进列表项
+          while (block.firstChild) li.appendChild(block.firstChild)
+        } else {
+          li.appendChild(document.createElement('br'))
+        }
+        list.appendChild(li)
+        block.replaceWith(list)
+        const selNow = window.getSelection()
+        const r2 = document.createRange()
+        r2.setStart(li, 0)
+        r2.collapse(true)
+        selNow.removeAllRanges()
+        selNow.addRange(r2)
+      } else {
+        // 引用/标题：先删行首标记再 formatBlock（空段落也能整块替换）
+        const r = document.createRange()
+        r.setStart(block, 0)
+        r.setEnd(caret.startContainer, caret.startOffset)
+        sel.removeAllRanges()
+        sel.addRange(r)
+        document.execCommand('delete')
+        document.execCommand('formatBlock', false, hit[1])
+      }
+      markDirty()
+      refreshToolbarState()
+      return
+    }
+
+    if (e.key === 'Enter') {
+      const text = block.textContent.trim()
+      if (text !== '```' && text !== '---' && text !== '***') return
+      e.preventDefault()
+      // 不走 insertHTML 助手——它会 restoreSelection 恢复旧选区，这里要用刚设好的选区整段替换
+      const r = document.createRange()
+      r.selectNodeContents(block)
+      sel.removeAllRanges()
+      sel.addRange(r)
+      document.execCommand('insertHTML', false, text === '```' ? '<pre><code>// 在这里写代码</code></pre><p><br></p>' : '<hr><p><br></p>')
+      markDirty()
+      updateCount()
+      refreshToolbarState()
+    }
+  })
+
   // 离开提醒（关闭标签页/刷新时浏览器兜底确认；SPA 内部路由由 flushEditorSave 兜底）
   const beforeUnload = (e) => {
     if (dirty) {

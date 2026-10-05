@@ -17,7 +17,7 @@
 | A3 | ✅ JSON-LD 文章结构化数据（2026-10 完成） | 文章页自动输出 schema.org BlogPosting（北京时间 +08:00 口径、image 与 og:image 同源三级兜底、tags→keywords、commentCount）；零配置，render.ts `articleJsonLd()` |
 | A4 | ✅ WebP 自动转换（2026-10 完成） | 上传链路（后台 editor.js 与前台 site.js 两处 compressImage 同步改）超过阈值时优先转 WebP（质量 0.82，透明不丢），旧浏览器 canvas 编码不了 WebP 时回退原 JPEG/PNG 口径；产物更大则保留原图。实测 2.3MB 透明 PNG → 100KB |
 | A5 | 服务端插件钩子 + 官方示例插件 | 生态地基，主题市场（B8）的前置。起步 2–3 个示例：发布同步 TG 频道、评论 webhook、页脚注入 |
-| A6 | 编辑器 Markdown 快捷输入 | `> ` 自动转引用等，写作核心体验 |
+| A6 | ✅ 编辑器 Markdown 快捷输入（2026-10 完成） | 富文本模式行首标记 + 空格自动转块级格式：`> ` 引用、`#`/`## ` H2、`### ` H3、`#### ` H4、`- `/`* ` 列表、`1. ` 有序列表；``` / `---` 段落回车转代码块/分割线；仅普通段落触发、输入法组词不误触；列表走纯 DOM 构造（WebKit 的 execCommand 会产出 `<p><ul>` 非法嵌套） |
 | A7 | ✅ 一键部署（2026-10 完成） | README / 官网 / DEPLOY.md 加 Deploy to Cloudflare 按钮：fork 副本 → 自动开通 D1/R2 并回填配置 → Workers Builds 接管 push 自动部署；命令行部署降为方式二，deploy.yml 无凭据守卫已覆盖副本场景 |
 | A8 | 复杂度预算原则写入 AGENTS.md | 保持「约 10 个后端文件、无构建链」是产品定位本身：新功能若让新人一个下午读不完后端，就做成插件而不是塞进内核 |
 | A9 | ✅ 站点状态开关：一键灰度 + 一键闭站（2026-10 完成） | 灰度 = `<html>` filter 去色（render.ts，五套主题无 fixed 元素无副作用）；闭站 = Worker 中间件全站 503 + Retry-After（保搜索收录），后台 / 登录 / 图床白名单放行、已登录管理员可预览，逻辑在 src/closed.ts；后台「设置 → 站点状态」，用法见 GUIDE |
