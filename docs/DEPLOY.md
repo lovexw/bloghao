@@ -1,8 +1,8 @@
-# xwblog 完整部署教程
+# 博客号 BlogHao 完整部署教程
 
 从零开始，把这套博客部署到 Cloudflare（全程可使用免费套餐）。
 
-> 本仓库（xwblog）线上实例：**https://blog.xiaowuleyi.com**（Worker 名 `xwblog`，数据库 `xwblog-db`，图床桶 `xwblog-images`）。给自己部署一套时，把下面命令里的资源名换成你自己的即可。
+> 在线示例：**https://blog.xiaowuleyi.com**（作者实例；Worker 名 `xwblog`，数据库 `xwblog-db`，图床桶 `xwblog-images`，与仓库内 wrangler.jsonc 一致）。给自己部署一套时，资源名可以原样沿用，也可以自行替换——与你的 wrangler.jsonc 保持一致即可。
 
 ## 0. 准备工作
 
@@ -11,7 +11,7 @@
 - 本项目代码（clone 或 fork 后下载）
 
 ```bash
-cd bloghao-xwblog
+cd bloghao-blog
 npm install
 npx wrangler login   # 会打开浏览器授权，登录你的 Cloudflare 账号
 npx wrangler whoami  # 确认登录成功
@@ -119,9 +119,9 @@ workers.dev 域名在国内部分地区不稳定，正式使用建议绑一个�
 ```bash
 git init
 git add .
-git commit -m "feat: xwblog 初始化"
+git commit -m "feat: bloghao 初始化"
 # GitHub 上新建空仓库后：
-git remote add origin git@github.com:<你>/bloghao-xwblog.git
+git remote add origin git@github.com:<你>/bloghao-blog.git
 git branch -M main
 git push -u origin main
 ```

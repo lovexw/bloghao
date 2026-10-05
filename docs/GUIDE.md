@@ -2,7 +2,7 @@
 
 > 面向站长本人：从第一次进后台，到每天顺手写文章、发随手记。部署相关问题见 [DEPLOY.md](DEPLOY.md)。
 >
-> 本站地址：**https://blog.xiaowuleyi.com** · 后台：**https://blog.xiaowuleyi.com/admin/**
+> 在线示例：**https://blog.xiaowuleyi.com** · 后台：**https://blog.xiaowuleyi.com/admin/**
 
 ## 目录
 

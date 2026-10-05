@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="public/favicon.svg" width="76" alt="xwblog">
+<img src="public/favicon.svg" width="76" alt="博客号 BlogHao">
 
-# xwblog · 小吴乐意
+# 博客号 BlogHao
 
 **微信有公众号，你有博客号。** 写文章、发随手记、交朋友 · 全套跑在 Cloudflare 上 · 免费额度即可长期运行
 
-**线上地址：[https://blog.xiaowuleyi.com](https://blog.xiaowuleyi.com)**
+**在线示例：[https://blog.xiaowuleyi.com](https://blog.xiaowuleyi.com)**（作者小吴乐意自己的博客，由本系统驱动）
 
 [![License](https://img.shields.io/badge/License-MIT-07c160) ![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers%20%C2%B7%20D1%20%C2%B7%20R2-F38020) ![No Framework](https://img.shields.io/badge/%E5%89%8D%E5%90%8E%E7%AB%AF-%E6%97%A0%E6%A1%86%E6%9E%B6%E4%BE%9D%E8%B5%96-1a1a1a)](https://github.com/lovexw/bloghao-blog)
 
@@ -14,9 +14,9 @@
 
 ---
 
-本仓库是 [博客号 BlogHao](https://github.com/lovexw/bloghao-blog)（一款完全运行在 Cloudflare 上的开源博客引擎）的**二次开发版本**：网页由 Workers 边缘渲染，文字存进 D1，图片传进 R2——服务器、运维、账单，统统不存在。写作后台对标微信公众号编辑器，截图 `⌘V` 粘贴即自动上云。
+博客号（BlogHao）是一款完全运行在 Cloudflare 上的开源博客引擎：网页由 Workers 边缘渲染，文字存进 D1，图片传进 R2——服务器、运维、账单，统统不存在。写作后台对标微信公众号编辑器，截图 `⌘V` 粘贴即自动上云。
 
-在原版「写文章」的基础上，这一版按自己的使用习惯扩展了一整套**日常记录与互动**能力：短内容的「微博 / 随手记」、楼中楼评论、友情链接、首页搜索与排序、公众号文章一键采集等，四套主题全部适配，手机端同样完整可用。
+2.0 在「写文章」的基础上，整合了作者博客沉淀的一整套**日常记录与互动**能力：短内容的「微博 / 随手记」、楼中楼评论、友情链接、首页搜索与排序、公众号文章一键采集等，四套主题全部适配，手机端同样完整可用。
 
 ## ✨ 特性一览
 
@@ -68,14 +68,14 @@
 
 顶部导航（四主题一致）：**首页 · 微博 · 归档 · 留言板 · 分类话题（折叠菜单）· 友情链接 · 关于我 · 随机**。
 
-## 🚀 部署自己的副本
+## 🚀 部署自己的博客号
 
 > 前置：Node.js 18+、一个 Cloudflare 账号。完整版教程（含自定义域名、备份、FAQ）见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
 ```bash
 # 1. 克隆并安装
-git clone https://github.com/lovexw/bloghao-xwblog.git
-cd bloghao-xwblog && npm install
+git clone https://github.com/lovexw/bloghao-blog.git
+cd bloghao-blog && npm install
 npx wrangler login
 
 # 2. 创建资源（名称可自定，与 wrangler.jsonc 保持一致）
@@ -89,13 +89,13 @@ npx wrangler d1 execute DB --remote --file schema.sql
 npm run deploy
 ```
 
-打开 `https://<worker名>.<你的子域>.workers.dev/admin/`，**首次进入即创建管理员**，欢迎文章已就位，删掉它开始写你自己的第一篇吧。绑定自定义域名（如本站的 `blog.xiaowuleyi.com`）后，记得把「设置 → 站点链接」改成新域名——RSS / sitemap 里的绝对链接都用它。
+打开 `https://<worker名>.<你的子域>.workers.dev/admin/`，**首次进入即创建管理员**，欢迎文章已就位，删掉它开始写你自己的第一篇吧。绑定自定义域名（如示例站的 `blog.xiaowuleyi.com`）后，记得把「设置 → 站点链接」改成新域名——RSS / sitemap 里的绝对链接都用它。
 
 <details>
 <summary><b>推上 GitHub，开启 push 自动部署</b></summary>
 
 ```bash
-git remote add origin git@github.com:<你>/bloghao-xwblog.git
+git remote add origin git@github.com:<你>/bloghao-blog.git
 git push -u origin main
 ```
 
@@ -117,7 +117,7 @@ npm run smoke           # 本地冒烟：起 wrangler dev 逐路由断言，改 
 ## 📦 目录结构
 
 ```
-bloghao-xwblog/
+bloghao-blog/
 ├── src/                # Cloudflare Worker（后端 + SSR + 主题）
 │   ├── index.ts        # 入口与路由（页面、图床、RSS、随机阅读、Cron 调度）
 │   ├── api.ts          # 全部 JSON API（文章/微博/友链/分类/评论/设置…）
@@ -135,7 +135,7 @@ bloghao-xwblog/
 ├── tests/              # 回归测试（npm test，CI 强制执行）
 ├── scripts/            # smoke.mjs 本地冒烟；emlog-migrate 一次性迁移工具（留档）
 ├── migration-memos/    # Memos 旧站 → 微博 的一次性迁移工具（已完成，留档）
-├── website/            # 上游「博客号」官网静态页（与本站运行无关）
+├── website/            # 「博客号」官网静态页（bloghao.pages.dev，与本站运行无关）
 ├── docs/               # 全部文档
 └── schema.sql          # D1 表结构（幂等）
 ```
@@ -157,7 +157,7 @@ bloghao-xwblog/
 <details>
 <summary><b>workers.dev 域名访问慢或不通？</b></summary>
 
-绑定自己的域名：Cloudflare 面板 → Workers & Pages → `xwblog` → Domains & Routes → Add Custom domain（本站即 `blog.xiaowuleyi.com`）。绑定后把「设置 → 站点链接」改成新域名（影响 RSS / sitemap 绝对链接）。
+绑定自己的域名：Cloudflare 面板 → Workers & Pages → 你的 Worker → Domains & Routes → Add Custom domain（示例站即 `blog.xiaowuleyi.com`）。绑定后把「设置 → 站点链接」改成新域名（影响 RSS / sitemap 绝对链接）。
 </details>
 
 <details>
@@ -180,7 +180,7 @@ Cloudflare 免费套餐：Workers 每天十万次请求、D1 五百万行读、R
 <summary><b>如何升级？</b></summary>
 
 ```bash
-git pull          # 同步上游：git pull upstream main（上游为 lovexw/bloghao-blog）
+git pull
 npm install
 npm run deploy    # schema 有更新时再执行一次 npx wrangler d1 execute DB --remote --file schema.sql（幂等）
 ```
@@ -197,8 +197,8 @@ npm run deploy    # schema 有更新时再执行一次 npx wrangler d1 execute D
 
 ## 🤝 相关仓库
 
-- 上游原项目：[lovexw/bloghao-blog](https://github.com/lovexw/bloghao-blog)（博客号 BlogHao 官网 [bloghao.pages.dev](https://bloghao.pages.dev)）——本仓库的功能改进欢迎给上游提 Issue / PR
-- 本仓库（xwblog）只承载小吴乐意博客自身的二次开发，提交信息沿用 `theme:` / `mobile:` / `feat:` / `docs:` 前缀的中文风格
+- **官方仓库**：[lovexw/bloghao-blog](https://github.com/lovexw/bloghao-blog)（本仓库）——2.0 起整合作者实例线的全部增强，欢迎提 Issue / PR；官网源码在仓库内 `website/` 目录（[bloghao.pages.dev](https://bloghao.pages.dev)）
+- **作者实例**：[lovexw/bloghao-xwblog](https://github.com/lovexw/bloghao-xwblog)——[blog.xiaowuleyi.com](https://blog.xiaowuleyi.com) 的源仓库，与官方仓库保持同源，提交信息沿用 `theme:` / `mobile:` / `feat:` / `docs:` 前缀的中文风格
 
 ## 📄 License
 

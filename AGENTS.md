@@ -52,10 +52,11 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 
 ## Git 约定
 
-- 本工作区**只负责这一个仓库**：origin = `github.com/lovexw/bloghao-xwblog`，不做其他项目/仓库的操作
-- 上游原项目：`github.com/lovexw/bloghao-blog`（remote `upstream`，可用于同步上游更新）
+- 本工作区同时服务**两个同源仓库**（2.0 起内容完全一致）：origin = `github.com/lovexw/bloghao-xwblog`（作者实例/开发仓库），upstream = `github.com/lovexw/bloghao-blog`（官方发布仓库，对外开放部署）。不做这两个仓库之外的操作
+- 发布流程：提交后**双推**——`git push origin main && git push upstream main`，两仓库始终指向同一提交（同分支同内容，两仓库各自维护 README 会造成同步冲突，故统一一份官方口吻文档）
+- README / docs / 官网以「博客号 BlogHao」官方项目口吻书写，对两个仓库都自洽；线上地址 blog.xiaowuleyi.com 在文档中一律表述为「在线示例」
+- 旧「同步上游」流程已废止：bloghao-blog 不再独立演进，**不要**从 upstream pull 覆盖本地
 - 提交信息沿用 `theme:` / `mobile:` / `docs:` / `brand:` 等前缀的中文风格
-- 推送即 `git push origin main`
 
 ## 全站移动端适配（长期约定）
 
