@@ -7,6 +7,7 @@
  * - 本地验证：wrangler dev --test-scheduled 后 curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"
  */
 import { getSettings } from './db'
+import { firePostPublished } from './hooks'
 import { notifyAdminText } from './external'
 import type { Env } from './types'
 
@@ -14,6 +15,7 @@ interface DuePost {
   id: number
   slug: string
   title: string
+  summary: string
   publish_at: number
 }
 
@@ -27,7 +29,7 @@ export async function runScheduledPublish(env: Env): Promise<ScheduleResult> {
   const result: ScheduleResult = { published: 0, errors: [] }
   try {
     const { results } = await env.DB.prepare(
-      `SELECT id, slug, title, publish_at FROM posts
+      `SELECT id, slug, title, summary, publish_at FROM posts
        WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= ?
        LIMIT 20`
     )
@@ -50,6 +52,11 @@ export async function runScheduledPublish(env: Env): Promise<ScheduleResult> {
       } catch (e) {
         result.errors.push(`${p.title}: ${e instanceof Error ? e.message : String(e)}`)
       }
+    }
+    // 广播发布事件给服务端插件（发布同步 TG 频道等，见 src/hooks.ts）：与手动发布同一事件
+    for (const p of results ?? []) {
+      if (!publishedIds.has(p.id)) continue
+      await firePostPublished(env, { slug: p.slug, title: p.title, summary: p.summary, via: 'scheduler' })
     }
     // 汇总通知一条：发布了 0 篇不打扰；失败尽量报出来
     if (result.published > 0 || result.errors.length) {

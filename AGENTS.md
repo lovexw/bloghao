@@ -80,7 +80,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 ## 结构速查
 
 - `src/themes/`：五套主题 + `registry.ts` 注册表，新主题见 docs/THEMES.md；`wechat` 为默认主题
-- `src/pages.ts` 渲染公开页（含独立页面 `/page/:slug`，pages 表承载，`about` 页渲染在 `/about`）；`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）；`src/export.ts` + `src/zip.ts` + `src/html-md.ts` 是数据导出（Markdown 包流式打 zip、WXR）；`src/closed.ts` 是一键闭站 / 灰度（settings `siteClosed` / `siteGrayscale`，独立成模块是为了 Node 测试能导入——index.ts 会级联加载主题 CSS）
+- `src/pages.ts` 渲染公开页（含独立页面 `/page/:slug`，pages 表承载，`about` 页渲染在 `/about`）；`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）；`src/export.ts` + `src/zip.ts` + `src/html-md.ts` 是数据导出（Markdown 包流式打 zip、WXR）；`src/closed.ts` 是一键闭站 / 灰度（settings `siteClosed` / `siteGrayscale`，独立成模块是为了 Node 测试能导入——index.ts 会级联加载主题 CSS）；`src/hooks.ts` 是服务端插件钩子（总线 + 注册表 + 官方示例三合一，发布/评论事件与页脚注入，插件失败必须吞掉不影响主流程，启停存 settings `serverPluginsDisabled`）
 - `public/admin/`：后台（app.js 路由与页面——侧栏菜单看顶部 `MENU` 配置数组，editor.js 写作编辑器，admin.css 样式）；「皮肤 / 插件」是独立页面（`#/appearance`、`#/plugins`），市场目录在 `public/market/catalog.json`
 - `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao 的 issues；官网 UI 改动同样过 390px 移动端检查
 - 编辑器内容样式（`.ed-editor`）与文章页（`.rich`）需保持视觉一致——改一处记得镜像另一处

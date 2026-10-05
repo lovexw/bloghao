@@ -49,6 +49,7 @@ import { mdToHtml } from './markdown'
 import { collectRoutes } from './collect'
 import { exportRoutes } from './export'
 import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes } from './external'
+import { fireCommentCreated, firePostPublished, listServerPlugins } from './hooks'
 import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
@@ -251,6 +252,9 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
   }
 }
 
+// 服务端插件列表（后台「插件」页展示与启停，见 src/hooks.ts）
+api.get('/admin/server-plugins', (c) => c.json({ plugins: listServerPlugins() }))
+
 api.get('/admin/posts', async (c) => {
   const statusParam = c.req.query('status')
   const status = statusParam === 'published' || statusParam === 'draft' || statusParam === 'scheduled' ? statusParam : 'all'
@@ -306,6 +310,12 @@ api.post('/admin/posts', async (c) => {
   if (p.categoryId != null && row) {
     const cat = await getCategoryById(c.env.DB, p.categoryId)
     if (cat) await setPostCategory(c.env.DB, row.id, cat.id)
+  }
+  // 广播发布事件（服务端插件钩子，见 src/hooks.ts）：新建即发布也算跃迁
+  if (p.status === 'published' && row) {
+    c.executionCtx.waitUntil(
+      firePostPublished(c.env, { slug: row.slug, title: row.title, summary: row.summary, via: 'admin' })
+    )
   }
   const categoryId = row ? await getPostCategoryId(c.env.DB, row.id) : null
   return c.json({ ok: true, post: row ? { ...row, tagList: parseTags(row), categoryId } : null })
@@ -363,6 +373,12 @@ api.put('/admin/posts/:id', async (c) => {
     await setPostCategory(c.env.DB, id, null)
   }
   const categoryId = await getPostCategoryId(c.env.DB, id)
+  // 广播发布事件：只在草稿/定时 → 已发布的跃迁时触发，重复编辑已发布文章不重推
+  if (p.status === 'published' && existing.status !== 'published' && row) {
+    c.executionCtx.waitUntil(
+      firePostPublished(c.env, { slug: row.slug, title: row.title, summary: row.summary, via: 'admin' })
+    )
+  }
   return c.json({ ok: true, post: row ? { ...row, tagList: parseTags(row), categoryId } : null })
 })
 
@@ -1059,6 +1075,27 @@ api.put('/admin/settings', async (c) => {
       patch[key] = cleaned
       continue
     }
+    if (key === 'serverPluginsDisabled') {
+      const cleaned = cleanDisabledPlugins(v)
+      if (cleaned === null) return jsonError('插件 ID 只能包含字母、数字、_ 或 -')
+      patch[key] = cleaned
+      continue
+    }
+    if (key === 'tgChannelChatId') {
+      patch[key] = v.trim().slice(0, 100)
+      continue
+    }
+    if (key === 'commentWebhookUrl') {
+      // 只接受 http(s) 完整地址（webhook 目标），其余清空
+      const u = v.trim().slice(0, 500)
+      patch[key] = /^https?:\/\//i.test(u) ? u : ''
+      continue
+    }
+    if (key === 'footerHtmlCode') {
+      // 站长自定义页脚 HTML（挂件/徽章），与主题 CSS 同信任级：仅管理员可写，渲染时不转义
+      patch[key] = v.slice(0, 5000)
+      continue
+    }
     if (key === 'notifyNewComment' || key === 'rssFullText' || key === 'backupEnabled' || key === 'statsEnabled') {
       patch[key] = v === '1' || v === 'true' ? '1' : '0'
       continue
@@ -1214,6 +1251,17 @@ api.post('/public/comments', async (c) => {
       path: `/post/${encodeURIComponent(post.slug)}#comments`,
     })
   )
+  // 广播评论事件给服务端插件（评论 webhook 等，见 src/hooks.ts）
+  c.executionCtx.waitUntil(
+    fireCommentCreated(c.env, {
+      kind: 'post',
+      context: post.title,
+      nickname,
+      content,
+      url: `${(settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')}/post/${encodeURIComponent(post.slug)}#comments`,
+      pending,
+    })
+  )
   return c.json({ ok: true, pending })
 })
 
@@ -1272,6 +1320,15 @@ api.post('/public/guestbook', async (c) => {
       pending,
       siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
       path: '/guestbook',
+    })
+  )
+  c.executionCtx.waitUntil(
+    fireCommentCreated(c.env, {
+      kind: 'guestbook',
+      nickname,
+      content,
+      url: `${(settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')}/guestbook`,
+      pending,
     })
   )
   return c.json({ ok: true, pending })
@@ -1367,6 +1424,16 @@ api.post('/public/weibo/:id/comments', async (c) => {
       pending,
       siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
       path: `/weibo?wb=${id}#wb-${id}`,
+    })
+  )
+  c.executionCtx.waitUntil(
+    fireCommentCreated(c.env, {
+      kind: 'weibo',
+      context: excerpt(wb.content, 40),
+      nickname,
+      content,
+      url: `${(settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')}/weibo?wb=${id}#wb-${id}`,
+      pending,
     })
   )
   return c.json({ ok: true, pending })

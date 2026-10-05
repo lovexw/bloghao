@@ -148,6 +148,8 @@ try {
   // 数据导出（roadmap A1）：登录中间件保护之下，未登录必须 401
   await check('GET', '/api/admin/export/markdown', 401)
   await check('GET', '/api/admin/export/wxr', 401)
+  // 服务端插件（roadmap A5）：列表接口同样在鉴权保护之下
+  await check('GET', '/api/admin/server-plugins', 401)
 
   // 回归守卫：打点真的落进了 visit_log（waitUntil 异步写，稍等一拍再用 d1 查）——
   // 防止「接口 200 但 INSERT 静默失败」的假绿

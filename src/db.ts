@@ -30,6 +30,12 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   statsEnabled: '1',
   // 编辑器插件停用名单（后台「插件」页；逗号分隔的 manifest id，空 = 全部启用）
   pluginsDisabled: '',
+  // 服务端插件停用名单（后台「插件」页；逗号分隔的插件 id，空 = 全部启用，见 src/hooks.ts）
+  serverPluginsDisabled: '',
+  // 服务端插件配置：发布同步 TG 频道的频道 ID / 评论 Webhook 地址 / 页脚自定义 HTML（src/hooks.ts）
+  tgChannelChatId: '',
+  commentWebhookUrl: '',
+  footerHtmlCode: '',
   // 一键灰度（哀悼/纪念模式）：所有公开页 CSS 去色，见 src/render.ts page()
   siteGrayscale: '0',
   // 一键闭站：公开页面与公开 API 全部 503，仅后台/登录/图床可用（src/index.ts 闭站中间件）

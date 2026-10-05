@@ -16,7 +16,7 @@
 | A2 | ✅ 独立页面系统 + 导航自定义（2026-10 完成） | 自建页面渲染在 /page/:slug、导航跟随页面；「关于我」已迁入页面系统（/about 专属短链不变）；用法见 GUIDE / THEMES / API |
 | A3 | ✅ JSON-LD 文章结构化数据（2026-10 完成） | 文章页自动输出 schema.org BlogPosting（北京时间 +08:00 口径、image 与 og:image 同源三级兜底、tags→keywords、commentCount）；零配置，render.ts `articleJsonLd()` |
 | A4 | ✅ WebP 自动转换（2026-10 完成） | 上传链路（后台 editor.js 与前台 site.js 两处 compressImage 同步改）超过阈值时优先转 WebP（质量 0.82，透明不丢），旧浏览器 canvas 编码不了 WebP 时回退原 JPEG/PNG 口径；产物更大则保留原图。实测 2.3MB 透明 PNG → 100KB |
-| A5 | 服务端插件钩子 + 官方示例插件 | 生态地基，主题市场（B8）的前置。起步 2–3 个示例：发布同步 TG 频道、评论 webhook、页脚注入 |
+| A5 | ✅ 服务端插件钩子 + 官方示例插件（2026-10 完成） | src/hooks.ts 单文件收拢总线 + 注册表 + 三个官方示例（发布同步 TG 频道 / 评论 Webhook / 页脚自定义代码）；钩子 onPostPublished（后台+定时两路、跃迁才触发）、onCommentCreated（访客三路、作者回复不触发）、footerHtml（page() 同步注入）；插件抛错统一吞掉不影响主流程；后台「插件」页启停、设置页配置，详见 PLUGINS.md |
 | A6 | ✅ 编辑器 Markdown 快捷输入（2026-10 完成） | 富文本模式行首标记 + 空格自动转块级格式：`> ` 引用、`#`/`## ` H2、`### ` H3、`#### ` H4、`- `/`* ` 列表、`1. ` 有序列表；``` / `---` 段落回车转代码块/分割线；仅普通段落触发、输入法组词不误触；列表走纯 DOM 构造（WebKit 的 execCommand 会产出 `<p><ul>` 非法嵌套） |
 | A7 | ✅ 一键部署（2026-10 完成） | README / 官网 / DEPLOY.md 加 Deploy to Cloudflare 按钮：fork 副本 → 自动开通 D1/R2 并回填配置 → Workers Builds 接管 push 自动部署；命令行部署降为方式二，deploy.yml 无凭据守卫已覆盖副本场景 |
 | A8 | 复杂度预算原则写入 AGENTS.md | 保持「约 10 个后端文件、无构建链」是产品定位本身：新功能若让新人一个下午读不完后端，就做成插件而不是塞进内核 |

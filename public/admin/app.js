@@ -1708,6 +1708,15 @@ async function viewPlugins() {
   const installed = manifest
     .map((e) => (typeof e === 'string' ? { id: e.replace(/\.js$/, ''), file: e } : e))
     .filter((p) => p && p.id)
+  // 服务端插件（随内核编译，见 src/hooks.ts）：启停存 settings.serverPluginsDisabled
+  const srvOff = new Set((state.settings.serverPluginsDisabled || '').split(',').filter(Boolean))
+  let serverPlugins = []
+  try {
+    const r = await api('/admin/server-plugins')
+    if (Array.isArray(r.plugins)) serverPlugins = r.plugins
+  } catch {
+    /* 拉取失败不影响页面 */
+  }
   const catalog = tab === 'market' ? await fetchCatalog() : null
 
   const rows = installed
@@ -1736,6 +1745,19 @@ async function viewPlugins() {
     })
     .join('') || '<div class="empty-box">市场目录暂时空着，更多插件敬请期待</div>'
 
+  const serverRows = serverPlugins
+    .map(
+      (p) => `<div class="pl-row">
+      <span class="pl-ico">${esc((p.title || p.id).charAt(0).toUpperCase())}</span>
+      <div class="pl-main">
+        <div class="pl-name">${esc(p.title || p.id)}${p.version ? `<span class="pl-ver">v${esc(p.version)}</span>` : ''}</div>
+        <div class="pl-desc">${esc(p.description || '暂无介绍')}${p.author ? ` · ${esc(p.author)}` : ''}</div>
+      </div>
+      <label class="switch"><input type="checkbox" data-srv-id="${esc(p.id)}" ${srvOff.has(p.id) ? '' : 'checked'}><span class="track"></span></label>
+    </div>`
+    )
+    .join('')
+
   await shellView(
     'plugins',
     `<div class="page-head"><div><div class="page-title">插件</div><div class="page-sub">写作编辑器里的小工具</div></div></div>
@@ -1748,6 +1770,10 @@ async function viewPlugins() {
         ? `<div class="panel">
       <div class="panel-head">编辑器插件<span class="panel-head-sub">停用后下次打开编辑器生效 · 开发新插件见 docs/PLUGINS.md</span></div>
       <div class="panel-body" id="pl-list">${rows}</div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">服务端插件<span class="panel-head-sub">随内核运行 · 配置在「设置 → 服务端插件」· 开发见 docs/PLUGINS.md</span></div>
+      <div class="panel-body" id="srv-pl-list">${serverRows}</div>
     </div>`
         : `<div class="panel">
       <div class="panel-head">插件市场<span class="panel-head-sub">持续收录中 · 自己动手见 docs/PLUGINS.md</span></div>
@@ -1770,6 +1796,27 @@ async function viewPlugins() {
         off.clear()
         for (const v of next) off.add(v)
         toast(cb.checked ? '插件已启用' : '插件已停用，下次打开编辑器生效')
+      } catch (e) {
+        cb.checked = !cb.checked
+        handleApiErr(e)
+      } finally {
+        cb.disabled = false
+      }
+    })
+  )
+  $app.querySelectorAll('#srv-pl-list input[type=checkbox]').forEach((cb) =>
+    cb.addEventListener('change', async () => {
+      const id = cb.dataset.srvId
+      const next = new Set(srvOff)
+      if (cb.checked) next.delete(id)
+      else next.add(id)
+      cb.disabled = true
+      try {
+        const d = await api('/admin/settings', { method: 'PUT', body: { serverPluginsDisabled: [...next].join(',') } })
+        state.settings = d.settings
+        srvOff.clear()
+        for (const v of next) srvOff.add(v)
+        toast(cb.checked ? '插件已启用' : '插件已停用，立即生效')
       } catch (e) {
         cb.checked = !cb.checked
         handleApiErr(e)
@@ -1895,11 +1942,28 @@ async function viewSettings() {
           <div><div class="switch-label">新留言推送到 Telegram</div><div class="switch-sub">文章 / 微博 / 留言板有新留言时推送到白名单第一个 Chat ID（需先填 Bot Token 并设置 Webhook）</div></div>
           <label class="switch"><input type="checkbox" id="st-notifyNewComment" ${s.notifyNewComment === '1' ? 'checked' : ''}><span class="track"></span></label>
         </div>
+        <div class="form-item">
+          <label>同步频道 / 群 ID（服务端插件「发布同步 Telegram 频道」用，如 @mychannel 或 -100 开头的群 ID）</label>
+          <input class="input" id="st-tgChannelChatId" placeholder="@mychannel" value="${esc(s.tgChannelChatId || '')}">
+        </div>
         <div class="fav-row">
           <button class="btn" id="btn-tg-webhook" type="button">保存并一键设置 Webhook</button>
           <span class="sec-desc" id="tg-webhook-status"></span>
         </div>
         <div class="sec-desc" style="margin-top:6px;">设置好后在 Telegram 给机器人发文字 / 图片即可发微博；相册多图自动合并成一条；消息开头写 /draft 存草稿</div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:20px;">
+      <div class="form-section"><h3>服务端插件</h3><div class="sec-desc">随内核运行的官方插件（启停在「插件」页），这里是它们的配置项</div>
+        <div class="form-item">
+          <label>评论 Webhook 地址（评论 Webhook 推送插件：访客留言时 POST 一段 JSON 到这个地址，飞书 / 企微 / Bark 均可）</label>
+          <input class="input" id="st-commentWebhookUrl" placeholder="https://…" value="${esc(s.commentWebhookUrl || '')}">
+        </div>
+        <div class="form-item">
+          <label>页脚自定义代码（页脚自定义代码插件：注入每一页页脚的 HTML，挂件 / 徽章 / 备案图标；受 CSP 保护，外部脚本不会执行）</label>
+          <textarea class="textarea" id="st-footerHtmlCode" rows="3" maxlength="5000" placeholder="<div style=&quot;text-align:center&quot;>🌙 已运行 <b>365</b> 天</div>">${esc(s.footerHtmlCode || '')}</textarea>
+        </div>
       </div>
     </div>
 
@@ -2047,6 +2111,9 @@ async function viewSettings() {
       siteClosedMessage: g('st-siteClosedMessage').value.trim(),
       telegramBotToken: g('st-telegramBotToken').value.trim(),
       telegramAllowFrom: g('st-telegramAllowFrom').value.trim(),
+      tgChannelChatId: g('st-tgChannelChatId').value.trim(),
+      commentWebhookUrl: g('st-commentWebhookUrl').value.trim(),
+      footerHtmlCode: g('st-footerHtmlCode').value,
       notifyNewComment: g('st-notifyNewComment').checked ? '1' : '0',
       rssFullText: g('st-rssFullText').checked ? '1' : '0',
       backupEnabled: g('st-backupEnabled').checked ? '1' : '0',

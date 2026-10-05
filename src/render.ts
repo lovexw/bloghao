@@ -1,5 +1,6 @@
 import type { CommentRow, PostRow, SettingsMap } from './types'
 import type { PostSort } from './db'
+import { renderFooterHtml } from './hooks'
 import { cstDate, esc, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate } from './utils'
 
 export interface ThemePageOptions {
@@ -69,6 +70,7 @@ ${grayscaleStyle(o.settings)}
 <body${o.preview ? ' data-preview="1"' : ''}>
 ${o.body}
 <script src="/site.js" defer></script>
+${renderFooterHtml(o.settings)}
 </body>
 </html>`
 }
