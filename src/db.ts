@@ -217,7 +217,7 @@ export interface OnThisDayItem {
   yearsAgo: number
 }
 
-interface OnThisDayRow {
+export interface OnThisDayRow {
   key: string
   title: string
   content: string
@@ -229,47 +229,63 @@ interface OnThisDayRow {
 const ON_THIS_DAY_MD = "strftime('%m-%d', COALESCE(published_at, created_at) / 1000 + 28800, 'unixepoch')"
 const ON_THIS_DAY_Y = "CAST(strftime('%Y', COALESCE(published_at, created_at) / 1000 + 28800, 'unixepoch') AS INTEGER)"
 
+/** 单侧候选上限：防异常数据（如整包导入的同日内容）拖爆返回集，合并后还会再截 ON_THIS_DAY_MAX */
+const ON_THIS_DAY_SOURCE_LIMIT = 200
+/** 最终保留条数上限：卡片直出前几条，其余进「展开」折叠区 */
+export const ON_THIS_DAY_MAX = 100
+
 /**
- * 往年今日已发布的内容：文章 + 微博合并，时间倒序取前几条。
- * 只匹配更早的年份（今年的今天不算），没有命中返回空数组。
- * 结果按天做进程内缓存：首页每次渲染不必重复全表扫（数据变了最多延迟 10 分钟）。
+ * 纯函数：两路查询结果 → 剔空、合并、按时间倒序、封顶。
+ * 与 SQL 拆开以便单测覆盖合并口径；nowTs 传查询时刻（毫秒），用于算 yearsAgo。
  */
-export async function listOnThisDay(db: D1Database, limit = 4): Promise<OnThisDayItem[]> {
-  // 缓存 key 也按北京时间的日期翻日
-  const dayKey = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
-  if (otdCache && otdCache.day === dayKey && Date.now() - otdCache.at < 10 * 60_000) return otdCache.items
-  const [postsRes, weiboRes] = await db.batch([
-    db
-      .prepare(
-        `SELECT slug AS key, title, '' AS content, '' AS images, COALESCE(published_at, created_at) AS ts
-         FROM posts
-         WHERE status = 'published' AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now') AS INTEGER)
-         ORDER BY ts DESC LIMIT ?`
-      )
-      .bind(limit * 2),
-    db
-      .prepare(
-        `SELECT id AS key, '' AS title, content, images, COALESCE(published_at, created_at) AS ts
-         FROM weibo
-         WHERE status = 'published' AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now') AS INTEGER)
-         ORDER BY ts DESC LIMIT ?`
-      )
-      .bind(limit * 2),
-  ])
-  const thisYear = new Date(Date.now() + 8 * 3600_000).getUTCFullYear()
+export function buildOnThisDayItems(postRows: OnThisDayRow[], weiboRows: OnThisDayRow[], nowTs: number): OnThisDayItem[] {
+  const thisYear = new Date(nowTs + 8 * 3600_000).getUTCFullYear()
   const items: OnThisDayItem[] = []
-  for (const r of (postsRes.results ?? []) as unknown as OnThisDayRow[]) {
+  for (const r of postRows) {
     items.push({ kind: 'post', href: `/post/${r.key}`, text: r.title, ts: r.ts, yearsAgo: thisYear - new Date(r.ts + 8 * 3600_000).getUTCFullYear() })
   }
-  for (const r of (weiboRes.results ?? []) as unknown as OnThisDayRow[]) {
+  for (const r of weiboRows) {
     const imgs = weiboImageList(r)
     const text = r.content.trim() || (imgs.length ? `发了 ${imgs.length} 张图` : '')
     if (!text) continue
     items.push({ kind: 'weibo', href: `/weibo?wb=${r.key}#wb-${r.key}`, text: excerpt(text, 64), ts: r.ts, yearsAgo: thisYear - new Date(r.ts + 8 * 3600_000).getUTCFullYear() })
   }
-  const top = items.sort((a, b) => b.ts - a.ts).slice(0, limit)
-  otdCache = { day: dayKey, at: Date.now(), items: top }
-  return top
+  return items.sort((a, b) => b.ts - a.ts).slice(0, ON_THIS_DAY_MAX)
+}
+
+/**
+ * 往年今日已发布的内容：文章 + 微博合并，时间倒序全量返回（封顶 ON_THIS_DAY_MAX）。
+ * 只匹配更早的年份（今年的今天不算），没有命中返回空数组；卡片折叠区负责承载多条目。
+ * 结果按天做进程内缓存：首页每次渲染不必重复全表扫（数据变了最多延迟 10 分钟）。
+ */
+export async function listOnThisDay(db: D1Database): Promise<OnThisDayItem[]> {
+  // 缓存 key 也按北京时间的日期翻日
+  const dayKey = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
+  if (otdCache && otdCache.day === dayKey && Date.now() - otdCache.at < 10 * 60_000) return otdCache.items
+  // 两侧比较基准都要 +28800 对齐北京时间：'now' 是 UTC 墙钟，直接比会让北京 0-8 点匹配到「昨天」的历史
+  const [postsRes, weiboRes] = await db.batch([
+    db
+      .prepare(
+        `SELECT slug AS key, title, '' AS content, '' AS images, COALESCE(published_at, created_at) AS ts
+         FROM posts
+         WHERE status = 'published' AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now', '28800 seconds') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now', '28800 seconds') AS INTEGER)
+         ORDER BY ts DESC LIMIT ${ON_THIS_DAY_SOURCE_LIMIT}`
+      ),
+    db
+      .prepare(
+        `SELECT id AS key, '' AS title, content, images, COALESCE(published_at, created_at) AS ts
+         FROM weibo
+         WHERE status = 'published' AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now', '28800 seconds') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now', '28800 seconds') AS INTEGER)
+         ORDER BY ts DESC LIMIT ${ON_THIS_DAY_SOURCE_LIMIT}`
+      ),
+  ])
+  const items = buildOnThisDayItems(
+    (postsRes.results ?? []) as unknown as OnThisDayRow[],
+    (weiboRes.results ?? []) as unknown as OnThisDayRow[],
+    Date.now()
+  )
+  otdCache = { day: dayKey, at: Date.now(), items }
+  return items
 }
 let otdCache: { day: string; at: number; items: OnThisDayItem[] } | null = null
 

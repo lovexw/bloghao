@@ -537,6 +537,21 @@ main .gb-section { margin-top: 12px; }
 .otd-text { flex: 1 1 auto; min-width: 0; font-size: 15px; font-weight: 600; color: var(--mn-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .otd-kind { flex: 0 0 auto; font-size: 11px; color: var(--mn-sub); text-transform: uppercase; letter-spacing: 0.08em; }
 .otd-item:hover { padding-left: 6px; }
+/* 「展开其余 N 条」折叠区：原生 details 无 JS；条目复用 .otd-item，只有摘要行需要新样式 */
+.otd-more summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+  padding: 10px 0 4px;
+  font-size: 12px;
+  color: var(--mn-sub);
+  user-select: none;
+  transition: color 0.2s ease;
+}
+.otd-more summary::-webkit-details-marker { display: none; }
+.otd-more summary:hover { color: var(--mn-ink); }
+.otd-more[open] .otd-fold-more { display: none; }
+.otd-more:not([open]) .otd-fold-less { display: none; }
 @media (max-width: 480px) {
   .otd-sub { display: none; }
 }

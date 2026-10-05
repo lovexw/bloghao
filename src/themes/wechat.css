@@ -813,6 +813,21 @@ a.wx-account:hover { opacity: 0.75; }
 .otd-text { flex: 1 1 auto; min-width: 0; font-size: 14px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.2s ease; }
 .otd-kind { flex: 0 0 auto; font-size: 11px; color: var(--wx-accent); border: 1px solid currentColor; border-radius: 999px; padding: 1px 8px; opacity: 0.75; }
 .otd-item:hover .otd-text { color: var(--wx-link); }
+/* 「展开其余 N 条」折叠区：原生 details 无 JS；条目复用 .otd-item，只有摘要行需要新样式 */
+.otd-more summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+  padding: 10px 0 4px;
+  font-size: 12px;
+  color: #b5aea1;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+.otd-more summary::-webkit-details-marker { display: none; }
+.otd-more summary:hover { color: var(--wx-accent); }
+.otd-more[open] .otd-fold-more { display: none; }
+.otd-more:not([open]) .otd-fold-less { display: none; }
 @media (max-width: 480px) {
   .otd-card { margin: 16px 0 2px; padding: 2px 14px; }
   .otd-sub { display: none; }

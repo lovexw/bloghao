@@ -440,24 +440,35 @@ function otdYearLabel(yearsAgo: number): string {
   return yearsAgo <= 1 ? '去年' : `${yearsAgo} 年前`
 }
 
-export function onThisDayCard(items: OnThisDayItemView[] | null | undefined): string {
-  if (!items?.length) return ''
-  const rows = items
-    .map(
-      (it) => `<a class="otd-item" href="${esc(it.href)}">
+/** 卡片直出条数，其余进「展开」折叠区——当天历史再多也不挤丢，只多占一行摘要 */
+const OTD_VISIBLE = 4
+
+function otdRow(it: OnThisDayItemView): string {
+  return `<a class="otd-item" href="${esc(it.href)}">
   <span class="otd-year">${new Date(it.ts).getUTCFullYear()}<i>${otdYearLabel(it.yearsAgo)}</i></span>
   <span class="otd-text">${esc(it.text)}</span>
   <span class="otd-kind">${it.kind === 'post' ? '文章' : '微博'}</span>
 </a>`
-    )
-    .join('\n')
+}
+
+export function onThisDayCard(items: OnThisDayItemView[] | null | undefined): string {
+  if (!items?.length) return ''
+  const rest = items.slice(OTD_VISIBLE)
+  // 原生 <details> 折叠：无 JS 可用（CSP 禁内联脚本），开关文案由 CSS 按 open 态切换
+  const more = rest.length
+    ? `<details class="otd-more">
+  <summary><span class="otd-fold-more">展开其余 ${rest.length} 条 ▾</span><span class="otd-fold-less">收起 ▴</span></summary>
+  ${rest.map(otdRow).join('\n')}
+</details>`
+    : ''
   return `<section class="otd-card" aria-label="历史上的今天">
   <header class="otd-head">
     <svg class="otd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
     <span class="otd-title">历史上的今天</span>
     <span class="otd-sub">时间经过的地方，总会留下点什么</span>
   </header>
-  ${rows}
+  ${items.slice(0, OTD_VISIBLE).map(otdRow).join('\n')}
+  ${more}
 </section>`
 }
 

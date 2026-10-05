@@ -336,6 +336,20 @@ img { max-width: 100%; height: auto; }
   color: rgba(236, 228, 210, 0.8);
 }
 .otd-item:hover .otd-text { text-decoration: underline; text-underline-offset: 3px; }
+/* 「展开其余 N 条」折叠区：原生 details 无 JS；条目复用 .otd-item，只有摘要行需要新样式 */
+.otd-more summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+  padding: 10px 0 8px;
+  font-size: 12px;
+  color: rgba(236, 228, 210, 0.6);
+  user-select: none;
+}
+.otd-more summary::-webkit-details-marker { display: none; }
+.otd-more summary:hover { color: #f2b264; }
+.otd-more[open] .otd-fold-more { display: none; }
+.otd-more:not([open]) .otd-fold-less { display: none; }
 
 /* ---------- 贴纸标签 ---------- */
 .jrn-sticker {
