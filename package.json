@@ -1,6 +1,6 @@
 {
   "name": "xwblog",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "xwblog —— 基于博客号 BlogHao 二次开发的个人博客系统（Workers + D1 + R2）",
   "type": "module",
