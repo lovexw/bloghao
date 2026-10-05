@@ -10,6 +10,8 @@
 
 [![License](https://img.shields.io/badge/License-MIT-07c160) ![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers%20%C2%B7%20D1%20%C2%B7%20R2-F38020) ![No Framework](https://img.shields.io/badge/%E5%89%8D%E5%90%8E%E7%AB%AF-%E6%97%A0%E6%A1%86%E6%9E%B6%E4%BE%9D%E8%B5%96-1a1a1a)](https://github.com/lovexw/bloghao)
 
+<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="36"></a>
+
 </div>
 
 ---
@@ -76,6 +78,14 @@
 
 ## 🚀 部署自己的博客号
 
+**方式一：一键部署（推荐）**——点上面（或下面）的按钮，授权 GitHub 后给 Worker / 数据库 / 图床起好名字，Cloudflare 自动完成剩下的：复制一份仓库到你的账号 → 开通 D1 数据库与 R2 图床并回填配置 → 构建部署上线 → 接管 push 自动部署。全程不碰命令行。
+
+<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="36"></a>
+
+> 若账号还没用过 R2，会被要求先添加支付方式——免费额度内不扣费，只是验证。
+
+**方式二：命令行部署**（想自己掌控每一步）
+
 > 前置：Node.js 18+、一个 Cloudflare 账号。完整版教程（含自定义域名、备份、FAQ）见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
 ```bash
@@ -98,14 +108,14 @@ npm run deploy
 打开 `https://<worker名>.<你的子域>.workers.dev/admin/`，**首次进入即创建管理员**，欢迎文章已就位，删掉它开始写你自己的第一篇吧。绑定自定义域名（如示例站的 `blog.xiaowuleyi.com`）后，记得把「设置 → 站点链接」改成新域名——RSS / sitemap 里的绝对链接都用它。
 
 <details>
-<summary><b>推上 GitHub，开启 push 自动部署</b></summary>
+<summary><b>开启 push 自动部署</b></summary>
 
-```bash
-git remote add origin git@github.com:<你>/bloghao.git
-git push -u origin main
-```
+一键部署的副本在部署时已由 Cloudflare Workers Builds 自动接管 push 部署，**无需任何配置**（仓库里内置的 GitHub Actions 部署工作流没配密钥会自动跳过，不影响）。
 
-在仓库 Settings → Secrets → Actions 添加 `CLOUDFLARE_API_TOKEN`（Workers Scripts + D1 + R2 编辑权限）与 `CLOUDFLARE_ACCOUNT_ID`，仓库内置的 `.github/workflows/deploy.yml` 会在每次 push 到 `main` 时自动执行：类型检查 → 同步 schema → 部署。另有 `.github/workflows/ci.yml` 与部署并行，跑类型检查 + 回归测试（`tests/` 30+ 用例），防止已修复的 bug 悄悄复发。
+命令行部署的想开启自动部署，两种任选：
+
+- **Workers Builds**（推荐）：Cloudflare 面板 → 你的 Worker → Settings → Git 支持，连接 GitHub 仓库即可
+- **GitHub Actions**：推上 GitHub 后，在仓库 Settings → Secrets → Actions 添加 `CLOUDFLARE_API_TOKEN`（Workers Scripts + D1 + R2 编辑权限）与 `CLOUDFLARE_ACCOUNT_ID`，仓库内置的 `.github/workflows/deploy.yml` 会在每次 push 到 `main` 时自动执行：类型检查 → 同步 schema → 部署。另有 `.github/workflows/ci.yml` 与部署并行，跑类型检查 + 回归测试（`tests/` 30+ 用例），防止已修复的 bug 悄悄复发
 
 </details>
 

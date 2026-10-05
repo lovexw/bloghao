@@ -192,6 +192,15 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; ba
 }
 
 /* ---------- 快速开始 ---------- */
+.deploy-cta {
+  text-align: center;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 28px 20px 22px; margin: 18px 0 22px;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.deploy-cta:hover { box-shadow: var(--shadow); border-color: rgba(178, 58, 41, 0.3); }
+.deploy-cta img { max-width: 100%; height: auto; border-radius: 8px; }
+.deploy-cta .step-note { margin-top: 12px; }
 .steps { list-style: none; counter-reset: step; }
 .steps li {
   counter-increment: step;

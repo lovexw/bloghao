@@ -19,7 +19,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 未配置 secrets 时优雅跳过（黄字警告），配置方法见 docs/DEPLOY.md 第 7 节
+      # 未配置 secrets 时优雅跳过（黄字警告）：一键部署的副本由 Cloudflare Workers Builds 接管部署，
+      # 本工作流会持续跳过，属预期行为；想改用 Actions 部署的配置方法见 docs/DEPLOY.md 第 7 节
       - name: Check Cloudflare secrets
         id: guard
         env:
@@ -27,7 +28,7 @@ jobs:
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::缺少 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets，已跳过部署。配置方法见 docs/DEPLOY.md"
+            echo "::warning::缺少 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets，已跳过部署。一键部署（Deploy to Cloudflare）的副本由 Workers Builds 接管部署，此警告可忽略；想改用 Actions 部署见 docs/DEPLOY.md 第 7 节"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi

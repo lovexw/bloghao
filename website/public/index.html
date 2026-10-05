@@ -214,6 +214,13 @@
     <div class="wrap wrap-narrow">
       <h2 class="sec-title reveal">五分钟，把博客搬到云上</h2>
       <p class="sec-sub reveal">需要一个免费的 Cloudflare 账号，完事。</p>
+      <div class="deploy-cta reveal">
+        <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao" target="_blank" rel="noopener">
+          <img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="40">
+        </a>
+        <p class="step-note">推荐一键部署：授权 GitHub 后，Cloudflare 自动复制仓库、开通 D1 数据库与 R2 图床、构建上线并接管 push 自动部署——全程不碰命令行。</p>
+      </div>
+      <p class="sec-sub reveal">喜欢命令行？照下面四步来：</p>
       <ol class="steps reveal">
         <li>
           <b>克隆并安装</b>
@@ -223,8 +230,8 @@ npx wrangler login</code></pre>
         </li>
         <li>
           <b>创建资源（D1 数据库 + R2 图床）</b>
-          <pre><code>npx wrangler d1 create bloghao-db
-npx wrangler r2 bucket create bloghao-images
+          <pre><code>npx wrangler d1 create xwblog-db
+npx wrangler r2 bucket create xwblog-images
 # 把返回的 database_id 填进 wrangler.jsonc</code></pre>
         </li>
         <li>
@@ -237,7 +244,7 @@ npm run deploy</code></pre>
           <p class="step-note">访问 <code>https://bloghao.你的子域.workers.dev/admin/</code>，首次进入即创建管理员账号，欢迎文章已就位。</p>
         </li>
       </ol>
-      <p class="reveal steps-more">推上 GitHub 后可开启自动部署（Actions 已内置）→ <a href="https://github.com/lovexw/bloghao/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">完整部署教程</a></p>
+      <p class="reveal steps-more">一键部署的副本已自动接管部署；命令行部署的可推上 GitHub 开启自动部署 → <a href="https://github.com/lovexw/bloghao/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">完整部署教程</a></p>
     </div>
   </section>
 

@@ -4,6 +4,28 @@
 
 > 在线示例：**https://blog.xiaowuleyi.com**（作者实例；Worker 名 `xwblog`，数据库 `xwblog-db`，图床桶 `xwblog-images`，与仓库内 wrangler.jsonc 一致）。给自己部署一套时，资源名可以原样沿用，也可以自行替换——与你的 wrangler.jsonc 保持一致即可。
 
+## 方式一：一键部署（推荐，全程不碰命令行）
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao)
+
+点按钮 → 用 GitHub 账号授权 → 在设置页给 Worker、D1 数据库、R2 图床起好名字 → 点 **Create and deploy**。Cloudflare 会自动完成：
+
+1. 把仓库复制一份到你的 GitHub 账号（以后改代码、提 Issue 都在这份副本上）
+2. 按仓库内 `wrangler.jsonc` 开通 D1 数据库与 R2 存储桶，并把新资源的 id 回填进副本的配置
+3. 构建并部署到 Workers，随后接管 **push 自动部署**（你往副本推代码，Cloudflare 自动重新部署，无需 GitHub Actions 密钥）
+
+> 若账号还没用过 R2，会被要求先添加支付方式——免费额度内不扣费，只是验证。
+
+部署完成后（约 1-2 分钟）打开 Workers 面板给出的 `https://<你的 Worker 名>.<你的子域>.workers.dev`：
+
+- 访问 `/admin/` **创建管理员**（同第 4 节，首次进入即建号，欢迎文章已就位）
+- 进后台「设置」**填站点链接**（同第 5 节，绑自定义域名前可先空着，用默认 workers.dev 域）
+- 想绑自定义域名 → 第 6 节；想本地开发 → 第 9 节
+
+> 副本仓库里的 GitHub Actions 部署工作流（`deploy.yml`）没有配置密钥，push 时会黄字警告并自动跳过——这是正常的，部署已由 Cloudflare 侧接管；想改用 Actions 部署见第 7 节。
+
+以下第 0–7 节是**方式二：命令行部署**的完整步骤（想自己掌控每一步、或要写进自动化脚本时用）。
+
 ## 0. 准备工作
 
 - 一个 Cloudflare 账号（免费版即可）：[dash.cloudflare.com](https://dash.cloudflare.com) 注册
@@ -114,7 +136,9 @@ workers.dev 域名在国内部分地区不稳定，正式使用建议绑一个�
 
 绑定完成后还有一步别漏：后台「设置 → 站点链接」改成新域名（如 `https://blog.xiaowuleyi.com`）——RSS、sitemap、OG 分享卡里的绝对链接都取这个值。
 
-## 7. 推上 GitHub + push 自动部署
+## 7. 推上 GitHub + push 自动部署（命令行部署适用）
+
+> 一键部署的副本**已经**由 Cloudflare Workers Builds 接管 push 自动部署，这节可以跳过。
 
 ```bash
 git init
@@ -133,6 +157,8 @@ git push -u origin main
    - `CLOUDFLARE_API_TOKEN`：上一步的令牌
    - `CLOUDFLARE_ACCOUNT_ID`：面板首页右侧可以看到
 3. 之后每次 push 到 `main`，GitHub Actions 会自动：类型检查 → 安装依赖 → 执行 schema.sql（幂等）→ `wrangler deploy`。另有内置的 `ci.yml` 与部署并行，跑类型检查 + 回归测试（`tests/` 30+ 用例），防止已修复的 bug 悄悄复发
+
+> 更省事的替代：不配任何密钥，在 Cloudflare 面板 → 你的 Worker → Settings → Git 支持（Builds）连接 GitHub 仓库，push 即自动部署（一键部署的副本默认就是这条路）。
 
 ## 8. 日常运维备忘
 
@@ -158,6 +184,15 @@ npm run smoke           # 本地冒烟：起 wrangler dev 逐路由断言 200，
 本地与线上行为一致（同一套 Workers runtime）。上传的测试图片存放在本地模拟的 R2 里，不会占用线上额度。
 
 ## 10. 常见问题
+
+**Q：一键部署时要求添加支付方式？**
+A：R2 图床开通的前提——免费额度（10GB 存储）内不扣费，只是账号验证，放心添加。
+
+**Q：一键部署后往副本 push，GitHub Actions 出现黄字警告「缺少 secrets」？**
+A：正常现象。部署已由 Cloudflare Workers Builds 接管，`deploy.yml` 检测到没配密钥会自动跳过，不影响任何功能；想改用 Actions 部署再按第 7 节配置。
+
+**Q：一键部署按钮点了没反应 / 授权失败？**
+A：Deploy to Cloudflare 只支持公开仓库（本仓库即是）；确认浏览器没有拦截弹窗，GitHub 授权页里勾选仓库访问权限后重试。
 
 **Q：部署时报 `database_id` 无效？**
 A：确认你填的是 `wrangler d1 create` 返回的 UUID，且 `database_name` 与实际一致（本仓库为 `xwblog-db`）。
