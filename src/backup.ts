@@ -17,6 +17,7 @@ const KEEP_FILES = 30
 const BACKUP_TABLES = [
   'users',
   'posts',
+  'pages',
   'comments',
   'categories',
   'post_categories',

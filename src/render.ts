@@ -91,16 +91,24 @@ export interface TagCount {
   count: number
 }
 
+/** 顶部导航里的自建页面项（独立页面系统，key 用于高亮匹配：'p:<slug>'） */
+export interface NavPage {
+  title: string
+  href: string
+  key: string
+}
+
 /**
- * 全站顶部导航：首页 + 微博 + 归档 + 留言板 + 分类话题（details 折叠菜单）+ 友情链接 + 关于我 + 随机。
+ * 全站顶部导航：首页 + 微博 + 归档 + 留言板 + 分类话题（details 折叠菜单）+ 友情链接 + 自建页面 + 关于我 + 随机。
  * cls 传主题前缀（如 wx-snav），结构统一、样式交由主题 CSS 塑形。
  * 分类与标签收进同一折叠菜单（标签可能很多，菜单内部滚动），
- * active 传 'home' / 'weibo' / 'archives' / 'guestbook' / 'links' / 'about' / 分类 slug / 'tag:标签名'。
+ * active 传 'home' / 'weibo' / 'archives' / 'guestbook' / 'links' / 'about' / 分类 slug / 'tag:标签名' / 'p:页面slug'。
  */
 export function siteNav(o: {
   cls: string
   categories: CategoryLink[]
   tags?: TagCount[]
+  pages?: NavPage[]
   active?: string
 }): string {
   const item = (href: string, label: string, active = false) =>
@@ -131,6 +139,7 @@ export function siteNav(o: {
   ${item('/guestbook', '留言板', o.active === 'guestbook')}
   ${drop}
   ${item('/links', '友情链接', o.active === 'links')}
+  ${(o.pages || []).map((p) => item(p.href, p.title, o.active === p.key)).join('')}
   ${item('/about', '关于我', o.active === 'about')}
   ${item('/random', '随机')}
 </nav>`

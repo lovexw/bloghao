@@ -186,6 +186,17 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 
 `name` ≤ 20 字。单分类模型：一篇文章最多属于一个分类（`post_categories.post_id` 为主键）。
 
+### 独立页面
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/pages` | 列表（全部状态，按 sort 排序） |
+| POST | `/api/admin/pages` | Body `{title, slug?, content?, status?: "draft"\|"published", show_in_nav?}`；slug 留空按标题生成（字母/数字/中文/短横线），重名自动加 `-2` 后缀 |
+| PUT | `/api/admin/pages/:id` | 编辑；`status` / `show_in_nav` 未提供时沿用旧值 |
+| DELETE | `/api/admin/pages/:id` | 删除（前台立即 404） |
+| POST | `/api/admin/pages/reorder` | Body `{id, dir: "up"\|"down"}`，上移 / 下移导航排序 |
+
+`title` ≤ 60 字，`content` 为 HTML、白名单净化后 ≤ 100KB。前台渲染在 `/page/:slug`（导航高亮 `p:<slug>`）；`slug='about'` 的页面（迁移自「关于我」）固定渲染在 `/about`，`/page/about` 301 回专属短链。
+
 ### 标签
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -212,7 +223,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### 设置 / 账号 / 工具
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, ogImageDefault, theme, allowComments, moderateComments, notifyNewComment, rssFullText, backupEnabled, postsPerPage, about, externalToken, telegramBotToken, telegramAllowFrom, telegramWebhookSecret`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl`/`ogImageDefault` 只接受站内 `/images/` 与 `http(s)` 外链；`externalToken`/`telegramBotToken`/`telegramWebhookSecret` 为敏感项，GET 返回打码（`••••••••`），PUT 收到打码占位符视为保持原值 |
+| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, ogImageDefault, theme, allowComments, moderateComments, notifyNewComment, rssFullText, backupEnabled, postsPerPage, about（legacy，已由「页面」承载）, pluginsDisabled, externalToken, telegramBotToken, telegramAllowFrom, telegramWebhookSecret`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl`/`ogImageDefault` 只接受站内 `/images/` 与 `http(s)` 外链；`pluginsDisabled` 为逗号分隔的插件 manifest id（仅字母/数字/`_`/`-`）；`externalToken`/`telegramBotToken`/`telegramWebhookSecret` 为敏感项，GET 返回打码（`••••••••`），PUT 收到打码占位符视为保持原值 |
 | PUT | `/api/admin/password` | Body `{oldPassword, newPassword}`（8-64 位） |
 | POST | `/api/admin/tools/md` | Body `{md}` → `{html}`，Markdown 渲染 |
 | POST | `/api/admin/tools/sanitize` | Body `{html}` → `{html}`，白名单净化（粘贴用） |
@@ -230,13 +241,15 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 
 外部发布相关设置键（可经 `PUT /api/admin/settings` 写入）：`externalToken`（开放 API 密钥，空 = 接口关闭，建议用上面的专用端点生成）、`telegramBotToken`、`telegramAllowFrom`（逗号分隔的 Chat ID 白名单）、`telegramWebhookSecret`（Webhook 密钥，建议由专用端点自动生成）、`notifyNewComment`（`1`/`0`，新留言推送到 Telegram，目标为白名单第一个 Chat ID）。
 
-### 备份
+### 备份 / 数据导出
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/admin/backup` | 手动触发一次全量备份（与每晚 Cron 同一逻辑）：全部业务表导成 JSON 存进 R2 `backups/` 目录，返回 `{ok, key, bytes}`（开关关闭时 `skipped:true`）。结果同时写入设置 `lastBackupAt` / `lastBackupKey` / `lastBackupBytes`。Cron 由 wrangler.jsonc `triggers.crons` 配置（北京时间 00:30），失败时经 Telegram 提醒站长 |
+| GET | `/api/admin/export/markdown` | 下载 Markdown 包 zip：`posts/*.md`（YAML front-matter 含 title/slug/date/status/tags/category/cover/summary，正文 HTML→MD）、`weibo.md`、`pages/*.md`、`images/…`（正文/封面/微博引用的站内图，从 R2 流式打包）、`manifest.json`（含 missingImages 清单）。未被引用的图床文件不打包 |
+| GET | `/api/admin/export/wxr` | 下载 WordPress WXR 1.2 单文件：文章（HTML 正文、publish/draft 状态、分类与标签），供 WordPress / emlog 导入器使用；微博不进 WXR |
 
 ### GET /api/meta/themes
-已注册主题列表 `{themes:[{id,name,description}]}`。
+已注册主题列表 `{themes:[{id,name,description,colors}]}`，`colors` 为后台皮肤卡预览色板（`[背景, 强调条, 卡面, 卡面2, 卡面3]`，未设置时为 `null`）。
 
 ## 外部接口（Token 鉴权，供 Telegram 机器人 / 第三方工具调用）
 

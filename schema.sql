@@ -121,6 +121,20 @@ CREATE TABLE IF NOT EXISTS friend_links (
 );
 CREATE INDEX IF NOT EXISTS idx_friend_links_status ON friend_links (status, sort, id);
 
+-- 独立页面：自建页面（项目页 / 书单页 / 工具页 / 隐私政策等），渲染在 /page/:slug。
+-- 「关于我」也由本表承载（slug = 'about'，专属短链 /about，由 ensureSchema 从 settings.about 播种迁移）
+CREATE TABLE IF NOT EXISTS pages (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  title       TEXT    NOT NULL,
+  slug        TEXT    NOT NULL UNIQUE,
+  content     TEXT    NOT NULL DEFAULT '',            -- 净化后的 HTML（与 posts.content 同口径）
+  status      TEXT    NOT NULL DEFAULT 'draft',       -- draft | published
+  show_in_nav INTEGER NOT NULL DEFAULT 0,             -- 1 = 出现在前台顶部导航
+  sort        INTEGER NOT NULL DEFAULT 0,             -- 数字小的靠前（导航顺序）
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
 -- Telegram 相册缓冲：一次多选会拆成多条消息（同一 media_group_id），
 -- 先逐条写入这里（图片已转存 R2），几秒没有新图后合并发布成一条微博并清空
 CREATE TABLE IF NOT EXISTS tg_buffer (

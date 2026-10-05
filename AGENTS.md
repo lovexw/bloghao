@@ -51,6 +51,8 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 **部署链路**
 
 - schema.sql 与 db.ts 的 SCHEMA_COLUMNS/SCHEMA_TABLES 是同一 schema 的两份表达：**加列/表必须两处同步**，且 cron（index.ts `scheduled()`）入口已强制先跑 ensureSchema——冷启动 isolate 不经过 fetch 中间件
+- 「关于我」→ 页面系统的播种在 ensureSchema 末尾：以 settings 记账位 `pagesSeeded` 防重复（页面删了也不复活），改迁移逻辑别破坏这个幂等性
+- 导出 zip 是流式生成（zip.ts 用数据描述符，图片从 R2 边流边算 CRC）——改导出逻辑别把图片改成整包缓冲，Workers 内存扛不住；新表记得手动加进 backup.ts 的 BACKUP_TABLES
 - 备份表数超过 `TABLE_ROW_LIMIT` 会在文件与 TG 中告警（backup.ts），改备份逻辑别把告警删了
 
 ## Git 约定
@@ -76,7 +78,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 ## 结构速查
 
 - `src/themes/`：五套主题 + `registry.ts` 注册表，新主题见 docs/THEMES.md；`wechat` 为默认主题
-- `src/pages.ts` 渲染公开页，`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）
+- `src/pages.ts` 渲染公开页（含独立页面 `/page/:slug`，pages 表承载，`about` 页渲染在 `/about`）；`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）；`src/export.ts` + `src/zip.ts` + `src/html-md.ts` 是数据导出（Markdown 包流式打 zip、WXR）
 - `public/admin/`：后台（app.js 路由与页面——侧栏菜单看顶部 `MENU` 配置数组，editor.js 写作编辑器，admin.css 样式）；「皮肤 / 插件」是独立页面（`#/appearance`、`#/plugins`），市场目录在 `public/market/catalog.json`
 - `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao 的 issues；官网 UI 改动同样过 390px 移动端检查
 - 编辑器内容样式（`.ed-editor`）与文章页（`.rich`）需保持视觉一致——改一处记得镜像另一处

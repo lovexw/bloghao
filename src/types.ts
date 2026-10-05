@@ -89,6 +89,19 @@ export interface CategoryRow {
   created_at: number
 }
 
+/** 独立页面（pages 表）：自建页面与「关于我」（slug = 'about'） */
+export interface PageRow {
+  id: number
+  title: string
+  slug: string
+  content: string
+  status: 'draft' | 'published'
+  show_in_nav: number
+  sort: number
+  created_at: number
+  updated_at: number
+}
+
 export interface FriendLinkRow {
   id: number
   name: string

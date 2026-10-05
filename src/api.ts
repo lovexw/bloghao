@@ -28,6 +28,9 @@ import {
   listApprovedComments,
   listCategories,
   listFriendLinks,
+  listPages,
+  getPageById,
+  uniquePageSlug,
   listPosts,
   listWeibo,
   listWeiboTopics,
@@ -44,6 +47,7 @@ import {
 } from './db'
 import { mdToHtml } from './markdown'
 import { collectRoutes } from './collect'
+import { exportRoutes } from './export'
 import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes } from './external'
 import { toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
@@ -164,6 +168,7 @@ api.use('/admin/*', async (c, next) => {
 
 /* 采集插件（公众号文章 → 草稿），见 src/collect.ts */
 api.route('/admin/collect', collectRoutes)
+api.route('/admin/export', exportRoutes)
 
 /* 外部发布：开放 API / Telegram 机器人（自鉴权）与后台管理端点，见 src/external.ts */
 api.route('/admin/external', adminExternalRoutes)
@@ -735,6 +740,76 @@ api.delete('/admin/categories/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM post_categories WHERE category_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM categories WHERE id = ?').bind(id),
   ])
+  return c.json({ ok: true })
+})
+
+/* ---------------- 独立页面 ---------------- */
+
+api.get('/admin/pages', async (c) => {
+  return c.json({ pages: await listPages(c.env.DB) })
+})
+
+api.post('/admin/pages', async (c) => {
+  const body = await c.req
+    .json<{ title?: string; slug?: string; content?: string; status?: string; show_in_nav?: boolean | string }>()
+    .catch(() => null)
+  const title = String(body?.title ?? '').trim().slice(0, 60)
+  if (!title) return jsonError('页面标题不能为空')
+  // slug 留空由标题生成（posts 同款 slugify），中文标题回退随机 slug
+  const base = cleanSlug(String(body?.slug ?? '')) || slugify(title)
+  const slug = await uniquePageSlug(c.env.DB, base.slice(0, 80))
+  const content = sanitizeHtml(String(body?.content ?? '').slice(0, 100_000))
+  const status = body?.status === 'published' ? 'published' : 'draft'
+  const showInNav = body?.show_in_nav === true || body?.show_in_nav === '1' ? 1 : 0
+  const now = Date.now()
+  const res = await c.env.DB
+    .prepare(
+      'INSERT INTO pages (title, slug, content, status, show_in_nav, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)'
+    )
+    .bind(title, slug, content, status, showInNav, now, now)
+    .run()
+  return c.json({ ok: true, page: await getPageById(c.env.DB, Number(res.meta.last_row_id)) })
+})
+
+api.put('/admin/pages/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const existing = await getPageById(c.env.DB, id)
+  if (!existing) return jsonError('页面不存在', 404)
+  const body = await c.req
+    .json<{ title?: string; slug?: string; content?: string; status?: string; show_in_nav?: boolean | string }>()
+    .catch(() => null)
+  const title = String(body?.title ?? existing.title).trim().slice(0, 60)
+  if (!title) return jsonError('页面标题不能为空')
+  const base = cleanSlug(String(body?.slug ?? '')) || existing.slug
+  const slug = await uniquePageSlug(c.env.DB, base.slice(0, 80), id)
+  const content = sanitizeHtml(String(body?.content ?? existing.content).slice(0, 100_000))
+  // 部分更新语义：status / show_in_nav 未提供时沿用旧值，不做静默重置
+  const status = body?.status === 'published' ? 'published' : body?.status === 'draft' ? 'draft' : existing.status
+  const showInNav = body?.show_in_nav == null ? existing.show_in_nav : body?.show_in_nav === true || body?.show_in_nav === '1' ? 1 : 0
+  await c.env.DB
+    .prepare('UPDATE pages SET title = ?, slug = ?, content = ?, status = ?, show_in_nav = ?, updated_at = ? WHERE id = ?')
+    .bind(title, slug, content, status, showInNav, Date.now(), id)
+    .run()
+  return c.json({ ok: true, page: await getPageById(c.env.DB, id) })
+})
+
+api.delete('/admin/pages/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  await c.env.DB.prepare('DELETE FROM pages WHERE id = ?').bind(id).run()
+  return c.json({ ok: true })
+})
+
+// 上移 / 下移：按当前顺序交换后整体回写 sort = 下标（照 friend_links/reorder 模式，幂等不怕脏数据）
+api.post('/admin/pages/reorder', async (c) => {
+  const body = await c.req.json<{ id?: number; dir?: string }>().catch(() => null)
+  const id = Number(body?.id)
+  const items = await listPages(c.env.DB)
+  const idx = items.findIndex((p) => p.id === id)
+  if (idx < 0) return jsonError('页面不存在', 404)
+  const to = body?.dir === 'up' ? idx - 1 : idx + 1
+  if (to < 0 || to >= items.length) return c.json({ ok: true })
+  ;[items[idx], items[to]] = [items[to], items[idx]]
+  await c.env.DB.batch(items.map((p, i) => c.env.DB.prepare('UPDATE pages SET sort = ? WHERE id = ?').bind(i, p.id)))
   return c.json({ ok: true })
 })
 

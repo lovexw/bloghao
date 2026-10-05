@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { scheduledBackup } from './backup'
 import { runScheduledPublish } from './scheduler'
 import { api } from './api'
-import { ensureSchema, getSettings, listCategories, listPublishedTags, listPosts, listSitemapPosts } from './db'
-import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPost, renderSearch, renderWeibo } from './pages'
+import { ensureSchema, getSettings, listCategories, listPublishedTags, listPosts, listSitemapPages, listSitemapPosts } from './db'
+import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPage, renderPost, renderSearch, renderWeibo } from './pages'
 import { buildRss, buildSitemap } from './rss'
 import { purgeVisits } from './stats'
 import type { Env, SessionUser } from './types'
@@ -33,6 +33,7 @@ app.get('/', renderHome)
 app.get('/tag/:tag', renderHome)
 app.get('/category/:slug', renderCategory)
 app.get('/post/:slug', renderPost)
+app.get('/page/:slug', renderPage)
 app.get('/about', renderAbout)
 app.get('/archives', renderArchive)
 app.get('/guestbook', renderGuestbook)
@@ -60,15 +61,16 @@ app.get('/rss.xml', async (c) => {
 
 app.get('/sitemap.xml', async (c) => {
   const settings = await getSettings(c.env.DB)
-  const [posts, categories, tags] = await Promise.all([
+  const [posts, categories, tags, pages] = await Promise.all([
     listSitemapPosts(c.env.DB),
     listCategories(c.env.DB),
     listPublishedTags(c.env.DB),
+    listSitemapPages(c.env.DB),
   ])
   const siteUrl = (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')
   c.header('Content-Type', 'application/xml; charset=utf-8')
   c.header('Cache-Control', 'public, max-age=600')
-  return c.body(buildSitemap(settings, posts, siteUrl, categories, tags))
+  return c.body(buildSitemap(settings, posts, siteUrl, categories, tags, pages))
 })
 
 app.get('/robots.txt', (c) =>

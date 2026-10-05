@@ -126,6 +126,7 @@ const I = {
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l11-11-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg>',
   comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
+  page: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 13h10M7 16.5h6"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2z"/></svg>',
   palette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9c0 2.2-1.6 3.4-3.5 3.4h-1.7a1.9 1.9 0 0 0-1.4 3.2c.5.6.3 2.4-2.4 2.4z"/><circle cx="7.6" cy="11.8" r="1"/><circle cx="10.4" cy="7.6" r="1"/><circle cx="15.2" cy="7.9" r="1"/></svg>',
   plug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v4M15 3v4"/><path d="M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0V7z"/><path d="M12 16v5"/></svg>',
@@ -150,6 +151,7 @@ const MENU = [
   { id: 'media', href: '#/media', label: '媒体', icon: 'image' },
   { id: 'categories', href: '#/categories', label: '分类', icon: 'folder' },
   { id: 'links', href: '#/links', label: '友链', icon: 'link', badge: () => state.pendingLinks || 0 },
+  { id: 'pages', href: '#/pages', label: '页面', icon: 'page' },
   { type: 'group', label: '系统' },
   { id: 'appearance', href: '#/appearance', label: '皮肤', icon: 'palette' },
   { id: 'plugins', href: '#/plugins', label: '插件', icon: 'plug' },
@@ -1242,6 +1244,113 @@ async function viewCategories() {
   })
 }
 
+/* ---------------- 页面管理（独立页面系统） ---------------- */
+async function viewPages() {
+  let d
+  try {
+    d = await api('/admin/pages')
+  } catch (e) {
+    return handleApiErr(e)
+  }
+  const rows = d.pages
+    .map(
+      (p) => `<div class="cat-row" data-id="${p.id}">
+      <div class="cat-main">
+        <span class="cat-name">${esc(p.title)}${p.show_in_nav ? '<span class="chip chip-green" style="margin-left:8px;">导航</span>' : ''}</span>
+        <span class="cat-slug">${p.slug === 'about' ? '/about（专属短链）' : `/page/${esc(p.slug)}`} · ${p.status === 'published' ? '<span class="chip chip-green">已发布</span>' : '<span class="chip chip-gray">草稿</span>'}</span>
+      </div>
+      <div class="post-ops">
+        <button class="btn btn-ghost btn-sm" data-act="up" title="上移">↑</button>
+        <button class="btn btn-ghost btn-sm" data-act="down" title="下移">↓</button>
+        <button class="btn btn-ghost btn-sm" data-act="view" title="前台查看">查看</button>
+        <button class="btn btn-ghost btn-sm" data-act="edit">编辑</button>
+        <button class="btn btn-ghost btn-sm btn-danger" data-act="del">删除</button>
+      </div>
+    </div>`
+    )
+    .join('')
+
+  await shellView(
+    'pages',
+    `<div class="page-head"><div><div class="page-title">页面</div><div class="page-sub">自建的独立页面（项目页 / 书单页 / 隐私政策…），「关于我」也在这里维护</div></div>
+      <button class="btn btn-primary" id="page-add">新建页面</button></div>
+    <div class="panel">${rows || '<div class="empty-box">还没有页面，点右上角新建一个吧</div>'}</div>`
+  )
+
+  document.getElementById('page-add').addEventListener('click', () => pageModal(null))
+
+  const move = async (id, dir) => {
+    try {
+      await api('/admin/pages/reorder', { method: 'POST', body: { id, dir } })
+      viewPages()
+    } catch (e) {
+      toast(e.message, true)
+    }
+  }
+
+  $app.querySelectorAll('.cat-row').forEach((row) => {
+    const id = Number(row.dataset.id)
+    const page = d.pages.find((p) => p.id === id)
+    row.querySelector('[data-act=up]').addEventListener('click', () => move(id, 'up'))
+    row.querySelector('[data-act=down]').addEventListener('click', () => move(id, 'down'))
+    row.querySelector('[data-act=view]').addEventListener('click', () => {
+      window.open(page.slug === 'about' ? '/about' : `/page/${encodeURIComponent(page.slug)}`, '_blank', 'noopener')
+    })
+    row.querySelector('[data-act=edit]').addEventListener('click', () => pageModal(page))
+    row.querySelector('[data-act=del]').addEventListener('click', async () => {
+      if (!(await confirmBox(`删除页面「${page.title}」？删除后前台将无法访问。`))) return
+      try {
+        await api(`/admin/pages/${id}`, { method: 'DELETE' })
+        toast('已删除')
+        viewPages()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
+  })
+}
+
+/** 页面编辑弹窗：v1 沿用「关于我」的 HTML 源码编辑方式，后续可接入完整编辑器 */
+function pageModal(page) {
+  const isNew = !page
+  const m = modal(`<div class="modal-head"><span>${isNew ? '新建页面' : '编辑页面'}</span><button class="modal-close" data-close>×</button></div>
+    <div class="modal-body">
+      <label class="auth-field"><label>标题</label><input class="input" id="pg-title" value="${esc(page?.title || '')}" maxlength="60" placeholder="如：我的项目"></label>
+      <label class="auth-field" style="margin-top:10px;"><label>链接标识（留空按标题生成，字母 / 数字 / 中文 / 短横线）</label><input class="input" id="pg-slug" value="${esc(page?.slug || '')}" placeholder="如 projects"></label>
+      <div class="switch-row" style="margin-top:12px;">
+        <div><div class="switch-label">已发布</div><div class="switch-sub">关闭则保存为草稿，前台不可见</div></div>
+        <label class="switch"><input type="checkbox" id="pg-status" ${!isNew && page.status === 'published' ? 'checked' : ''}><span class="track"></span></label>
+      </div>
+      <div class="switch-row">
+        <div><div class="switch-label">显示在顶部导航</div><div class="switch-sub">开启后前台导航「友情链接」与「关于我」之间会出现此页面</div></div>
+        <label class="switch"><input type="checkbox" id="pg-nav" ${!isNew && page.show_in_nav ? 'checked' : ''}><span class="track"></span></label>
+      </div>
+      <label class="auth-field" style="margin-top:12px;"><label>正文（HTML，支持粘贴富文本源码）</label><textarea class="textarea" id="pg-content" rows="12" placeholder="<p>在这里写页面内容…</p>">${esc(page?.content || '')}</textarea></label>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="pg-save">保存</button></div>`)
+  m.mask.querySelector('#pg-save').addEventListener('click', async () => {
+    const btn = m.mask.querySelector('#pg-save')
+    btn.disabled = true
+    try {
+      const body = {
+        title: m.mask.querySelector('#pg-title').value.trim(),
+        slug: m.mask.querySelector('#pg-slug').value.trim(),
+        content: m.mask.querySelector('#pg-content').value,
+        status: m.mask.querySelector('#pg-status').checked ? 'published' : 'draft',
+        show_in_nav: m.mask.querySelector('#pg-nav').checked,
+      }
+      if (isNew) await api('/admin/pages', { method: 'POST', body })
+      else await api(`/admin/pages/${page.id}`, { method: 'PUT', body })
+      toast('已保存')
+      m.close()
+      viewPages()
+    } catch (e) {
+      toast(e.message, true)
+      btn.disabled = false
+    }
+  })
+}
+
 /* ---------------- 评论管理 ---------------- */
 async function viewComments() {
   const q = new URLSearchParams(location.hash.split('?')[1] || '')
@@ -1798,8 +1907,11 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
-      <div class="form-section"><h3>关于我</h3><div class="sec-desc">显示在 /about（顶部导航「关于我」页），支持富文本</div>
-        <textarea class="textarea" id="st-about" rows="5">${esc(s.about)}</textarea>
+      <div class="form-section"><h3>数据导出</h3><div class="sec-desc">把全部文章（含草稿）、微博、独立页面与被引用的图片打包带走——数据主权；未被引用的图床文件不打包，可在「媒体」里查看。Markdown 包可直接阅读归档，WXR 供 WordPress 等系统导入</div>
+        <div class="fav-row">
+          <a class="btn" href="/api/admin/export/markdown" download>导出 Markdown 包</a>
+          <a class="btn" href="/api/admin/export/wxr" download>导出 WordPress WXR</a>
+        </div>
       </div>
     </div>
 
@@ -1922,7 +2034,6 @@ async function viewSettings() {
       rssFullText: g('st-rssFullText').checked ? '1' : '0',
       backupEnabled: g('st-backupEnabled').checked ? '1' : '0',
       statsEnabled: g('st-statsEnabled').checked ? '1' : '0',
-      about: g('st-about').value,
     }
     try {
       const d = await api('/admin/settings', { method: 'PUT', body })
@@ -2103,6 +2214,7 @@ async function navigate() {
     else if (name === 'weibo') await viewWeibo()
     else if (name === 'links') await viewLinks()
     else if (name === 'categories') await viewCategories()
+    else if (name === 'pages') await viewPages()
     else if (name === 'comments') await viewComments()
     else if (name === 'media') await viewMedia()
     else if (name === 'appearance') await viewAppearance()

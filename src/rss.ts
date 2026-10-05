@@ -56,7 +56,8 @@ export function buildSitemap(
   posts: { slug: string; updated_at: number }[],
   siteUrl: string,
   categories: { slug: string; name: string }[] = [],
-  tags: { name: string; count: number }[] = []
+  tags: { name: string; count: number }[] = [],
+  pages: { slug: string; updated_at: number }[] = []
 ): string {
   const urls = [
     { loc: `${siteUrl}/`, lastmod: fmtDate(Date.now()) },
@@ -65,6 +66,11 @@ export function buildSitemap(
     { loc: `${siteUrl}/guestbook`, lastmod: '' },
     { loc: `${siteUrl}/weibo`, lastmod: '' },
     { loc: `${siteUrl}/links`, lastmod: '' },
+    // 独立页面（/page/:slug）：slug 做百分号编码（中文 slug 是非 ASCII IRI）
+    ...pages.map((p) => ({
+      loc: `${siteUrl}/page/${encodeURIComponent(p.slug)}`,
+      lastmod: fmtDate(p.updated_at),
+    })),
     // 分类/标签列表页同样可收录；slug/标签名做百分号编码（中文标签是非 ASCII IRI）
     ...categories.map((cat) => ({
       loc: `${siteUrl}/category/${encodeURIComponent(cat.slug)}`,

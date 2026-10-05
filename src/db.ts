@@ -1,4 +1,4 @@
-import type { CategoryRow, CommentRow, FriendLinkRow, PostRow, SettingsMap, WeiboRow } from './types'
+import type { CategoryRow, CommentRow, FriendLinkRow, PageRow, PostRow, SettingsMap, WeiboRow } from './types'
 import { clampInt, excerpt, jsonItemLikePattern, WEIBO_MAX_TOPICS } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
@@ -379,6 +379,48 @@ export async function getPostCategoryId(db: D1Database, postId: number): Promise
   return row?.category_id ?? null
 }
 
+/* ---------------- 独立页面 ---------------- */
+
+export async function listPages(db: D1Database, opts: { status?: 'published' } = {}): Promise<PageRow[]> {
+  const sql = 'SELECT * FROM pages ORDER BY sort ASC, id ASC'
+  if (opts.status) {
+    const { results } = await db
+      .prepare('SELECT * FROM pages WHERE status = ? ORDER BY sort ASC, id ASC')
+      .bind(opts.status)
+      .all<PageRow>()
+    return results ?? []
+  }
+  const { results } = await db.prepare(sql).all<PageRow>()
+  return results ?? []
+}
+
+export async function getPage(db: D1Database, slug: string): Promise<PageRow | null> {
+  return db.prepare('SELECT * FROM pages WHERE slug = ?').bind(slug).first<PageRow>()
+}
+
+export async function getPageById(db: D1Database, id: number): Promise<PageRow | null> {
+  return db.prepare('SELECT * FROM pages WHERE id = ?').bind(id).first<PageRow>()
+}
+
+/** slug 查重（posts 同款递增后缀），excludeId 供编辑时排除自身 */
+export async function uniquePageSlug(db: D1Database, base: string, excludeId?: number): Promise<string> {
+  let slug = base
+  for (let i = 2; i < 100; i++) {
+    const row = await db.prepare('SELECT id FROM pages WHERE slug = ?').bind(slug).first<{ id: number }>()
+    if (!row || row.id === excludeId) return slug
+    slug = `${base}-${i}`
+  }
+  return `${base}-${Date.now().toString(36)}`
+}
+
+/** sitemap 用的已发布页面（含更新时间） */
+export async function listSitemapPages(db: D1Database): Promise<{ slug: string; updated_at: number }[]> {
+  const { results } = await db
+    .prepare("SELECT slug, updated_at FROM pages WHERE status = 'published'")
+    .all<{ slug: string; updated_at: number }>()
+  return results ?? []
+}
+
 /** 批量取一组文章的分类名（后台列表展示用）：{postId: name} */
 export async function categoryNameMap(db: D1Database, postIds: number[]): Promise<Map<number, string>> {
   if (!postIds.length) return new Map()
@@ -605,6 +647,18 @@ const SCHEMA_TABLES = [
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
   )`,
+  // 独立页面（src/pages.ts renderPage）：自建页面 + 「关于我」（slug = 'about'，见 ensureSchema 末尾的一次性播种）
+  `CREATE TABLE IF NOT EXISTS pages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT    NOT NULL,
+    slug        TEXT    NOT NULL UNIQUE,
+    content     TEXT    NOT NULL DEFAULT '',
+    status      TEXT    NOT NULL DEFAULT 'draft',
+    show_in_nav INTEGER NOT NULL DEFAULT 0,
+    sort        INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  )`,
   // 访客统计日志（src/stats.ts）：只存匿名 vid 与来源域名，不进备份，保留 180 天
   `CREATE TABLE IF NOT EXISTS visit_log (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -656,6 +710,23 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     } catch {
       /* 索引已存在 */
     }
+  }
+  // 「关于我」→ 页面系统一次性迁移：settings 记账位防重复播种（页面被删后也不会复活）。
+  // 老站升级把 settings.about 播成 slug='about' 的页面；新站首装播种默认文案，两者同一条路径。
+  const seeded = await db.prepare("SELECT value FROM settings WHERE key = 'pagesSeeded'").first<{ value: string }>()
+  if (!seeded) {
+    const about = await db.prepare("SELECT value FROM settings WHERE key = 'about'").first<{ value: string }>()
+    const now = Date.now()
+    await db.batch([
+      db
+        .prepare(
+          "INSERT INTO pages (title, slug, content, status, show_in_nav, sort, created_at, updated_at) VALUES ('关于我', 'about', ?, 'published', 1, 90, ?, ?)"
+        )
+        .bind(about?.value || DEFAULT_SETTINGS.about, now, now),
+      db
+        .prepare("INSERT INTO settings (key, value) VALUES ('pagesSeeded', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+        .bind(),
+    ])
   }
 }
 

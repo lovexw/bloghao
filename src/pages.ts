@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import { clientIp, getSessionUser } from './auth'
 import {
   getCategoryBySlug,
+  getPage,
   getPostBySlug,
   getPostCategoryId,
   getSettings,
@@ -11,6 +12,7 @@ import {
   listFriendLinks,
   listGuestbookComments,
   listOnThisDay,
+  listPages,
   listPosts,
   listPublishedTags,
   listWeibo,
@@ -38,6 +40,7 @@ import {
   weiboCards,
   weiboPager,
   type CategoryLink,
+  type NavPage,
   type WeiboItemView,
 } from './render'
 import { extractOgImage, sanitizeHtml } from './sanitize'
@@ -90,6 +93,24 @@ async function navCategories(c: C): Promise<CategoryLink[]> {
   return rows.map((r) => ({ name: r.name, slug: r.slug }))
 }
 
+/** 顶部导航里的自建页面项（已发布 + 勾选显示在导航；about 有专属导航位，排除避免重复） */
+async function navPages(c: C): Promise<NavPage[]> {
+  const rows = await listPages(c.env.DB, { status: 'published' })
+  return rows
+    .filter((r) => r.show_in_nav === 1 && r.slug !== 'about')
+    .map((r) => ({ title: r.title, href: `/page/${encodeURIComponent(r.slug)}`, key: `p:${r.slug}` }))
+}
+
+/** 主题 page() 的运行时兜底：第三方主题未实现第 8 个渲染函数时渲染通用版（正文壳 + 返回首页） */
+function themePageHtml(theme: ReturnType<typeof getTheme>, d: Parameters<typeof theme.page>[0]): string {
+  if (typeof theme.page === 'function') return theme.page(d)
+  return `<div style="max-width:760px;margin:0 auto;padding:32px 20px 60px;">
+  <h1 style="margin-bottom:18px;">${esc(d.title)}</h1>
+  <div class="rich">${d.contentHtml}</div>
+  <p style="margin-top:32px;"><a href="/">← 返回首页</a></p>
+</div>`
+}
+
 export async function renderHome(c: C): Promise<Response> {
   return renderList(c, { mode: 'home' })
 }
@@ -125,7 +146,7 @@ async function renderList(
     sort === 'random' ? clampInt(url.searchParams.get('seed'), 1, 999999999, 0) || 1 + Math.floor(Math.random() * 999999998) : 0
 
   // 搜索模式不分页，直接取前 50 条
-  const [r, tags, categories, category, wb, otd] = await Promise.all([    listPosts(c.env.DB, {
+  const [r, tags, categories, pages, category, wb, otd] = await Promise.all([    listPosts(c.env.DB, {
       status: 'published',
       tag: opts.mode === 'home' ? tag : undefined,
       q: opts.mode === 'search' ? q || undefined : undefined,
@@ -137,6 +158,7 @@ async function renderList(
     }),
     navTags(c),
     navCategories(c),
+    navPages(c),
     categorySlug ? getCategoryBySlug(c.env.DB, categorySlug) : Promise.resolve(null),
     // 首页微博入口卡：最新两条随手记
     opts.mode === 'home'
@@ -211,6 +233,7 @@ async function renderList(
     categorySlug: categorySlug || undefined,
     tags,
     categories,
+    pages,
     weibo,
     navActive:
       opts.mode === 'home'
@@ -254,13 +277,14 @@ export async function renderPost(c: C): Promise<Response> {
     if (!isPreview || !user) return renderNotFound(c)
   }
 
-  const [comments, related, categories, categoryId, user, tags] = await Promise.all([
+  const [comments, related, categories, categoryId, user, tags, pages] = await Promise.all([
     listApprovedComments(c.env.DB, row.id),
     relatedPosts(c.env.DB, row),
     navCategories(c),
     getPostCategoryId(c.env.DB, row.id),
     getSessionUser(c.env.DB, c.req.raw),
     navTags(c),
+    navPages(c),
   ])
   const categoryRow = categoryId ? await c.env.DB.prepare('SELECT name, slug FROM categories WHERE id = ?').bind(categoryId).first<{ name: string; slug: string }>() : null
 
@@ -299,6 +323,7 @@ export async function renderPost(c: C): Promise<Response> {
     category: categoryRow ? { name: categoryRow.name, slug: categoryRow.slug } : null,
     categories,
     tags,
+    pages,
     comments: { html: commentsBlock, count: comments.length },
     related: related.map((p) => toHomePost(p, parseTags(p))),
   })
@@ -321,17 +346,44 @@ export async function renderPost(c: C): Promise<Response> {
   )
 }
 
-/** 关于我页（/about）：内容在后台「设置 → 关于我」维护，导航高亮 about */
+/** 关于我页（/about）：2026-10 起由页面系统承载（pages 表 slug='about'，后台「页面」维护），
+ *  查不到对应页面时回退 legacy 的 settings.about 渲染（兜底，正常不会再走到） */
 export async function renderAbout(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
-  const [categories, tags] = await Promise.all([navCategories(c), navTags(c)])
+  const aboutRow = await getPage(c.env.DB, 'about')
+  if (aboutRow && aboutRow.status === 'published') {
+    const [categories, tags, pages] = await Promise.all([navCategories(c), navTags(c), navPages(c)])
+    const html = themePageHtml(theme, {
+      settings,
+      title: aboutRow.title,
+      contentHtml: sanitizeHtml(aboutRow.content),
+      categories,
+      tags,
+      pages,
+      navActive: 'about',
+    })
+    c.header('Cache-Control', 'no-cache')
+    return c.html(
+      page({
+        settings,
+        css: theme.css,
+        title: aboutRow.title,
+        description: `关于 ${settings.siteName} 与这里的故事`,
+        path: '/about',
+        origin: new URL(c.req.url).origin,
+        body: html,
+      })
+    )
+  }
+  const [categories, tags, pages] = await Promise.all([navCategories(c), navTags(c), navPages(c)])
   const html = theme.about({
     settings,
     contentHtml: sanitizeHtml(settings.about || '<p>作者很懒，什么都没写。</p>'),
     categories,
     tags,
+    pages,
     navActive: 'about',
   })
   c.header('Cache-Control', 'no-cache')
@@ -348,16 +400,55 @@ export async function renderAbout(c: C): Promise<Response> {
   )
 }
 
+/** 独立页面页（/page/:slug）：自建页面（项目页/书单页/隐私政策等）；草稿 404，slug=about 301 回专属短链 */
+export async function renderPage(c: C): Promise<Response> {
+  baseHeaders(c)
+  const slug = c.req.param('slug') ?? ''
+  if (slug === 'about') return c.redirect('/about', 301)
+  const settings = await getSettings(c.env.DB)
+  const theme = getTheme(settings.theme)
+  const row = await getPage(c.env.DB, slug)
+  if (!row || row.status !== 'published') return renderNotFound(c)
+  const [categories, tags, pages] = await Promise.all([navCategories(c), navTags(c), navPages(c)])
+  const html = themePageHtml(theme, {
+    settings,
+    title: row.title,
+    contentHtml: sanitizeHtml(row.content),
+    categories,
+    tags,
+    pages,
+    navActive: `p:${row.slug}`,
+  })
+  c.header('Cache-Control', 'no-cache')
+  return c.html(
+    page({
+      settings,
+      css: theme.css,
+      title: row.title,
+      description: excerpt(row.content, 120),
+      path: `/page/${row.slug}`,
+      origin: new URL(c.req.url).origin,
+      body: html,
+    })
+  )
+}
+
 /** 文章归档页（/archives）：全部已发布文章按年分组，独立页面便于搜索引擎收录 */
 export async function renderArchive(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
-  const [rows, categories, tags] = await Promise.all([listAllPublishedArchives(c.env.DB), navCategories(c), navTags(c)])
+  const [rows, categories, tags, pages] = await Promise.all([
+    listAllPublishedArchives(c.env.DB),
+    navCategories(c),
+    navTags(c),
+    navPages(c),
+  ])
   const html = theme.archives({
     settings,
     categories,
     tags,
+    pages,
     total: rows.length,
     groups: archiveGroups(rows),
   })
@@ -380,16 +471,18 @@ export async function renderGuestbook(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
-  const [comments, categories, tags, user] = await Promise.all([
+  const [comments, categories, tags, pages, user] = await Promise.all([
     listGuestbookComments(c.env.DB),
     navCategories(c),
     navTags(c),
+    navPages(c),
     getSessionUser(c.env.DB, c.req.raw),
   ])
   const html = theme.guestbook({
     settings,
     categories,
     tags,
+    pages,
     count: comments.length,
     html: commentsHtml({
       comments,
@@ -436,7 +529,7 @@ export async function renderWeibo(c: C): Promise<Response> {
     const located = await locateWeiboPage(c.env.DB, Number(wbParam), { limit: perPage, topic: topic || undefined })
     if (located) pageNum = located
   }
-  const [r, categories, topics, user, tags] = await Promise.all([
+  const [r, categories, topics, user, tags, pages] = await Promise.all([
     listWeibo(c.env.DB, {
       status: 'published',
       page: pageNum,
@@ -449,6 +542,7 @@ export async function renderWeibo(c: C): Promise<Response> {
     topic ? listWeiboTopics(c.env.DB) : Promise.resolve([]),
     getSessionUser(c.env.DB, c.req.raw),
     navTags(c),
+    navPages(c),
   ])
   // 页码越界时回到最后一页重取一次
   if (r.page > r.totalPages && r.total > 0) {
@@ -474,6 +568,7 @@ export async function renderWeibo(c: C): Promise<Response> {
     settings,
     categories,
     tags,
+    pages,
     items,
     page: r.page,
     totalPages: r.totalPages,
@@ -503,15 +598,17 @@ export async function renderLinks(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
-  const [links, categories, tags] = await Promise.all([
+  const [links, categories, tags, pages] = await Promise.all([
     listFriendLinks(c.env.DB, { status: 'approved' }),
     navCategories(c),
     navTags(c),
+    navPages(c),
   ])
   const html = theme.links({
     settings,
     categories,
     tags,
+    pages,
     items: links.items.map((l) => ({ name: l.name, url: l.url, description: l.description, icon: l.icon })),
     total: links.total,
   })

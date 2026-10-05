@@ -30,6 +30,8 @@ export interface ThemeModule {
     tags: import('../render').TagCount[]
     /** 顶部导航数据与高亮：'home' | 'weibo' | 分类 slug | 'tag:标签名' | 'search' */
     categories: import('../render').CategoryLink[]
+    /** 顶部导航里的自建页面项（独立页面系统，siteNav 渲染用） */
+    pages?: import('../render').NavPage[]
     navActive?: string
     /** 列表上方的通知区（搜索结果/分类说明），由 pages 层构建好的 HTML */
     notice?: string
@@ -43,6 +45,8 @@ export interface ThemeModule {
   weibo(d: {
     settings: Record<string, string>
     categories: import('../render').CategoryLink[]
+    /** 顶部导航里的自建页面项（独立页面系统，siteNav 渲染用） */
+    pages?: import('../render').NavPage[]
     /** 顶部导航「分类话题」菜单的标签 */
     tags?: import('../render').TagCount[]
     items: import('../render').WeiboItemView[]
@@ -61,6 +65,8 @@ export interface ThemeModule {
   links(d: {
     settings: Record<string, string>
     categories: import('../render').CategoryLink[]
+    /** 顶部导航里的自建页面项（独立页面系统，siteNav 渲染用） */
+    pages?: import('../render').NavPage[]
     /** 顶部导航「分类话题」菜单的标签 */
     tags?: import('../render').TagCount[]
     /** 已收录的友链 */
@@ -83,6 +89,8 @@ export interface ThemeModule {
     }
     category: import('../render').CategoryLink | null
     categories: import('../render').CategoryLink[]
+    /** 顶部导航里的自建页面项（独立页面系统，siteNav 渲染用） */
+    pages?: import('../render').NavPage[]
     tags?: import('../render').TagCount[]
     comments: { html: string; count: number }
     related: import('../render').HomePostView[]
@@ -91,14 +99,34 @@ export interface ThemeModule {
     settings: Record<string, string>
     contentHtml: string
     categories: import('../render').CategoryLink[]
+    /** 顶部导航里的自建页面项（独立页面系统，siteNav 渲染用） */
+    pages?: import('../render').NavPage[]
     tags?: import('../render').TagCount[]
     /** 导航高亮：关于我页传 'about' */
+    navActive?: string
+  }): string
+  /**
+   * 独立页面页（/page/:slug）：自建页面（项目页/书单页/隐私政策等）；
+   * slug='about' 的页面复用本函数渲染在专属短链 /about。
+   * 运行时有兜底：主题未实现时由 pages.ts 渲染通用版（无主题导航 cls，仅正文壳）。
+   */
+  page(d: {
+    settings: Record<string, string>
+    title: string
+    contentHtml: string
+    categories: import('../render').CategoryLink[]
+    /** 顶部导航里的自建页面项（独立页面系统，siteNav 渲染用） */
+    pages?: import('../render').NavPage[]
+    tags?: import('../render').TagCount[]
+    /** 导航高亮：独立页面传 'p:<slug>'；关于我在 /about 渲染时传 'about' */
     navActive?: string
   }): string
   /** 文章归档页（/archives）：全部已发布文章按年分组，pages 层构建好 groups */
   archives(d: {
     settings: Record<string, string>
     categories: import('../render').CategoryLink[]
+    /** 顶部导航里的自建页面项（独立页面系统，siteNav 渲染用） */
+    pages?: import('../render').NavPage[]
     tags?: import('../render').TagCount[]
     /** 文章总篇数（页头副标题用） */
     total: number
@@ -108,6 +136,8 @@ export interface ThemeModule {
   guestbook(d: {
     settings: Record<string, string>
     categories: import('../render').CategoryLink[]
+    /** 顶部导航里的自建页面项（独立页面系统，siteNav 渲染用） */
+    pages?: import('../render').NavPage[]
     tags?: import('../render').TagCount[]
     html: string
     count: number

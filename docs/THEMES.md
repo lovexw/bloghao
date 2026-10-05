@@ -1,6 +1,6 @@
 # 主题开发指南
 
-博客号的公开页面（首页 / 文章页 / **微博页** / **友链页** / 关于我页 / **归档页** / **留言板页**）由**主题模块**服务端渲染。任何会写 HTML/CSS 的人都可以新增主题，无需理解后端。
+博客号的公开页面（首页 / 文章页 / **微博页** / **友链页** / 关于我页 / **独立页面** / **归档页** / **留言板页**）由**主题模块**服务端渲染。任何会写 HTML/CSS 的人都可以新增主题，无需理解后端。
 
 ## 目录结构
 
@@ -16,7 +16,7 @@ src/themes/
 
 ## 一个主题需要提供什么
 
-一套主题 = **七个渲染函数**（`home` / `weibo` / `links` / `post` / `about` / `archives` / `guestbook`）+ 全局 CSS。新建 `src/themes/mytheme.ts` 与 `src/themes/mytheme.css`：
+一套主题 = **八个渲染函数**（`home` / `weibo` / `links` / `post` / `about` / `page` / `archives` / `guestbook`）+ 全局 CSS。新建 `src/themes/mytheme.ts` 与 `src/themes/mytheme.css`：
 
 ```ts
 import type { ThemeModule } from './registry'
@@ -40,7 +40,7 @@ export function home(d: {
   categorySlug?: string              // 分类页当前 slug
   categories: { name: string; slug: string }[]   // 顶部导航数据
   tags: { name: string; count: number }[]        // 顶部导航「分类话题」菜单的标签（带计数）
-  navActive?: string                 // 导航高亮：'home' | 'weibo' | 'archives' | 'guestbook' | 'links' | 'about' | 分类slug | 'tag:标签名' | 'search'
+  navActive?: string                 // 导航高亮：'home' | 'weibo' | 'archives' | 'guestbook' | 'links' | 'about' | 'p:页面slug' | 分类slug | 'tag:标签名' | 'search'
   notice?: string                    // 列表上方通知区（搜索结果/分类说明），服务端拼好的 HTML
   emptyText?: string                 // 空列表文案
   weibo?: { items: WeiboItemView[]; total: number } | null  // 首页微博入口卡数据（仅首页传入）
@@ -123,6 +123,18 @@ export function about(d: {
   return `<div class="my-about"><h1>关于我</h1><div class="rich">${d.contentHtml}</div></div>`
 }
 
+export function page(d: {
+  settings: Record<string, string>
+  title: string                      // 页面标题（独立页面系统，/page/:slug）
+  contentHtml: string                // 净化后的页面正文
+  categories: { name: string; slug: string }[]
+  tags?: { name: string; count: number }[]
+  navActive?: string                 // 独立页面传 'p:<slug>'；关于我页复用本函数渲染 /about 时传 'about'
+}): string {
+  // 独立页面与 about 同构：siteNav + 标题 + .rich 容器；漏实现时 pages.ts 有通用兜底（仅正文壳）
+  return `<div class="my-page"><h1>${esc(d.title)}</h1><div class="rich">${d.contentHtml}</div></div>`
+}
+
 export function archives(d: {
   settings: Record<string, string>
   categories: { name: string; slug: string }[]
@@ -177,7 +189,7 @@ export const THEMES: Record<string, ThemeModule> = {
 | `fmtDate / fmtDateCN / fmtViews` | 日期（`2026-10-03` / `2026年10月3日`）与 `1.2w` 阅读数 |
 | `page(o)` | 完整 HTML 外壳（head / meta / OG 标签 / 内联 CSS / 挂 site.js），所有页面统一走它 |
 | `pagerHtml({page,totalPages,base})` | 标准分页条，class 交给你的 CSS 塑形 |
-| `siteNav({cls,categories,tags,active})` | 顶部站点导航（首页 / 微博 / 归档 / 留言板 / 「分类话题」details 折叠菜单 / 友情链接 / 关于我 / 随机）。菜单面板（`.{cls}-menu/-chips/-caret` 等）由你的 CSS 塑形，参考任一现有主题的同名段落 |
+| `siteNav({cls,categories,tags,pages,active})` | 顶部站点导航（首页 / 微博 / 归档 / 留言板 / 「分类话题」details 折叠菜单 / 友情链接 / 自建页面 / 关于我 / 随机）。`pages` 传 `NavPage[]`（`{title, href, key}`，pages 层的 `navPages` 构建，类型从 `../render` 导入）。菜单面板（`.{cls}-menu/-chips/-caret` 等）由你的 CSS 塑形，参考任一现有主题的同名段落 |
 | `homeSortBar({sort,seed,tag,categorySlug,q})` | 首页/分类/搜索共用的排序条（最新 / 最多阅读 / 最多点赞 / 最多留言 / 随机） |
 | `commentsHtml({...})` | 完整留言区（列表 + 表单 + 蜜罐 + 楼中楼回复按钮），语义化 class：`.cmt-*`；传 `guestbook: true` 即留言板页的留言墙 |
 | `likesBtn(slug, likes)` | 点赞按钮，配 `public/site.js` 自动工作，class `.like-btn` |

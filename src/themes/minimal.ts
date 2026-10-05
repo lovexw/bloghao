@@ -21,6 +21,7 @@ import {
   weiboTopicBar,
   type ArchiveYearGroup,
   type CategoryLink,
+  type NavPage,
   type FriendLinkView,
   type HomePostView,
   type OnThisDayItemView,
@@ -57,6 +58,7 @@ export function home(d: {
   categorySlug?: string
   tags: TagCount[]
   categories: CategoryLink[]
+  pages?: NavPage[]
   navActive?: string
   notice?: string
   emptyText?: string
@@ -76,7 +78,7 @@ export function home(d: {
     )
     .join('\n')
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
     <nav class="mn-nav">
@@ -120,6 +122,7 @@ export function post(d: {
   }
   category: CategoryLink | null
   categories: CategoryLink[]
+  pages?: NavPage[]
   tags?: TagCount[]
   comments: { html: string; count: number }
   related: HomePostView[]
@@ -131,7 +134,7 @@ export function post(d: {
         .join('')}</aside>`
     : ''
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
   <header class="mn-header">
     <a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a>
   </header>
@@ -155,14 +158,36 @@ export function about(d: {
   settings: SettingsMap
   contentHtml: string
   categories: CategoryLink[]
+  pages?: NavPage[]
   tags?: TagCount[]
   navActive?: string
 }): string {
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: d.navActive })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <header class="mn-header"><a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a></header>
   <article class="mn-article">
     <h1 class="mn-title">关于我</h1>
+    <div class="rich">${d.contentHtml}</div>
+  </article>
+  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
+</div>`
+}
+
+/** 独立页面页（/page/:slug，slug='about' 时渲染 /about）：结构同关于我，标题由页面数据决定 */
+export function page(d: {
+  settings: SettingsMap
+  title: string
+  contentHtml: string
+  categories: CategoryLink[]
+  pages?: NavPage[]
+  tags?: TagCount[]
+  navActive?: string
+}): string {
+  return `<div class="mn-wrap">
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
+  <header class="mn-header"><a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a></header>
+  <article class="mn-article">
+    <h1 class="mn-title">${esc(d.title)}</h1>
     <div class="rich">${d.contentHtml}</div>
   </article>
   <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
@@ -173,13 +198,14 @@ export function about(d: {
 export function archives(d: {
   settings: SettingsMap
   categories: CategoryLink[]
+  pages?: NavPage[]
   tags?: TagCount[]
   total: number
   groups: ArchiveYearGroup[]
 }): string {
   const s = d.settings
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'archives' })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${esc(s.siteName)}</a>
     <nav class="mn-nav"><a class="mn-nav-link is-active" href="/archives">归档</a><a class="mn-nav-link" href="/guestbook">留言板</a><a class="mn-nav-link" href="/about">关于我</a></nav>
@@ -198,13 +224,14 @@ export function archives(d: {
 export function guestbook(d: {
   settings: SettingsMap
   categories: CategoryLink[]
+  pages?: NavPage[]
   tags?: TagCount[]
   html: string
   count: number
 }): string {
   const s = d.settings
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'guestbook' })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${esc(s.siteName)}</a>
     <nav class="mn-nav"><a class="mn-nav-link" href="/archives">归档</a><a class="mn-nav-link is-active" href="/guestbook">留言板</a><a class="mn-nav-link" href="/about">关于我</a></nav>
@@ -223,6 +250,7 @@ export function guestbook(d: {
 export function weibo(d: {
   settings: SettingsMap
   categories: CategoryLink[]
+  pages?: NavPage[]
   tags?: TagCount[]
   items: WeiboItemView[]
   page: number
@@ -244,7 +272,7 @@ export function weibo(d: {
     adminName: d.adminName,
   })
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'weibo' })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
     <nav class="mn-nav"><a class="mn-nav-link is-active" href="/weibo">微博</a><a class="mn-nav-link" href="/about">关于我</a></nav>
@@ -266,13 +294,14 @@ export function weibo(d: {
 export function links(d: {
   settings: SettingsMap
   categories: CategoryLink[]
+  pages?: NavPage[]
   tags?: TagCount[]
   items: FriendLinkView[]
   total: number
 }): string {
   const s = d.settings
   return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, active: 'links' })}
+  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
   <header class="mn-header">
     <a class="mn-logo" href="/">${avatar(s)}${esc(s.siteName)}</a>
     <nav class="mn-nav"><a class="mn-nav-link is-active" href="/links">友链</a><a class="mn-nav-link" href="/about">关于我</a></nav>
