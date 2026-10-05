@@ -7,7 +7,7 @@ dist/
 .idea/
 .vscode/
 
-# emlog 杩佺Щ宸ュ叿浜х墿锛堣剼鏈繚鐣欙紝鏁版嵁涓嶈繘搴擄級
+# emlog 迁移工具产物（脚本保留，数据不进库）
 scripts/emlog-migrate/staging/
 scripts/emlog-migrate/data.json
 scripts/emlog-migrate/report.json
@@ -15,3 +15,6 @@ scripts/emlog-migrate/import.sql
 scripts/emlog-migrate/uploads-extra.sql
 scripts/emlog-migrate/images.json
 scripts/emlog-migrate/download-results.json
+
+# 主题视觉预览产物（scripts/preview-journal.ts 生成，仅本地截图用）
+.preview/

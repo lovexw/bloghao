@@ -1,3 +1,4 @@
+import * as journal from './journal'
 import * as midnight from './midnight'
 import * as minimal from './minimal'
 import * as paper from './paper'
@@ -123,6 +124,12 @@ export const THEMES: Record<string, ThemeModule> = {
     id: 'wechat',
     name: '微信公众号',
     description: '订阅号卡片流 + 公众号文章页排版，明亮清爽',
+  } as ThemeModule,
+  journal: {
+    ...journal,
+    id: 'journal',
+    name: '手账',
+    description: '奶油纸面、和纸胶带、拍立得与贴纸，把博客写成一本手账',
   } as ThemeModule,
   paper: {
     ...paper,

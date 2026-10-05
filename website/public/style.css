@@ -151,7 +151,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; ba
 
 /* ---------- 主题展示 ---------- */
 .theme-row {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;
 }
 .phone {
   background: var(--card);

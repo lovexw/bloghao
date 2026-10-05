@@ -73,7 +73,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 
 ## 结构速查
 
-- `src/themes/`：四套主题 + `registry.ts` 注册表，新主题见 docs/THEMES.md；`wechat` 为默认主题
+- `src/themes/`：五套主题 + `registry.ts` 注册表，新主题见 docs/THEMES.md；`wechat` 为默认主题
 - `src/pages.ts` 渲染公开页，`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）
 - `public/admin/`：后台（app.js 路由与页面，editor.js 写作编辑器，admin.css 样式）
 - `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao 的 issues；官网 UI 改动同样过 390px 移动端检查
