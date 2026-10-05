@@ -99,7 +99,7 @@ git remote add origin git@github.com:<你>/bloghao-xwblog.git
 git push -u origin main
 ```
 
-在仓库 Settings → Secrets → Actions 添加 `CLOUDFLARE_API_TOKEN`（Workers Scripts + D1 + R2 编辑权限）与 `CLOUDFLARE_ACCOUNT_ID`，仓库内置的 `.github/workflows/deploy.yml` 会在每次 push 到 `main` 时自动执行：类型检查 → 同步 schema → 部署。
+在仓库 Settings → Secrets → Actions 添加 `CLOUDFLARE_API_TOKEN`（Workers Scripts + D1 + R2 编辑权限）与 `CLOUDFLARE_ACCOUNT_ID`，仓库内置的 `.github/workflows/deploy.yml` 会在每次 push 到 `main` 时自动执行：类型检查 → 同步 schema → 部署。另有 `.github/workflows/ci.yml` 与部署并行，跑类型检查 + 回归测试（`tests/` 30+ 用例），防止已修复的 bug 悄悄复发。
 
 </details>
 
@@ -110,6 +110,8 @@ npm install
 npm run db:init:local   # 初始化本地 D1（.wrangler/state，与线上互不影响）
 npm run dev             # http://127.0.0.1:8787
 npm run typecheck       # TypeScript 类型检查，提交前必须通过
+npm test                # 回归测试（tests/，30+ 用例），提交前必须通过
+npm run smoke           # 本地冒烟：起 wrangler dev 逐路由断言，改 SQL 拼接/渲染后必跑
 ```
 
 ## 📦 目录结构
@@ -117,18 +119,23 @@ npm run typecheck       # TypeScript 类型检查，提交前必须通过
 ```
 bloghao-xwblog/
 ├── src/                # Cloudflare Worker（后端 + SSR + 主题）
-│   ├── index.ts        # 入口与路由（页面、图床、RSS、随机阅读）
+│   ├── index.ts        # 入口与路由（页面、图床、RSS、随机阅读、Cron 调度）
 │   ├── api.ts          # 全部 JSON API（文章/微博/友链/分类/评论/设置…）
 │   ├── external.ts     # 外部发布：开放 API + Telegram 机器人 + 管理端点
 │   ├── pages.ts        # 公开页 SSR（首页/微博/友链/文章/搜索…）
 │   ├── collect.ts      # 公众号采集插件服务端
-│   ├── auth.ts / sanitize.ts / markdown.ts / db.ts / render.ts / rss.ts
+│   ├── scheduler.ts    # 每分钟 Cron：定时发布到点自动上线
+│   ├── backup.ts       # 每晚 00:30 全量备份 D1 → R2（滚动保留 30 份）
+│   ├── auth.ts / sanitize.ts / markdown.ts / db.ts / render.ts / rss.ts / utils.ts
 │   └── themes/         # 四套主题 + 注册表（新主题加在这里）
 ├── public/
 │   ├── admin/          # 管理后台 SPA（原生 JS，无构建）
-│   ├── site.js         # 前台交互（点赞/评论/楼中楼/折叠菜单）
+│   ├── site.js         # 前台交互（点赞/评论/楼中楼/灯箱/微博发布/折叠菜单）
 │   └── plugins/        # 编辑器插件（hello-plugin / wechat-collect）
+├── tests/              # 回归测试（npm test，CI 强制执行）
+├── scripts/            # smoke.mjs 本地冒烟；emlog-migrate 一次性迁移工具（留档）
 ├── migration-memos/    # Memos 旧站 → 微博 的一次性迁移工具（已完成，留档）
+├── website/            # 上游「博客号」官网静态页（与本站运行无关）
 ├── docs/               # 全部文档
 └── schema.sql          # D1 表结构（幂等）
 ```
@@ -181,6 +188,7 @@ npm run deploy    # schema 有更新时再执行一次 npx wrangler d1 execute D
 
 ## 🛣 路线图
 
+- [ ] 会员体系：游客注册 + 分级会员 + 专属文章付费墙（调研已完成，待拍板决策，详见 [docs/ROADMAP.md](docs/ROADMAP.md)）
 - [ ] 多作者协作
 - [ ] 编辑器 Markdown 快捷输入（`> ` 自动转引用等）
 - [ ] 服务端插件钩子（发布 / 评论事件回调）

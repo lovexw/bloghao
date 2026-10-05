@@ -132,7 +132,7 @@ git push -u origin main
 2. GitHub 仓库 → Settings → Secrets and variables → Actions，添加两个 secret：
    - `CLOUDFLARE_API_TOKEN`：上一步的令牌
    - `CLOUDFLARE_ACCOUNT_ID`：面板首页右侧可以看到
-3. 之后每次 push 到 `main`，GitHub Actions 会自动：类型检查 → 安装依赖 → 执行 schema.sql（幂等）→ `wrangler deploy`
+3. 之后每次 push 到 `main`，GitHub Actions 会自动：类型检查 → 安装依赖 → 执行 schema.sql（幂等）→ `wrangler deploy`。另有内置的 `ci.yml` 与部署并行，跑类型检查 + 回归测试（`tests/` 30+ 用例），防止已修复的 bug 悄悄复发
 
 ## 8. 日常运维备忘
 
@@ -151,6 +151,8 @@ git push -u origin main
 npm run db:init:local   # 初始化 .wrangler/state 下的本地 D1
 npm run dev             # http://127.0.0.1:8787（本地 D1/R2 全模拟，不花钱）
 npm run typecheck       # TypeScript 类型检查，提交前必须通过
+npm test                # 回归测试（tests/，30+ 用例），提交前必须通过
+npm run smoke           # 本地冒烟：起 wrangler dev 逐路由断言 200，改 SQL 拼接/渲染后必跑
 ```
 
 本地与线上行为一致（同一套 Workers runtime）。上传的测试图片存放在本地模拟的 R2 里，不会占用线上额度。
