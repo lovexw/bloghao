@@ -1488,6 +1488,16 @@ async function viewSettings() {
           </div>
           <input type="hidden" id="st-faviconUrl" value="${esc(s.faviconUrl || '')}">
         </div>
+        <div class="form-item">
+          <label>分享卡图（分享到社交平台的卡片大图，建议 1200×630 的 PNG / JPG，存 R2 图床）</label>
+          <div class="sec-desc">未上传时使用内置卡图；文章设了封面会优先用封面</div>
+          <div class="fav-row">
+            <span id="og-preview-slot">${s.ogImageDefault ? `<img class="og-preview" src="${esc(s.ogImageDefault)}" alt="默认分享卡图">` : '<span class="fav-empty">未设置，使用内置卡图</span>'}</span>
+            <button class="btn btn-sm" id="btn-og-upload" type="button">上传卡图</button>
+            <button class="btn btn-sm btn-ghost" id="btn-og-clear" type="button">恢复内置</button>
+          </div>
+          <input type="hidden" id="st-ogImageDefault" value="${esc(s.ogImageDefault || '')}">
+        </div>
       </div>
     </div>
 
@@ -1650,6 +1660,34 @@ async function viewSettings() {
     toast('已恢复默认，记得点「保存全部」生效')
   })
 
+  function renderOgSlot(url) {
+    document.getElementById('og-preview-slot').innerHTML = url
+      ? `<img class="og-preview" src="${esc(url)}" alt="默认分享卡图">`
+      : '<span class="fav-empty">未设置，使用内置卡图</span>'
+  }
+  document.getElementById('btn-og-upload').addEventListener('click', () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/png,image/jpeg,image/webp'
+    input.onchange = async () => {
+      if (!input.files[0]) return
+      try {
+        const d = await uploadFile(await compressImage(input.files[0]))
+        document.getElementById('st-ogImageDefault').value = d.url
+        renderOgSlot(d.url)
+        toast('卡图已上传，记得点「保存全部」生效')
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+    input.click()
+  })
+  document.getElementById('btn-og-clear').addEventListener('click', () => {
+    document.getElementById('st-ogImageDefault').value = ''
+    renderOgSlot('')
+    toast('已恢复内置卡图，记得点「保存全部」生效')
+  })
+
   document.getElementById('btn-save').addEventListener('click', async (e) => {
     const g = (id) => document.getElementById(id)
     const btn = e.currentTarget
@@ -1661,6 +1699,7 @@ async function viewSettings() {
       footerText: g('st-footerText').value.trim(),
       faviconUrl: g('st-faviconUrl').value.trim(),
       avatarUrl: g('st-avatarUrl').value.trim(),
+      ogImageDefault: g('st-ogImageDefault').value.trim(),
       theme: $app.querySelector('.theme-card.is-active')?.dataset.theme || 'wechat',
       allowComments: g('st-allowComments').checked ? '1' : '0',
       moderateComments: g('st-moderateComments').checked ? '1' : '0',

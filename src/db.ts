@@ -13,6 +13,8 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   about: '<p>在这里写下关于你的故事。</p>',
   faviconUrl: '',
   avatarUrl: '',
+  // 分享到社交平台的默认卡图（og:image 兜底；文章未设封面/卡图时使用，空则回退内置 /og-default.png）
+  ogImageDefault: '',
   // 外部发布（见 src/external.ts）：空 Token = 开放接口关闭
   externalToken: '',
   telegramBotToken: '',

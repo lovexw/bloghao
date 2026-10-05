@@ -968,7 +968,7 @@ api.put('/admin/settings', async (c) => {
       patch[key] = sanitizeHtml(v.slice(0, 100_000))
       continue
     }
-    if (key === 'faviconUrl' || key === 'avatarUrl') {
+    if (key === 'faviconUrl' || key === 'avatarUrl' || key === 'ogImageDefault') {
       // 只接受站内 /images/ 地址或 http(s) 外链，防止 javascript: 之类注入
       const u = v.trim().slice(0, 500)
       patch[key] = u.startsWith('/images/') || /^https?:\/\//i.test(u) ? u : ''

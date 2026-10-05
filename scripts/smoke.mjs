@@ -128,6 +128,10 @@ try {
   await check('GET', '/search?q=smoke', 200)
   await check('GET', '/rss.xml', 200)
   await check('GET', '/sitemap.xml', 200)
+  // 分享卡图：内置默认卡必须能被社交平台抓到，页面必须输出 og:image / twitter:card（og:image 绝不缺位）
+  await check('GET', '/og-default.png', 200)
+  await check('GET', '/', 200, 'twitter:card')
+  await check('GET', '/', 200, 'og:image')
   await check('GET', '/admin/', 200)
   await check('GET', '/post/no-such-post-should-404', 404)
   // 访客统计：公开打点 200、后台聚合接口未登录必须 401（在 /admin/* 鉴权保护之下）

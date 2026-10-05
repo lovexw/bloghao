@@ -24,6 +24,9 @@ export function page(o: ThemePageOptions): string {
   const base = ((o.settings.siteUrl || o.origin || '') as string).replace(/\/+$/, '')
   const title = o.title ? `${o.title} - ${siteName}` : siteName
   const ogType = o.path.startsWith('/post/') ? 'article' : 'website'
+  // 分享卡图三级兜底：文章专属卡图（编辑器 OG 标记 > 封面）→ 后台设置的默认卡图 → 内置品牌卡图。
+  // og:image 绝不缺位：社交平台抓不到图时会退化为灰色占位小图标
+  const ogImage = o.ogImage || o.settings.ogImageDefault || '/og-default.png'
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -37,8 +40,11 @@ ${base ? `<link rel="canonical" href="${esc(base + o.path)}">` : ''}
 <meta property="og:title" content="${esc(o.title || siteName)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:type" content="${ogType}">
+<meta property="og:site_name" content="${esc(siteName)}">
 ${base ? `<meta property="og:url" content="${esc(base + o.path)}">` : ''}
-${o.ogImage ? `<meta property="og:image" content="${esc(absUrl(base, o.ogImage))}">` : ''}
+<meta property="og:image" content="${esc(absUrl(base, ogImage))}">
+<meta property="og:image:alt" content="${esc(o.title || siteName)}">
+<meta name="twitter:card" content="summary_large_image">
 ${o.settings.faviconUrl ? `<link rel="icon" href="${esc(absUrl(base, o.settings.faviconUrl))}">` : `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`}
 ${base ? `<link rel="alternate" type="application/rss+xml" title="${esc(siteName)}" href="${esc(base)}/rss.xml">` : ''}
 <style>${o.css}</style>
