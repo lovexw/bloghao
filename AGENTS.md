@@ -53,11 +53,11 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 
 ## Git 约定
 
-- 本工作区同时服务**两个同源仓库**（2.0 起内容完全一致）：origin = `github.com/lovexw/bloghao-xwblog`（作者实例/开发仓库），upstream = `github.com/lovexw/bloghao-blog`（官方发布仓库，对外开放部署）。不做这两个仓库之外的操作
+- 本工作区同时服务**两个同源仓库**（2.0 起内容完全一致）：origin = `github.com/lovexw/bloghao-xwblog`（作者实例/开发仓库），upstream = `github.com/lovexw/bloghao`（官方发布仓库，对外开放部署）。不做这两个仓库之外的操作
 - 发布流程：提交后**双推**——`git push origin main && git push upstream main`，两仓库始终指向同一提交（同分支同内容，两仓库各自维护 README 会造成同步冲突，故统一一份官方口吻文档）
 - README / docs / 官网以「博客号 BlogHao」官方项目口吻书写，对两个仓库都自洽；线上地址 blog.xiaowuleyi.com 在文档中一律表述为「在线示例」
-- 旧「同步上游」流程已废止：bloghao-blog 不再独立演进，**不要**从 upstream pull 覆盖本地
-- 原独立官网仓库 `github.com/lovexw/bloghao` 已并入本仓库 `website/`（GitHub 上将归档）：不要向它推送、不要从它同步，官网改动一律在本仓库 `website/` 进行
+- 旧「同步上游」流程已废止（官方仓库不再单独演进），**不要**从 upstream pull 覆盖本地
+- 2026-10-05 仓库整理：官方发布仓库由 bloghao-blog **改名**为 `lovexw/bloghao`（旧地址 GitHub 自动重定向）；更早的独立官网仓库已删除、内容并入 `website/`——遇到提这两个旧名字的链接/文档一律以现名为准
 - 提交信息沿用 `theme:` / `mobile:` / `docs:` / `brand:` 等前缀的中文风格
 
 ## 全站移动端适配（长期约定）
@@ -76,5 +76,5 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 - `src/themes/`：四套主题 + `registry.ts` 注册表，新主题见 docs/THEMES.md；`wechat` 为默认主题
 - `src/pages.ts` 渲染公开页，`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）
 - `public/admin/`：后台（app.js 路由与页面，editor.js 写作编辑器，admin.css 样式）
-- `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao-blog 的 issues；官网 UI 改动同样过 390px 移动端检查
+- `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao 的 issues；官网 UI 改动同样过 390px 移动端检查
 - 编辑器内容样式（`.ed-editor`）与文章页（`.rich`）需保持视觉一致——改一处记得镜像另一处

@@ -11,7 +11,7 @@
 - 本项目代码（clone 或 fork 后下载）
 
 ```bash
-cd bloghao-blog
+cd bloghao
 npm install
 npx wrangler login   # 会打开浏览器授权，登录你的 Cloudflare 账号
 npx wrangler whoami  # 确认登录成功
@@ -121,7 +121,7 @@ git init
 git add .
 git commit -m "feat: bloghao 初始化"
 # GitHub 上新建空仓库后：
-git remote add origin git@github.com:<你>/bloghao-blog.git
+git remote add origin git@github.com:<你>/bloghao.git
 git branch -M main
 git push -u origin main
 ```
@@ -181,7 +181,7 @@ A：项目名改 `wrangler.jsonc` 的 `name`；本地端口 `npm run dev -- --po
 
 博客号官网是与博客系统互相独立的纯静态站点，源码在仓库 `website/` 目录，部署在 Cloudflare **Pages** 项目 `bloghao`（即 bloghao.pages.dev），自定义域绑定为 `bloghao.com`：
 
-- **改动发布**：修改 `website/public/` 后 push 到 GitHub，Pages 项目连着 `bloghao-blog` 仓库（构建输出目录 `website/public`）会自动部署；也可手动 `cd website && npx wrangler pages deploy public`
-- **「博客号目录」**：数据在 `website/public/data/showcase.json`，访客通过官网入口向 [bloghao-blog](https://github.com/lovexw/bloghao-blog) 提 Issue 申请上榜，审核通过后把站点加进 JSON 即可
+- **改动发布**：修改 `website/public/` 后 push 到 GitHub，Pages 项目连着 `bloghao` 仓库（构建输出目录 `website/public`）会自动部署；也可手动 `cd website && npx wrangler pages deploy public`
+- **「博客号目录」**：数据在 `website/public/data/showcase.json`，访客通过官网入口向 [bloghao](https://github.com/lovexw/bloghao) 提 Issue 申请上榜，审核通过后把站点加进 JSON 即可
 - **在线示例**：官网指向的演示站（bloghao-blog.0471666.workers.dev）是引擎的另一套独立 Worker 部署，专供访客体验；作者实例 blog.xiaowuleyi.com 不作演示用
 - 官网与本博客 Worker 互不影响，部署 / 回滚都在 Workers & Pages 的 `bloghao` 项目里操作

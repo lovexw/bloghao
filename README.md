@@ -8,7 +8,7 @@
 
 **在线示例：[https://blog.xiaowuleyi.com](https://blog.xiaowuleyi.com)**（作者小吴乐意自己的博客，由本系统驱动）
 
-[![License](https://img.shields.io/badge/License-MIT-07c160) ![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers%20%C2%B7%20D1%20%C2%B7%20R2-F38020) ![No Framework](https://img.shields.io/badge/%E5%89%8D%E5%90%8E%E7%AB%AF-%E6%97%A0%E6%A1%86%E6%9E%B6%E4%BE%9D%E8%B5%96-1a1a1a)](https://github.com/lovexw/bloghao-blog)
+[![License](https://img.shields.io/badge/License-MIT-07c160) ![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers%20%C2%B7%20D1%20%C2%B7%20R2-F38020) ![No Framework](https://img.shields.io/badge/%E5%89%8D%E5%90%8E%E7%AB%AF-%E6%97%A0%E6%A1%86%E6%9E%B6%E4%BE%9D%E8%B5%96-1a1a1a)](https://github.com/lovexw/bloghao)
 
 </div>
 
@@ -74,8 +74,8 @@
 
 ```bash
 # 1. 克隆并安装
-git clone https://github.com/lovexw/bloghao-blog.git
-cd bloghao-blog && npm install
+git clone https://github.com/lovexw/bloghao.git
+cd bloghao && npm install
 npx wrangler login
 
 # 2. 创建资源（名称可自定，与 wrangler.jsonc 保持一致）
@@ -95,7 +95,7 @@ npm run deploy
 <summary><b>推上 GitHub，开启 push 自动部署</b></summary>
 
 ```bash
-git remote add origin git@github.com:<你>/bloghao-blog.git
+git remote add origin git@github.com:<你>/bloghao.git
 git push -u origin main
 ```
 
@@ -117,7 +117,7 @@ npm run smoke           # 本地冒烟：起 wrangler dev 逐路由断言，改 
 ## 📦 目录结构
 
 ```
-bloghao-blog/
+bloghao/
 ├── src/                # Cloudflare Worker（后端 + SSR + 主题）
 │   ├── index.ts        # 入口与路由（页面、图床、RSS、随机阅读、Cron 调度）
 │   ├── api.ts          # 全部 JSON API（文章/微博/友链/分类/评论/设置…）
@@ -197,7 +197,7 @@ npm run deploy    # schema 有更新时再执行一次 npx wrangler d1 execute D
 
 ## 🤝 相关仓库
 
-- **官方仓库**：[lovexw/bloghao-blog](https://github.com/lovexw/bloghao-blog)（本仓库）——2.0 起整合作者实例线的全部增强，欢迎提 Issue / PR；官网源码在仓库内 `website/` 目录（**[bloghao.com](https://bloghao.com)**，Cloudflare Pages 部署，官网「博客号目录」上榜请提 Issue）
+- **官方仓库**：[lovexw/bloghao](https://github.com/lovexw/bloghao)（本仓库）——2.0 起整合作者实例线的全部增强，欢迎提 Issue / PR；官网源码在仓库内 `website/` 目录（**[bloghao.com](https://bloghao.com)**，Cloudflare Pages 部署，官网「博客号目录」上榜请提 Issue）
 - **作者实例**：[lovexw/bloghao-xwblog](https://github.com/lovexw/bloghao-xwblog)——[blog.xiaowuleyi.com](https://blog.xiaowuleyi.com) 的源仓库，与官方仓库保持同源，提交信息沿用 `theme:` / `mobile:` / `feat:` / `docs:` 前缀的中文风格
 
 ## 📄 License

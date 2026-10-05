@@ -485,7 +485,7 @@ const LINK_ICON_MIMES: Record<string, string> = {
   'image/gif': 'gif',
 }
 const LINK_ICON_MAX_BYTES = 300 * 1024
-const ICON_FETCH_UA = 'Mozilla/5.0 (compatible; BlogHaoBot/1.0; +https://github.com/lovexw/bloghao-blog)'
+const ICON_FETCH_UA = 'Mozilla/5.0 (compatible; BlogHaoBot/1.0; +https://github.com/lovexw/bloghao)'
 
 /** 校验友链图标地址：只收站内 /images/ 与 http(s) 外链，防 javascript: 注入 */
 function normalizeLinkIcon(input: unknown): string {
