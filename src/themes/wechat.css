@@ -386,6 +386,8 @@ a.wx-account:hover { opacity: 0.75; }
 /* 微博卡片底栏：点赞 + 评论数 */
 .wb-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--wx-line); }
 .wb-foot .like-btn { padding: 5px 14px; font-size: 13px; background: transparent; }
+/* .wb-foot .like-btn 与 .like-btn.liked 同特异性且声明靠后，会盖掉点赞态的填充与白字，在此补回（color 不补回则 .wb-action:hover 悬停时再度隐身） */
+.wb-foot .like-btn.liked { background: var(--wx-accent); color: #fff; }
 .wb-action {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 13px; color: #8f887d; background: transparent;
