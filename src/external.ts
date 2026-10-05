@@ -188,7 +188,7 @@ externalRoutes.post('/weibo', async (c) => {
   return c.json({
     ok: true,
     id: row.id,
-    url: `${siteBase(settings, reqOrigin(c.req.url))}/weibo#wb-${row.id}`,
+    url: `${siteBase(settings, reqOrigin(c.req.url))}/weibo?wb=${row.id}#wb-${row.id}`,
     status: row.status,
     images: kept,
   })
@@ -283,7 +283,7 @@ export interface CommentNotice {
   pending: boolean
   /** 站点对外地址（settings.siteUrl 优先，否则当前请求 origin） */
   siteBase: string
-  /** 跳转路径：文章 /post/:slug#comments、微博 /weibo#wb-:id、留言板 /guestbook */
+  /** 跳转路径：文章 /post/:slug#comments、微博 /weibo?wb=:id#wb-:id、留言板 /guestbook */
   path: string
 }
 
@@ -419,7 +419,7 @@ async function flushMediaGroup(env: Env, botToken: string, groupId: string, fall
     const status: 'published' | 'draft' = row.status === 'draft' ? 'draft' : 'published'
     const weibo = await insertWeibo(env.DB, content, images, status)
     const site = siteBase(await getSettings(env.DB), fallbackOrigin)
-    const where = `${site}/weibo#wb-${weibo.id}`
+    const where = `${site}/weibo?wb=${weibo.id}#wb-${weibo.id}`
     await tgSend(
       botToken,
       row.chat_id,
@@ -524,7 +524,7 @@ telegramRoutes.post('/webhook', async (c) => {
   }
 
   const weibo = await insertWeibo(c.env.DB, content, images, status)
-  const where = `${siteBase(settings, reqOrigin(c.req.url))}/weibo#wb-${weibo.id}`
+  const where = `${siteBase(settings, reqOrigin(c.req.url))}/weibo?wb=${weibo.id}#wb-${weibo.id}`
   await tgSend(
     botToken,
     chatId,

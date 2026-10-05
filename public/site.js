@@ -2,6 +2,13 @@
 (function () {
   'use strict'
 
+  /* 旧式裸锚点深链兜底（/weibo#wb-<id>，历史遗留的 TG 通知等）：目标微博不在当前页时改用
+   * ?wb= 让服务端定位所在页再滚动；新链接都带 ?wb=，锚点必在 DOM 里，不会走到这里 */
+  var wbHash = /^wb-(\d+)$/.exec(location.hash.slice(1))
+  if (wbHash && location.pathname === '/weibo' && !document.getElementById('wb-' + wbHash[1])) {
+    location.replace('/weibo?wb=' + wbHash[1] + '#wb-' + wbHash[1])
+  }
+
   function postJSON(url, data) {
     return fetch(url, {
       method: 'POST',

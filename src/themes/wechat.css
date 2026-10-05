@@ -347,6 +347,8 @@ a.wx-account:hover { opacity: 0.75; }
   padding: 16px 18px 18px;
   box-shadow: 0 1px 3px rgba(43, 36, 25, 0.04);
 }
+/* 深链定位高亮：/weibo?wb=x#wb-x（历史上的今天/首页入口卡/TG 通知）落到具体某条时给个视觉锚点 */
+.wb-card:target { outline: 2px solid var(--wx-accent); outline-offset: 3px; scroll-margin-top: 16px; }
 .wb-head { display: flex; align-items: center; gap: 10px; }
 .wb-avatar { flex: 0 0 auto; display: flex; }
 .wb-avatar .wx-avatar { width: 38px; height: 38px; flex-basis: 38px; font-size: 17px; border-radius: 10px; }

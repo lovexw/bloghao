@@ -1040,7 +1040,7 @@ async function viewComments() {
       const target = cm.post_id
         ? `<a class="comment-post" href="/post/${esc(cm.post_slug)}#comments" target="_blank">《${esc(cm.post_title)}》</a>`
         : cm.weibo_id
-          ? `<a class="comment-post" href="/weibo#wb-${cm.weibo_id}" target="_blank">微博${wbShort ? ` · ${esc(wbShort)}` : ''}</a>`
+          ? `<a class="comment-post" href="/weibo?wb=${cm.weibo_id}#wb-${cm.weibo_id}" target="_blank">微博${wbShort ? ` · ${esc(wbShort)}` : ''}</a>`
           : `<a class="comment-post" href="/guestbook" target="_blank">留言板</a>`
       return `<div class="comment-row">
       <div class="comment-main">

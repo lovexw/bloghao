@@ -192,6 +192,7 @@ img { max-width: 100%; height: auto; }
 .wb-page-sub { font-size: 13px; color: var(--pp-sub); margin-top: 8px; letter-spacing: 0.08em; }
 .wb-list { margin-top: 20px; display: flex; flex-direction: column; gap: 16px; }
 .wb-card { background: var(--pp-card); border: 1px solid var(--pp-line); border-radius: 6px; padding: 18px 20px 20px; }
+.wb-card:target { outline: 2px solid var(--pp-accent); outline-offset: 3px; scroll-margin-top: 16px; }
 .wb-head { display: flex; align-items: center; gap: 11px; }
 .wb-avatar { display: flex; flex: 0 0 auto; }
 .wb-avatar .pp-seal { width: 36px; height: 36px; font-size: 18px; margin-bottom: 0; border-radius: 6px; }

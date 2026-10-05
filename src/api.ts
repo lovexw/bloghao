@@ -1270,7 +1270,7 @@ api.post('/public/weibo/:id/comments', async (c) => {
       content,
       pending,
       siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
-      path: `/weibo#wb-${id}`,
+      path: `/weibo?wb=${id}#wb-${id}`,
     })
   )
   return c.json({ ok: true, pending })

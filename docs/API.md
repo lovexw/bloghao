@@ -225,7 +225,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 multipart 字段：`content`、`status`、`images`（文件，可重复；也接受图片地址字符串）。`status` 缺省为 `published`。
 
 - 约束与后台一致：`content` ≤ 5000 字、图片 ≤ 9 张（JPG/PNG/WebP/GIF，上传文件 ≤ 25MB，存 R2）、文字与图片不能同时为空
-- 返回 `{ok, id, url, status, images}`，`url` 形如 `https://站点/weibo#wb-<id>`
+- 返回 `{ok, id, url, status, images}`，`url` 形如 `https://站点/weibo?wb=<id>#wb-<id>`（`?wb=` 让 /weibo 服务端定位到该条所在页，锚点才能落到具体那条微博）
 - 错误：401 无效 Token；422 内容为空 / 图片超限 / 格式不支持；429 限频（30 次/分钟/Token）
 - 话题不接受直传，服务端从正文提取（同微博管理接口）
 

@@ -403,7 +403,7 @@ export function weiboHomeEntry(o: { items: WeiboItemView[]; total: number }): st
       const thumb = w.images[0]
         ? `<span class="wb-home-thumb"><img src="${esc(w.images[0])}" loading="lazy" alt=""></span>`
         : ''
-      return `<a class="wb-home-item" href="/weibo#wb-${w.id}">
+      return `<a class="wb-home-item" href="/weibo?wb=${w.id}#wb-${w.id}">
   <div class="wb-home-main">
     <p class="wb-home-text">${esc(short)}</p>
     <time class="wb-home-time" datetime="${new Date(w.created_at).toISOString()}">${weiboTime(w.created_at)}</time>

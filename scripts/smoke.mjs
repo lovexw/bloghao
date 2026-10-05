@@ -113,6 +113,10 @@ try {
   await check('GET', `/tag/${encodeURIComponent('冒烟测试')}`, 200, 'smoke-multi-tag')
   await check('GET', '/archives', 200)
   await check('GET', '/weibo', 200)
+  // 回归守卫：?wb= 深链定位——历史上的今天/首页入口卡/TG 通知链到 /weibo?wb=x#wb-x，
+  // 服务端必须把目标微博所在页渲染出来（17 条夹具中 990101 最老，落在第 2 页）；无效 id 回退第 1 页
+  await check('GET', '/weibo?wb=990101', 200, '微博定位目标')
+  await check('GET', '/weibo?wb=999999999', 200)
   await check('GET', '/links', 200)
   await check('GET', '/guestbook', 200)
   await check('GET', '/about', 200)

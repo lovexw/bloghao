@@ -268,6 +268,7 @@ img { max-width: 100%; height: auto; }
 /* ---------- 微博（随手记） ---------- */
 .wb-list { margin-top: 8px; }
 .wb-card { padding: 24px 0; border-bottom: 1px solid var(--mn-line); }
+.wb-card:target { outline: 2px solid var(--mn-ink); outline-offset: 4px; scroll-margin-top: 16px; }
 .wb-card:last-child { border-bottom: none; }
 .wb-head { display: flex; align-items: center; gap: 10px; }
 .wb-avatar { display: flex; flex: 0 0 auto; }

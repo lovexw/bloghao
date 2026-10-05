@@ -15,6 +15,7 @@ import {
   listPublishedTags,
   listWeibo,
   listWeiboTopics,
+  locateWeiboPage,
   parseTags,
   relatedPosts,
   weiboCommentCountMap,
@@ -426,10 +427,19 @@ export async function renderWeibo(c: C): Promise<Response> {
   const url = new URL(c.req.url)
   const perPage = 15
   const topic = (url.searchParams.get('topic') || '').trim().slice(0, 24)
+  const pageParam = clampInt(url.searchParams.get('page'), 1, 100000, 1)
+  // ?wb=<id> 深链定位：历史上的今天、首页入口卡、TG 通知都链到 /weibo?wb=x#wb-x，而目标条目常不在第 1
+  // 页——服务端先算出所在页直接渲染，浏览器原生锚点才滚动得到；定位失败（已删/非已发布）回退 ?page=
+  let pageNum = pageParam
+  const wbParam = (url.searchParams.get('wb') || '').trim()
+  if (/^\d{1,12}$/.test(wbParam)) {
+    const located = await locateWeiboPage(c.env.DB, Number(wbParam), { limit: perPage, topic: topic || undefined })
+    if (located) pageNum = located
+  }
   const [r, categories, topics, user, tags] = await Promise.all([
     listWeibo(c.env.DB, {
       status: 'published',
-      page: clampInt(url.searchParams.get('page'), 1, 100000, 1),
+      page: pageNum,
       limit: perPage,
       topic: topic || undefined,
       pinnedFirst: true,

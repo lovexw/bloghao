@@ -313,6 +313,7 @@ img { max-width: 100%; height: auto; }
 .md-hero-slim h1 { font-size: 24px; }
 .wb-list { margin-top: 8px; }
 .wb-card { background: var(--md-card); border: 1px solid var(--md-line); border-radius: 14px; padding: 16px 20px 18px; }
+.wb-card:target { outline: 2px solid var(--md-accent); outline-offset: 3px; scroll-margin-top: 16px; }
 .wb-head { display: flex; align-items: center; gap: 10px; }
 .wb-avatar { display: flex; flex: 0 0 auto; }
 .wb-avatar .md-logo-dot { width: 34px; height: 34px; box-shadow: 0 0 14px rgba(88, 166, 255, 0.5); }

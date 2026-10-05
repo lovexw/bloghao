@@ -205,7 +205,7 @@ export async function listPublishedTags(db: D1Database): Promise<{ name: string;
 
 export interface OnThisDayItem {
   kind: 'post' | 'weibo'
-  /** 跳转地址：/post/:slug 或 /weibo#wb-:id */
+  /** 跳转地址：/post/:slug 或 /weibo?wb=:id#wb-:id（?wb= 让 /weibo 定位到所在页） */
   href: string
   /** 展示文本：文章标题 / 微博正文摘要 */
   text: string
@@ -263,7 +263,7 @@ export async function listOnThisDay(db: D1Database, limit = 4): Promise<OnThisDa
     const imgs = weiboImageList(r)
     const text = r.content.trim() || (imgs.length ? `发了 ${imgs.length} 张图` : '')
     if (!text) continue
-    items.push({ kind: 'weibo', href: `/weibo#wb-${r.key}`, text: excerpt(text, 64), ts: r.ts, yearsAgo: thisYear - new Date(r.ts + 8 * 3600_000).getUTCFullYear() })
+    items.push({ kind: 'weibo', href: `/weibo?wb=${r.key}#wb-${r.key}`, text: excerpt(text, 64), ts: r.ts, yearsAgo: thisYear - new Date(r.ts + 8 * 3600_000).getUTCFullYear() })
   }
   const top = items.sort((a, b) => b.ts - a.ts).slice(0, limit)
   otdCache = { day: dayKey, at: Date.now(), items: top }
@@ -426,6 +426,21 @@ export interface ListWeiboResult {
   totalPages: number
 }
 
+/** listWeibo / locateWeiboPage 共用的过滤条件（status + 话题），保证深链定位与列表分页的口径一致 */
+function weiboConditions(opts: { status?: 'published' | 'draft' | 'all'; topic?: string }): { conds: string[]; binds: unknown[] } {
+  const conds: string[] = []
+  const binds: unknown[] = []
+  if (opts.status && opts.status !== 'all') {
+    conds.push('status = ?')
+    binds.push(opts.status)
+  }
+  if (opts.topic) {
+    conds.push("topics LIKE ? ESCAPE '\\'")
+    binds.push(jsonItemLikePattern(opts.topic))
+  }
+  return { conds, binds }
+}
+
 export async function listWeibo(
   db: D1Database,
   opts: {
@@ -438,17 +453,8 @@ export async function listWeibo(
 ): Promise<ListWeiboResult> {
   const page = clampInt(opts.page, 1, 100000, 1)
   const limit = clampInt(opts.limit, 1, 100, 15)
-  const where: string[] = []
-  const binds: unknown[] = []
-  if (opts.status && opts.status !== 'all') {
-    where.push('status = ?')
-    binds.push(opts.status)
-  }
-  if (opts.topic) {
-    where.push("topics LIKE ? ESCAPE '\\'")
-    binds.push(jsonItemLikePattern(opts.topic))
-  }
-  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
+  const { conds, binds } = weiboConditions(opts)
+  const whereSql = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
   const order = opts.pinnedFirst
     ? 'ORDER BY pinned DESC, COALESCE(published_at, created_at) DESC, id DESC'
     : 'ORDER BY COALESCE(published_at, created_at) DESC, id DESC'
@@ -461,6 +467,36 @@ export async function listWeibo(
   ])
   const total = countRes?.n ?? 0
   return { items: itemsRes.results ?? [], total, page, totalPages: Math.max(1, Math.ceil(total / limit)) }
+}
+
+/**
+ * 深链定位：算出某条已发布微博在时间线中的页码（1 起）。
+ * /weibo 每页只渲染 15 条，而历史上的今天、首页入口卡、TG 通知等入口都链到 /weibo?wb=<id>#wb-<id>，
+ * 目标条目多半不在第 1 页——服务端先定位页码再渲染那一页，浏览器原生锚点滚动才落得到。
+ * 排序口径与 listWeibo 的 pinnedFirst（置顶优先 + 时间倒序 + id 兜底）一致，status/topic 过滤同步生效；
+ * 目标不存在 / 非已发布 / 不在 topic 筛选范围内时返回 null，调用方回退常规分页。
+ */
+export async function locateWeiboPage(db: D1Database, id: number, opts: { limit?: number; topic?: string } = {}): Promise<number | null> {
+  const limit = clampInt(opts.limit, 1, 100, 15)
+  const { conds, binds } = weiboConditions({ status: 'published', topic: opts.topic })
+  const target = conds.length ? `id = ? AND ${conds.join(' AND ')}` : 'id = ?'
+  const x = await db
+    .prepare(`SELECT id, pinned, COALESCE(published_at, created_at) AS ts FROM weibo WHERE ${target}`)
+    .bind(id, ...binds)
+    .first<{ id: number; pinned: number; ts: number }>()
+  if (!x) return null
+  // 统计按同一排序排在它前面的行数：页码 = floor(前数 / limit) + 1
+  const front = conds.length ? conds.join(' AND ') + ' AND ' : ''
+  const rank = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM weibo WHERE ${front}
+       (pinned > ?
+        OR (pinned = ? AND COALESCE(published_at, created_at) > ?)
+        OR (pinned = ? AND COALESCE(published_at, created_at) = ? AND id > ?))`
+    )
+    .bind(...binds, x.pinned, x.pinned, x.ts, x.pinned, x.ts, x.id)
+    .first<{ n: number }>()
+  return Math.floor((rank?.n ?? 0) / limit) + 1
 }
 
 export async function getWeiboById(db: D1Database, id: number): Promise<WeiboRow | null> {
