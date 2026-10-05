@@ -172,6 +172,69 @@ try {
     console.error(`  ✗ visit_log 落库校验：${e.message}`)
     results.push(['visit_log 落库校验', false])
   }
+
+  // ── 一键闭站（设置 → 站点状态）：完整链路——登录 → 开关 → 断言 → 恢复 ──
+  // 闭站必须拦得住公开页面 / RSS / 公开写入 API，同时放行后台与登录（不然自己被锁在门外）
+  console.log('\n▸ 一键闭站链路')
+  const BASE = `http://127.0.0.1:${PORT}`
+  const raw = (method, path, opts = {}) =>
+    fetch(`${BASE}${path}`, { method, signal: AbortSignal.timeout(15_000), ...opts })
+
+  const loginRes = await raw('POST', '/api/auth/login', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'smokeadmin', password: 'smoke-pass-12345' }),
+  })
+  const cookie = (loginRes.headers.get('set-cookie') || '').split(';')[0]
+  results.push([
+    '闭站链路：登录夹具管理员',
+    loginRes.status === 200 && cookie.startsWith('bloghao_session='),
+  ])
+  console.log(`  ${loginRes.status === 200 && cookie.startsWith('bloghao_session=') ? '✓' : '✗'} 闭站链路：登录夹具管理员（status ${loginRes.status}）`)
+
+  const putSettings = (patch) =>
+    raw('PUT', '/api/admin/settings', {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify(patch),
+    })
+  const closeRes = await putSettings({ siteClosed: '1', siteGrayscale: '1' })
+  results.push(['闭站链路：开启闭站+灰度', closeRes.status === 200])
+  console.log(`  ${closeRes.status === 200 ? '✓' : '✗'} 闭站链路：开启闭站+灰度（status ${closeRes.status}）`)
+
+  // 匿名访客：公开页面 / RSS / sitemap / 公开写入 API 全部 503
+  await check('GET', '/', 503, '站点暂时关闭')
+  await check('GET', '/post/smoke-multi-tag', 503)
+  await check('GET', '/rss.xml', 503)
+  await check('GET', '/sitemap.xml', 503)
+  await check('POST', '/api/public/track', 503, '站点已关闭', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p: '/x', r: '', v: 'smoke-closed-1', t: '' }),
+  })
+  // 503 + Retry-After：搜索引擎据此暂时保留收录
+  const closedHome = await raw('GET', '/')
+  const retryAfterOk = closedHome.status === 503 && closedHome.headers.get('retry-after') === '3600'
+  results.push(['闭站链路：503 + Retry-After', retryAfterOk])
+  console.log(`  ${retryAfterOk ? '✓' : '✗'} 闭站链路：503 + Retry-After（retry-after: ${closedHome.headers.get('retry-after')}）`)
+
+  // 白名单：后台 SPA、登录、健康检查、主题元数据、图床都活着（不然自己被锁在门外）
+  await check('GET', '/admin/', 200)
+  await check('GET', '/api/auth/state', 200)
+  await check('GET', '/api/health', 200)
+  await check('GET', '/api/meta/themes', 200)
+  await check('GET', '/images/u/smoke-none.jpg', 404) // 404（R2 查无此图）而非 503 = 图床路由已放行
+  await check('GET', '/api/admin/visits', 200, undefined, { headers: { Cookie: cookie } })
+  // 已登录管理员：闭站期间仍可全站预览，且灰度样式随页面输出（两个开关一次验到）
+  await check('GET', '/', 200, 'html{filter:grayscale(100%)}', { headers: { Cookie: cookie } })
+
+  // 恢复：关站后匿名访客应重新看到正常站点，灰度也撤掉
+  const reopenRes = await putSettings({ siteClosed: '0', siteGrayscale: '0' })
+  results.push(['闭站链路：恢复访问', reopenRes.status === 200])
+  console.log(`  ${reopenRes.status === 200 ? '✓' : '✗'} 闭站链路：恢复访问（status ${reopenRes.status}）`)
+  await check('GET', '/', 200)
+  const reopenedHome = await raw('GET', '/', { headers: { Cookie: cookie } })
+  const reopenedText = await reopenedHome.text()
+  const grayscaleOff = reopenedHome.status === 200 && !reopenedText.includes('grayscale')
+  results.push(['闭站链路：灰度已随恢复撤下', grayscaleOff])
+  console.log(`  ${grayscaleOff ? '✓' : '✗'} 闭站链路：灰度已随恢复撤下`)
 } finally {
   if (dev && dev.exitCode === null) dev.kill('SIGTERM')
 }

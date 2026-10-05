@@ -64,6 +64,7 @@ ${jsonLdHtml}
 ${o.settings.faviconUrl ? `<link rel="icon" href="${esc(absUrl(base, o.settings.faviconUrl))}">` : `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`}
 ${base ? `<link rel="alternate" type="application/rss+xml" title="${esc(siteName)}" href="${esc(base)}/rss.xml">` : ''}
 <style>${o.css}</style>
+${grayscaleStyle(o.settings)}
 </head>
 <body${o.preview ? ' data-preview="1"' : ''}>
 ${o.body}
@@ -75,6 +76,51 @@ ${o.body}
 function absUrl(siteUrl: string, path: string): string {
   if (/^https?:\/\//i.test(path)) return path
   return siteUrl ? siteUrl + path : path
+}
+
+/** 一键灰度（哀悼/纪念模式）：settings.siteGrayscale 开启时全站去色。
+ *  放在 <html> 上才能覆盖背景色；注：filter 会让 fixed 后代改挂 html 定位基准——
+ *  五套主题目前都没有 fixed 元素（sticky 不受影响），新主题引入固定定位时记得复查 */
+function grayscaleStyle(settings: SettingsMap): string {
+  return settings.siteGrayscale === '1' ? '<style>html{filter:grayscale(100%)}</style>' : ''
+}
+
+/** 闭站页（settings.siteClosed 开启时对匿名访客返回）：脱离主题的极简独立页。
+ *  状态码必须 503 + Retry-After——搜索引擎据此暂时保留收录，而不是把站点当 404 摘掉 */
+export function renderClosedPage(settings: SettingsMap): string {
+  const siteName = settings.siteName || 'BlogHao'
+  const message = settings.siteClosedMessage || '本站暂时关闭，请稍后再来。'
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>站点暂时关闭 - ${esc(siteName)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{color-scheme:light dark}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+  font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Segoe UI','Microsoft YaHei',sans-serif;
+  background:#f4f4f5;color:#52525b}
+.card{max-width:460px;text-align:center}
+.badge{width:44px;height:44px;margin:0 auto;border:1.5px solid #a1a1aa;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;color:#a1a1aa}
+h1{font-size:20px;font-weight:600;margin:20px 0 12px;color:inherit}
+.msg{font-size:15px;line-height:1.8;white-space:pre-wrap;word-break:break-word}
+.site{margin-top:32px;font-size:13px;color:#a1a1aa}
+@media (prefers-color-scheme:dark){body{background:#18181b}.badge{border-color:#3f3f46;color:#3f3f46}.site{color:#52525b}}
+</style>
+</head>
+<body>
+<div class="card">
+<div class="badge" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/></svg></div>
+<h1>站点暂时关闭</h1>
+<p class="msg">${esc(message)}</p>
+<div class="site">${esc(siteName)}</div>
+</div>
+</body>
+</html>`
 }
 
 export interface ArticleJsonLdOptions {

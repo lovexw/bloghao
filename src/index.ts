@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { scheduledBackup } from './backup'
 import { runScheduledPublish } from './scheduler'
 import { api } from './api'
+import { siteClosedResponse } from './closed'
 import { ensureSchema, getSettings, listCategories, listPublishedTags, listPosts, listSitemapPages, listSitemapPosts } from './db'
 import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPage, renderPost, renderSearch, renderWeibo } from './pages'
 import { buildRss, buildSitemap } from './rss'
@@ -23,6 +24,13 @@ function ensureSchemaOnce(db: D1Database): Promise<void> {
 }
 app.use('*', async (c, next) => {
   await ensureSchemaOnce(c.env.DB)
+  await next()
+})
+
+// 一键闭站（后台「设置 → 站点状态」，逻辑在 src/closed.ts）
+app.use('*', async (c, next) => {
+  const res = await siteClosedResponse(c.env.DB, c.req.raw, c.req.path)
+  if (res) return res
   await next()
 })
 

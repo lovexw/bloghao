@@ -1063,6 +1063,14 @@ api.put('/admin/settings', async (c) => {
       patch[key] = v === '1' || v === 'true' ? '1' : '0'
       continue
     }
+    if (key === 'siteGrayscale' || key === 'siteClosed') {
+      patch[key] = v === '1' || v === 'true' ? '1' : '0'
+      continue
+    }
+    if (key === 'siteClosedMessage') {
+      patch[key] = v.slice(0, 1000)
+      continue
+    }
     patch[key] = v.slice(0, 500)
   }
   await saveSettings(c.env.DB, patch)

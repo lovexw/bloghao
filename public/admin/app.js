@@ -1836,6 +1836,20 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
+      <div class="form-section"><h3>站点状态</h3><div class="sec-desc">特殊时刻的全站开关：两个都是可逆的，随时保存随时恢复</div>
+        <div class="switch-row">
+          <div><div class="switch-label">灰度模式</div><div class="switch-sub">全站去色显示（黑白），用于哀悼、纪念等特殊时刻；后台不受影响</div></div>
+          <label class="switch"><input type="checkbox" id="st-siteGrayscale" ${s.siteGrayscale === '1' ? 'checked' : ''}><span class="track"></span></label>
+        </div>
+        <div class="switch-row">
+          <div><div class="switch-label">关闭站点</div><div class="switch-sub">开启后访客只能看到闭站页，RSS、评论等一并停用；后台与已登录的你不受影响</div></div>
+          <label class="switch"><input type="checkbox" id="st-siteClosed" ${s.siteClosed === '1' ? 'checked' : ''}><span class="track"></span></label>
+        </div>
+        <div class="form-item"><label>闭站公告（展示在闭站页，支持换行；留空使用默认文案）</label><textarea class="textarea" id="st-siteClosedMessage" rows="3" maxlength="1000" placeholder="本站暂时关闭，请稍后再来。">${esc(s.siteClosedMessage || '')}</textarea></div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:20px;">
       <div class="form-section"><h3>评论</h3><div class="sec-desc">访客留言的规则（文章、微博与留言板通用）</div>
         <div class="switch-row">
           <div><div class="switch-label">开启留言</div><div class="switch-sub">关闭后文章页与留言板隐藏留言区</div></div>
@@ -2015,7 +2029,7 @@ async function viewSettings() {
   document.getElementById('btn-save').addEventListener('click', async (e) => {
     const g = (id) => document.getElementById(id)
     const btn = e.currentTarget
-    btn.disabled = true
+    const wasClosed = state.settings.siteClosed === '1'
     const body = {
       siteName: g('st-siteName').value.trim() || '博客号',
       siteDescription: g('st-siteDescription').value.trim(),
@@ -2028,6 +2042,9 @@ async function viewSettings() {
       allowComments: g('st-allowComments').checked ? '1' : '0',
       moderateComments: g('st-moderateComments').checked ? '1' : '0',
       postsPerPage: g('st-postsPerPage').value || '10',
+      siteGrayscale: g('st-siteGrayscale').checked ? '1' : '0',
+      siteClosed: g('st-siteClosed').checked ? '1' : '0',
+      siteClosedMessage: g('st-siteClosedMessage').value.trim(),
       telegramBotToken: g('st-telegramBotToken').value.trim(),
       telegramAllowFrom: g('st-telegramAllowFrom').value.trim(),
       notifyNewComment: g('st-notifyNewComment').checked ? '1' : '0',
@@ -2035,10 +2052,15 @@ async function viewSettings() {
       backupEnabled: g('st-backupEnabled').checked ? '1' : '0',
       statsEnabled: g('st-statsEnabled').checked ? '1' : '0',
     }
+    // 关站是全站 503 的大动作：开启瞬间必须明确确认（取消时不动按钮状态）
+    if (body.siteClosed === '1' && !wasClosed) {
+      if (!(await confirmBox('确定关闭站点吗？保存后所有访客和搜索引擎都只能看到闭站页，只有登录后台的你才能恢复访问。'))) return
+    }
+    btn.disabled = true
     try {
       const d = await api('/admin/settings', { method: 'PUT', body })
       state.settings = d.settings
-      toast('设置已保存 ✅')
+      toast(!wasClosed && body.siteClosed === '1' ? '站点已关闭：访客现在只能看到闭站页' : '设置已保存 ✅')
     } catch (e) {
       toast(e.message, true)
     } finally {

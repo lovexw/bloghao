@@ -30,6 +30,12 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   statsEnabled: '1',
   // 编辑器插件停用名单（后台「插件」页；逗号分隔的 manifest id，空 = 全部启用）
   pluginsDisabled: '',
+  // 一键灰度（哀悼/纪念模式）：所有公开页 CSS 去色，见 src/render.ts page()
+  siteGrayscale: '0',
+  // 一键闭站：公开页面与公开 API 全部 503，仅后台/登录/图床可用（src/index.ts 闭站中间件）
+  siteClosed: '0',
+  // 闭站页公告文案，空 = 使用内置默认文案
+  siteClosedMessage: '',
 }
 
 export async function getSettings(db: D1Database): Promise<SettingsMap> {
