@@ -59,7 +59,7 @@ const BOOL_ATTRS = new Set(['controls', 'playsinline', 'open'])
 
 /** 内联样式允许的属性（排版用途白名单） */
 const CSS_PROP =
-  /^(?:color|background-color|background|font-size|font-weight|font-style|font-family|font-family|letter-spacing|line-height|text-align|text-decoration|text-decoration\+\w+|text-indent|text-transform|white-space|word-break|word-spacing|vertical-align|display|margin|margin-(?:top|right|bottom|left)|padding|padding-(?:top|right|bottom|left)|border(?:-(?:top|right|bottom|left))?(?:-\w+)?|border-radius(?:-\w+)?|width|max-width|min-width|height|max-height|float|clear|opacity|overflow(?:-(?:x|y))?|box-shadow|list-style(?:-\w+)?|flex(?:-\w+)?|align-\w+|justify-\w+)$/
+  /^(?:color|background-color|background|font-size|font-weight|font-style|font-family|letter-spacing|line-height|text-align|text-decoration|text-decoration\+\w+|text-indent|text-transform|white-space|word-break|word-spacing|vertical-align|display|margin|margin-(?:top|right|bottom|left)|padding|padding-(?:top|right|bottom|left)|border(?:-(?:top|right|bottom|left))?(?:-\w+)?|border-radius(?:-\w+)?|width|max-width|min-width|height|max-height|float|clear|opacity|overflow(?:-(?:x|y))?|box-shadow|list-style(?:-\w+)?|flex(?:-\w+)?|align-\w+|justify-\w+)$/
 
 function escAttr(s: string): string {
   return s
@@ -213,11 +213,6 @@ export function sanitizeHtml(input: string): string {
   }
   out += escapeStrayLt(input.slice(last))
   return out
-}
-
-/** 净化纯文本（评论区等场景不涉及 HTML，直接转义） */
-export function escapeText(s: string): string {
-  return escAttr(s)
 }
 
 /** 取正文里的 OG 分享卡图 URL（sanitize 后的 content 只会有合法的站内 /images/ 路径） */

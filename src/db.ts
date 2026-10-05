@@ -1,5 +1,5 @@
 import type { CategoryRow, CommentRow, FriendLinkRow, PageRow, PostRow, SettingsMap, WeiboRow } from './types'
-import { clampInt, excerpt, jsonItemLikePattern, likePattern, WEIBO_MAX_TOPICS } from './utils'
+import { clampInt, cstDate, excerpt, fmtDate, jsonItemLikePattern, likePattern, WEIBO_MAX_TOPICS } from './utils'
 
 export const DEFAULT_SETTINGS: Record<string, string> = {
   siteName: '博客号 BlogHao',
@@ -254,16 +254,17 @@ export const ON_THIS_DAY_MAX = 100
  * 与 SQL 拆开以便单测覆盖合并口径；nowTs 传查询时刻（毫秒），用于算 yearsAgo。
  */
 export function buildOnThisDayItems(postRows: OnThisDayRow[], weiboRows: OnThisDayRow[], nowTs: number): OnThisDayItem[] {
-  const thisYear = new Date(nowTs + 8 * 3600_000).getUTCFullYear()
+  // 年份口径与 SQL 侧 +28800 一致，走 cstDate 统一北京时间换算
+  const thisYear = cstDate(nowTs).getUTCFullYear()
   const items: OnThisDayItem[] = []
   for (const r of postRows) {
-    items.push({ kind: 'post', href: `/post/${r.key}`, text: r.title, ts: r.ts, yearsAgo: thisYear - new Date(r.ts + 8 * 3600_000).getUTCFullYear() })
+    items.push({ kind: 'post', href: `/post/${r.key}`, text: r.title, ts: r.ts, yearsAgo: thisYear - cstDate(r.ts).getUTCFullYear() })
   }
   for (const r of weiboRows) {
     const imgs = weiboImageList(r)
     const text = r.content.trim() || (imgs.length ? `发了 ${imgs.length} 张图` : '')
     if (!text) continue
-    items.push({ kind: 'weibo', href: `/weibo?wb=${r.key}#wb-${r.key}`, text: excerpt(text, 64), ts: r.ts, yearsAgo: thisYear - new Date(r.ts + 8 * 3600_000).getUTCFullYear() })
+    items.push({ kind: 'weibo', href: `/weibo?wb=${r.key}#wb-${r.key}`, text: excerpt(text, 64), ts: r.ts, yearsAgo: thisYear - cstDate(r.ts).getUTCFullYear() })
   }
   return items.sort((a, b) => b.ts - a.ts).slice(0, ON_THIS_DAY_MAX)
 }
@@ -274,8 +275,8 @@ export function buildOnThisDayItems(postRows: OnThisDayRow[], weiboRows: OnThisD
  * 结果按天做进程内缓存：首页每次渲染不必重复全表扫（数据变了最多延迟 10 分钟）。
  */
 export async function listOnThisDay(db: D1Database): Promise<OnThisDayItem[]> {
-  // 缓存 key 也按北京时间的日期翻日
-  const dayKey = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
+  // 缓存 key 也按北京时间的日期翻日（fmtDate 即 +8h 口径）
+  const dayKey = fmtDate(Date.now())
   if (otdCache && otdCache.day === dayKey && Date.now() - otdCache.at < 10 * 60_000) return otdCache.items
   // 两侧比较基准都要 +28800 对齐北京时间：'now' 是 UTC 墙钟，直接比会让北京 0-8 点匹配到「昨天」的历史
   const [postsRes, weiboRes] = await db.batch([
@@ -349,16 +350,6 @@ export async function getCategoryBySlug(db: D1Database, slug: string): Promise<C
 
 export async function getCategoryById(db: D1Database, id: number): Promise<CategoryRow | null> {
   return db.prepare('SELECT * FROM categories WHERE id = ?').bind(id).first<CategoryRow>()
-}
-
-export async function uniqueCategorySlug(db: D1Database, base: string, excludeId?: number): Promise<string> {
-  let slug = base
-  for (let i = 2; i < 100; i++) {
-    const row = await db.prepare('SELECT id FROM categories WHERE slug = ?').bind(slug).first<{ id: number }>()
-    if (!row || row.id === excludeId) return slug
-    slug = `${base}-${i}`
-  }
-  return `${base}-${Date.now().toString(36)}`
 }
 
 export async function createCategory(db: D1Database, name: string, slug: string, sort = 0): Promise<CategoryRow> {
@@ -594,6 +585,19 @@ export async function weiboCommentCountMap(db: D1Database, weiboIds: number[]): 
     .all<{ weibo_id: number; n: number }>()
   const m = new Map<number, number>()
   for (const r of results ?? []) m.set(r.weibo_id, r.n)
+  return m
+}
+
+/** 批量取一组文章的已审核评论数：{postId: count}（列表页一次带全，替代逐篇 COUNT 的 N+1） */
+export async function postCommentCountMap(db: D1Database, postIds: number[]): Promise<Map<number, number>> {
+  if (!postIds.length) return new Map()
+  const ph = postIds.map(() => '?').join(',')
+  const { results } = await db
+    .prepare(`SELECT post_id, COUNT(*) AS n FROM comments WHERE post_id IN (${ph}) AND status = 'approved' GROUP BY post_id`)
+    .bind(...postIds)
+    .all<{ post_id: number; n: number }>()
+  const m = new Map<number, number>()
+  for (const r of results ?? []) m.set(r.post_id, r.n)
   return m
 }
 

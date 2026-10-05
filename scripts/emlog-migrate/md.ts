@@ -4,6 +4,9 @@ import { escAttr } from '../../src/sanitize.ts'
  * 轻量 Markdown 渲染器（编辑器 Markdown 模式使用）
  * 支持：# 标题、**粗体**、*斜体*、`行内代码`、``` 代码块、> 引用、
  * -/1. 列表、![图](src)、[链接](href)、--- 分隔线、表格不支持（v1）
+ *
+ * ⚠️ 本文件是 src/markdown.ts 的迁移链快照（emlog 历史文章渲染在用，markdown 分支不另过 sanitizeHtml）：
+ * 两边的安全修复必须同步打（URL 前缀判断先剥 \t\r\n；属性上下文用 escQuote 不用 escAttr）。
  */
 
 interface CodeSpan {
@@ -12,21 +15,21 @@ interface CodeSpan {
 }
 
 function inline(s: string, codes: CodeSpan[]): string {
-  // 1. 提取行内代码，避免内部被二次格式化
+  // 1. 提取行内代码，避免内部被二次格式化（传入文本已被 escLine 转义，这里不再重复）
   s = s.replace(/`([^`]+)`/g, (_m, code: string) => {
     const placeholder = `\u0000${codes.length}\u0000`
-    codes.push({ placeholder, html: `<code>${escAttr(code)}</code>` })
+    codes.push({ placeholder, html: `<code>${code}</code>` })
     return placeholder
   })
   // 2. 图片
   s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (_m, alt: string, src: string, title?: string) => {
     if (!safeUrlMd(src)) return _m
-    return `<img src="${escAttr(src)}" alt="${escAttr(alt)}"${title ? ` title="${escAttr(title)}"` : ''}>`
+    return `<img src="${escQuote(src)}" alt="${escQuote(alt)}"${title ? ` title="${escQuote(title)}"` : ''}>`
   })
   // 3. 链接
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text: string, href: string) => {
     if (!safeUrlMd(href)) return m
-    return `<a href="${escAttr(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${text}</a>`
+    return `<a href="${escQuote(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${text}</a>`
   })
   // 4. 粗体 / 斜体 / 删除线
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -38,7 +41,8 @@ function inline(s: string, codes: CodeSpan[]): string {
 }
 
 function safeUrlMd(v: string): boolean {
-  const t = v.trim().toLowerCase()
+  // 先剥掉 tab/换行：URL 解析器会忽略它们，`jav\tascript:` 这类混淆不能靠前缀正则漏过去
+  const t = v.replace(/[\t\r\n]/g, '').trim().toLowerCase()
   if (/^(javascript|vbscript|data|file|blob):/.test(t)) return false
   if (/^[a-z][a-z0-9+.-]*:/.test(t)) return /^https?:/.test(t)
   return true
@@ -46,6 +50,12 @@ function safeUrlMd(v: string): boolean {
 
 function escLine(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/** 进 inline() 的文本已被 escLine 转义过 & < >，属性上下文只补引号；
+ *  不能再用 escAttr，否则 & 会变成 &amp;amp;，含参数的链接/图片 URL 全部损坏 */
+function escQuote(s: string): string {
+  return s.replace(/"/g, '&quot;')
 }
 
 export function mdToHtml(md: string): string {

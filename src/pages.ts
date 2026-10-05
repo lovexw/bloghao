@@ -19,6 +19,7 @@ import {
   listWeiboTopics,
   locateWeiboPage,
   parseTags,
+  postCommentCountMap,
   relatedPosts,
   weiboCommentCountMap,
   weiboImageList,
@@ -28,19 +29,11 @@ import {
   articleJsonLd,
   archiveGroups,
   commentsHtml,
-  friendLinkApply,
-  friendLinkCards,
   HOME_SORTS,
-  homeListBase,
-  homeSortBar,
-  onThisDayCard,
   page,
-  pagerHtml,
   siteBase,
   toHomePost,
   stripCoverDuplicate,
-  weiboCards,
-  weiboPager,
   type CategoryLink,
   type NavPage,
   type WeiboItemView,
@@ -191,9 +184,11 @@ async function renderList(
     Object.assign(r, fixed)
   }
 
-  const posts = await Promise.all(
-    r.items.map(async (p) => toHomePost(p, parseTags(p), await commentCount(c, p.id), readingMinutes(p.content)))
+  const countMap = await postCommentCountMap(
+    c.env.DB,
+    r.items.map((p) => p.id)
   )
+  const posts = r.items.map((p) => toHomePost(p, parseTags(p), countMap.get(p.id) ?? 0, readingMinutes(p.content)))
 
   const weibo = wb
     ? {
@@ -681,5 +676,3 @@ export async function renderNotFound(c: C): Promise<Response> {
     404
   )
 }
-
-export { pagerHtml }

@@ -12,7 +12,8 @@ import { getSettings, listPages, parseTags } from './db'
 import { htmlToMd } from './html-md'
 import { extractOgImage, sanitizeHtml } from './sanitize'
 import type { Env, PageRow, PostRow, SessionUser, WeiboRow } from './types'
-import { fmtDate } from './utils'
+import { cstDate, fmtDate } from './utils'
+import { cdata, rfc822, xmlEsc } from './xml'
 import { ZipWriter } from './zip'
 
 type ExportEnv = { Bindings: Env; Variables: { user: SessionUser } }
@@ -78,10 +79,10 @@ export function frontMatter(f: {
   return lines.join('\n')
 }
 
-/** 北京时间 YYYY-MM-DD HH:mm:ss（与全站 +8h 口径一致） */
+/** 北京时间 YYYY-MM-DD HH:mm:ss（与全站 +8h 口径一致，比 fmtDateTime 多秒位供 front-matter 用） */
 function fmtDateTimeCst(ts: number | null): string {
   if (!ts) return ''
-  const d = new Date(ts + 8 * 3600_000)
+  const d = cstDate(ts)
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`
 }
@@ -110,12 +111,20 @@ exportRoutes.get('/markdown', async (c) => {
   const pages: PageRow[] = await listPages(db)
   const catByName = new Map((catRes.results ?? []).map((r) => [r.post_id, r.name]))
 
-  // 图片 key 清单：正文 img / OG 卡图 / 封面 + 微博图
+  // 净化只跑一遍：图片清单收集与 Markdown 生成共用同一份结果（10 万行上限下两遍是 CPU 翻倍）
+  const postsHtml = posts.map((p) => sanitizeHtml(p.content))
+  const pagesHtml = pages.map((pg) => sanitizeHtml(pg.content))
+
+  // 图片 key 清单：正文 img / OG 卡图 / 封面 + 微博图 + 独立页面正文图
+  // （pages 的 MD 同样引用配图，不进清单则导出包里页面配图全是死链）
   const keys = new Set<string>()
-  for (const p of posts) {
-    for (const k of collectImageKeysFromHtml(sanitizeHtml(p.content))) keys.add(k)
-    const cover = keyOf(p.cover)
+  postsHtml.forEach((html, i) => {
+    for (const k of collectImageKeysFromHtml(html)) keys.add(k)
+    const cover = keyOf(posts[i].cover)
     if (cover) keys.add(cover)
+  })
+  for (const html of pagesHtml) {
+    for (const k of collectImageKeysFromHtml(html)) keys.add(k)
   }
   for (const w of weibo) {
     try {
@@ -135,7 +144,8 @@ exportRoutes.get('/markdown', async (c) => {
   const pump = (async () => {
     try {
       const now = Date.now()
-      for (const p of posts) {
+      for (let i = 0; i < posts.length; i++) {
+        const p = posts[i]
         const md =
           frontMatter({
             title: p.title,
@@ -148,7 +158,7 @@ exportRoutes.get('/markdown', async (c) => {
             summary: p.summary,
           }) +
           '\n\n' +
-          rewriteImageLinks(htmlToMd(sanitizeHtml(p.content)))
+          rewriteImageLinks(htmlToMd(postsHtml[i]))
         await zip.add(`posts/${p.slug}.md`, new TextEncoder().encode(md), p.updated_at)
       }
       if (weibo.length) {
@@ -165,7 +175,8 @@ exportRoutes.get('/markdown', async (c) => {
         })
         await zip.add('weibo.md', new TextEncoder().encode('# 微博\n\n' + lines.join('\n\n') + '\n'), now)
       }
-      for (const pg of pages) {
+      for (let i = 0; i < pages.length; i++) {
+        const pg = pages[i]
         const md =
           frontMatter({
             title: pg.title,
@@ -175,7 +186,7 @@ exportRoutes.get('/markdown', async (c) => {
             tags: [],
           }) +
           '\n\n' +
-          rewriteImageLinks(htmlToMd(sanitizeHtml(pg.content)))
+          rewriteImageLinks(htmlToMd(pagesHtml[i]))
         await zip.add(`pages/${pg.slug}.md`, new TextEncoder().encode(md), pg.updated_at)
       }
       // 图片：R2 逐个流式写入（store 模式不压缩，边流边算 CRC），缺失记入 manifest
@@ -236,23 +247,15 @@ exportRoutes.get('/wxr', async (c) => {
   const tagSet = new Set<string>()
   for (const p of posts) for (const t of parseTags(p)) tagSet.add(t)
 
-  const xmlEsc = (s: string) =>
-    String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  const cdata = (s: string) =>
-    // WXR 与 RSS 同口径：CDATA 内剥 XML 非法控制字符 + 防 ]]> 提前闭合
-    `<![CDATA[${String(s ?? '')
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
-      .replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
-  const rfc822 = (ts: number | null) => new Date(ts ?? Date.now()).toUTCString()
-
+  // xmlEsc/cdata/rfc822 与 RSS 同一套（src/xml.ts）：控制字符剥离等口径不允许分叉
   const items = posts
     .map((p) => {
       const tags = parseTags(p)
       const cat = catByName.get(p.id)
       return `    <item>
       <title>${xmlEsc(p.title)}</title>
-      <link>${xmlEsc(siteUrl)}/post/${xmlEsc(p.slug)}</link>
-      <guid isPermaLink="true">${xmlEsc(siteUrl)}/post/${xmlEsc(p.slug)}</guid>
+      <link>${xmlEsc(siteUrl)}/post/${encodeURIComponent(p.slug)}</link>
+      <guid isPermaLink="true">${xmlEsc(siteUrl)}/post/${encodeURIComponent(p.slug)}</guid>
       <pubDate>${rfc822(p.published_at ?? p.created_at)}</pubDate>
       <dc:creator>${xmlEsc(settings.siteName)}</dc:creator>
       <content:encoded>${cdata(sanitizeHtml(p.content))}</content:encoded>

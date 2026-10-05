@@ -10,8 +10,6 @@
  * - 插件系统：window.BlogHao.registerPlugin（见 docs/PLUGINS.md）
  */
 
-const editorPage = () => document.querySelector('.editor-page')
-
 function esc(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -203,7 +201,6 @@ const IC = {
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6h5"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   cloud: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.4-9A6 6 0 0 1 18 8.5 4 4 0 0 1 17.5 18z"/></svg>',
-  send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 16-7-4 16-4.5-6.5z"/><path d="M11.5 14.5 20 5"/></svg>',
 }
 
 /* ---------------- 插件系统 ---------------- */
@@ -282,7 +279,7 @@ function hasText(el) {
   return (el.textContent || '').trim().length > 0
 }
 
-export function runChecks(html) {
+function runChecks(html) {
   const doc = new DOMParser().parseFromString(String(html || ''), 'text/html')
   const issues = []
   const add = (level, rule, msg) => {
@@ -481,7 +478,6 @@ export async function mountEditor(root, postId, opts = {}) {
 
   let mdMode = false
   let dirty = false
-  let saving = false
   let saveTimer = null
   let savedRange = null
   // markDirty 每次自增：保存完成时若期间又有新输入（seq 变了），不能把 dirty 清掉，
@@ -661,10 +657,16 @@ export async function mountEditor(root, postId, opts = {}) {
   function probeWidth(url) {
     return new Promise((resolve) => {
       const img = new Image()
-      img.onload = () => resolve(img.naturalWidth || null)
-      img.onerror = () => resolve(null)
+      const timer = setTimeout(() => resolve(null), 4000)
+      img.onload = () => {
+        clearTimeout(timer)
+        resolve(img.naturalWidth || null)
+      }
+      img.onerror = () => {
+        clearTimeout(timer)
+        resolve(null)
+      }
       img.src = url
-      setTimeout(() => resolve(null), 4000)
     })
   }
 
@@ -743,15 +745,12 @@ export async function mountEditor(root, postId, opts = {}) {
     // 排队执行：前一次保存（无论成败）结束后才跑下一次，保证点「发布」时
     // 一定把当前内容与状态真正发出去，而不是被飞行中的自动保存顶掉
     const run = async () => {
-      if (!mdMode) {
-        // 富文本模式下同步 markdown 不可见内容
-      } else {
+      if (mdMode) {
         const d = await api('/admin/tools/md', { method: 'POST', body: { md: mdArea.value } })
         editor.innerHTML = d.html
       }
       const payload = collect(publishIntent && publishIntent.status ? publishIntent : {})
       if (!payload.title && !payload.content.replace(/<[^>]+>/g, '').trim()) return
-      saving = true
       saveState.textContent = '保存中…'
       const seqAtSave = dirtySeq
       try {
@@ -778,6 +777,9 @@ export async function mountEditor(root, postId, opts = {}) {
         } else {
           saveState.textContent = '有未保存更改'
         }
+        // 成功即摘掉失败时挂的「点击重试」，避免之后点「已保存 HH:MM」误触发保存
+        saveState.onclick = null
+        saveState.style.cursor = ''
         const pillText = post.status === 'published' ? '已发布' : post.status === 'scheduled' ? `定时 ${fmtSchedule(post.publish_at)}` : '草稿'
         pill.textContent = pillText
         pill.className = `ed-status-pill chip ${post.status === 'published' ? 'chip-green' : post.status === 'scheduled' ? 'chip-warn' : 'chip-gray'}`
@@ -788,8 +790,6 @@ export async function mountEditor(root, postId, opts = {}) {
         saveState.style.cursor = 'pointer'
         saveState.onclick = () => save(false)
         throw e
-      } finally {
-        saving = false
       }
     }
     const p = saveChain.then(run, run)
@@ -1001,8 +1001,7 @@ export async function mountEditor(root, postId, opts = {}) {
           <div class="auth-field"><label>图片 URL</label><input class="input" id="img-url" placeholder="https://… 或 /images/…"></div>
         </div>
       </div>
-      <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="img-ok">插入</button></div>`,
-      { large: false }
+      <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="img-ok">插入</button></div>`
     )
     const bar = m.mask.querySelector('#up-progress i')
     const progress = m.mask.querySelector('#up-progress')
@@ -1011,18 +1010,33 @@ export async function mountEditor(root, postId, opts = {}) {
       const list = [...files].filter((f) => /^image\//.test(f.type))
       if (!list.length) return toast('请选择图片文件', true)
       progress.classList.add('on')
+      const uploaded = []
       for (const f of list) {
         try {
           const out = await compressImage(f)
           const d = await uploadFile(out, (p) => (bar.style.width = p + '%'))
           const w = await probeWidth(d.url)
-          m.close()
-          restoreSelection()
-          insertHTML(`<img src="${esc(d.url)}"${w ? ` data-w="${w}"` : ''} alt="${esc(f.name.replace(/\.[^.]+$/, ''))}"><p><br></p>`)
+          uploaded.push({ url: d.url, w, name: f.name })
         } catch (e) {
           toast(e.message, true)
         }
       }
+      // 全部传完一次性回填并关弹窗：逐张 close 会让进度条首张后消失，
+      // 逐张 restoreSelection 还会把多图倒序插回同一位置
+      if (uploaded.length) {
+        m.close()
+        restoreSelection()
+        insertHTML(
+          uploaded
+            .map(
+              (u) =>
+                `<img src="${esc(u.url)}"${u.w ? ` data-w="${u.w}"` : ''} alt="${esc((u.name || '').replace(/\.[^.]+$/, ''))}"><p><br></p>`
+            )
+            .join('')
+        )
+      }
+      progress.classList.remove('on')
+      bar.style.width = '0%'
     }
     drop.addEventListener('click', () => {
       const input = document.createElement('input')
@@ -1068,10 +1082,10 @@ export async function mountEditor(root, postId, opts = {}) {
     input.click()
   }
 
-  function modal(html, opts = {}) {
+  function modal(html) {
     const mask = document.createElement('div')
     mask.className = 'modal-mask'
-    mask.innerHTML = `<div class="modal${opts.large ? ' modal-lg' : ''}" role="dialog">${html}</div>`
+    mask.innerHTML = `<div class="modal" role="dialog">${html}</div>`
     const close = () => {
       document.removeEventListener('keydown', onKey)
       mask.remove()

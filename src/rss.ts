@@ -1,28 +1,7 @@
 import type { PostRow, SettingsMap } from './types'
 import { sanitizeHtml } from './sanitize'
 import { esc, fmtDate } from './utils'
-
-/** XML 1.0 禁止的控制字符（CDATA 内同样非法）：一条脏数据（如 RTF 粘贴产物）会让整份 feed 非法 */
-const XML_CTRL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g
-
-function xmlEsc(s: string): string {
-  return s
-    .replace(XML_CTRL_RE, '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
-}
-
-function rfc822(ts: number | null): string {
-  return new Date(ts ?? Date.now()).toUTCString()
-}
-
-/** CDATA 包裹 HTML 全文：正文已过 sanitize，仅需防 ]]> 提前闭合 */
-function cdata(html: string): string {
-  return `<![CDATA[${html.replace(XML_CTRL_RE, '').replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
-}
+import { cdata, rfc822, xmlEsc } from './xml'
 
 export function buildRss(settings: SettingsMap, posts: PostRow[], siteUrl: string): string {
   const fullText = settings.rssFullText !== '0'

@@ -1016,6 +1016,9 @@
       imgEl = null
       counterEl = null
       group = []
+      // 残留触点会污染下次 open 后的捏合/滑动判定（如捏合中途直接关闭）
+      pointers.clear()
+      pinchDist = 0
       document.body.style.overflow = ''
     }
     function onKey(e) {
@@ -1107,7 +1110,7 @@
           return
         }
         // 未放大时横向拖超过 60px 即切图（touch 上跟手，抬手判定）
-        var dx = e.clientX - pointers.get(e.pointerId).x + (e.clientX - prev.x)
+        var dx = e.clientX - prev.x
         if (group.length > 1 && Math.abs(dx) > 0) imgEl.style.transform = 'translateX(' + dx / 3 + 'px)'
       })
       var startPos = null
@@ -1184,14 +1187,11 @@
       !/bot|crawl|spider|slurp/i.test(navigator.userAgent) &&
       !document.querySelector('meta[name="xw-stats"][content="off"]')
     ) {
-      var vid = localStorage.getItem('xw-vid')
+      var vid = storeGet('xw-vid')
       if (!vid) {
         vid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
-        try {
-          localStorage.setItem('xw-vid', vid)
-        } catch (err) {
-          /* 隐私模式等存不进去：本次用一次性 id，不影响上报 */
-        }
+        // 隐私加固浏览器存不进去：storeSet 内部吞掉，本次用一次性 id，仅影响去重不影响上报
+        storeSet('xw-vid', vid)
       }
       postJSON('/api/public/track', {
         p: (location.pathname + location.search).slice(0, 300),

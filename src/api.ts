@@ -25,7 +25,6 @@ import {
   getPostCategoryId,
   getSettings,
   getWeiboById,
-  listApprovedComments,
   listCategories,
   listFriendLinks,
   listPages,
@@ -33,13 +32,11 @@ import {
   uniquePageSlug,
   listPosts,
   listWeibo,
-  listWeiboTopics,
   parseTags,
   parseWeiboImages,
   saveSettings,
   seedWelcomePost,
   setPostCategory,
-  uniqueCategorySlug,
   uniqueSlug,
   weiboCommentCountMap,
   weiboImageList,
@@ -430,6 +427,11 @@ api.post('/admin/posts/:id/pin', async (c) => {
   const id = parseId(c.req.param('id'))
   if (!id) return jsonError('文章不存在', 404)
   const body = await c.req.json<{ pinned?: boolean }>().catch(() => null)
+  // 与 weibo 置顶同口径：存在性检查（不存在的 id 不能假装 ok）+ 草稿拒绝；
+  // 多篇文章可同时置顶是产品语义，不加 weibo 的单置顶占位
+  const existing = await getPostById(c.env.DB, id)
+  if (!existing) return jsonError('文章不存在', 404)
+  if (body?.pinned && !existing.pinned && existing.status !== 'published') return jsonError('草稿不能置顶，先发布吧')
   await c.env.DB.prepare('UPDATE posts SET pinned = ?, updated_at = ? WHERE id = ?')
     .bind(body?.pinned ? 1 : 0, Date.now(), id)
     .run()
@@ -608,7 +610,8 @@ async function storeLinkIcon(env: Env, iconUrl: string, host: string): Promise<s
     })
     if (!res.ok) return ''
     const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
-    const ext = LINK_ICON_MIMES[mime]
+    // hasOwnProperty 挡原型链（同 upload 的 IMAGE_MIMES 口径）：继承属性 truthy 会穿透成非法扩展名
+    const ext = Object.prototype.hasOwnProperty.call(LINK_ICON_MIMES, mime) ? LINK_ICON_MIMES[mime] : ''
     if (!ext) return ''
     const buf = await res.arrayBuffer()
     if (!buf.byteLength || buf.byteLength > LINK_ICON_MAX_BYTES) return ''
@@ -1426,8 +1429,8 @@ api.post('/public/guestbook', async (c) => {
 api.post('/public/like/weibo/:id', async (c) => {
   // 限流防脚本刷赞刷踩（正常用户连点几条微博远够用）
   if (!rateLimit(`like:${clientIp(c.req.raw)}`, 30, 10 * 60_000)) return jsonError('操作太频繁了，休息一下吧', 429)
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return jsonError('参数错误')
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('参数错误')
   const body = await c.req.json<{ delta?: number }>().catch(() => null)
   const delta = body?.delta === -1 ? -1 : 1
   await c.env.DB.prepare(
@@ -1444,8 +1447,8 @@ api.post('/public/like/weibo/:id', async (c) => {
 })
 
 api.get('/public/weibo/:id/comments', async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return jsonError('参数错误')
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('参数错误')
   const wb = await getWeiboById(c.env.DB, id)
   if (!wb || wb.status !== 'published') return jsonError('这条微博不存在', 404)
   const settings = await getSettings(c.env.DB)
@@ -1459,8 +1462,8 @@ api.get('/public/weibo/:id/comments', async (c) => {
 })
 
 api.post('/public/weibo/:id/comments', async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return jsonError('参数错误')
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('参数错误')
   const wb = await getWeiboById(c.env.DB, id)
   if (!wb || wb.status !== 'published') return jsonError('这条微博不存在', 404)
   const settings = await getSettings(c.env.DB)

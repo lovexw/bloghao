@@ -4,17 +4,6 @@ export interface Env {
   ASSETS: Fetcher
 }
 
-export interface UserRow {
-  id: number
-  username: string
-  password_hash: string
-  salt: string
-  display_name: string
-  avatar: string
-  created_at: number
-  updated_at: number
-}
-
 export interface SessionUser {
   id: number
   username: string
@@ -72,15 +61,6 @@ export interface CommentRow {
   created_at: number
 }
 
-export interface UploadRow {
-  id: number
-  key: string
-  name: string
-  mime: string
-  size: number
-  created_at: number
-}
-
 export interface CategoryRow {
   id: number
   name: string
@@ -114,20 +94,6 @@ export interface FriendLinkRow {
   ip: string
   created_at: number
   updated_at: number
-}
-
-/** 访客统计日志（visit_log 表，src/stats.ts）：只存匿名 vid，不存 IP / 原始 UA */
-export interface VisitRow {
-  id: number
-  ts: number
-  day: string
-  vid: string
-  path: string
-  title: string
-  ref: string
-  dev: string
-  br: string
-  country: string
 }
 
 export type SettingsMap = Record<string, string>

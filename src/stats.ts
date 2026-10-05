@@ -109,12 +109,11 @@ export async function getVisitStats(db: D1Database, days: number): Promise<Visit
   const today = fmtDate(now)
   const startDay = fmtDate(now - (days - 1) * 86_400_000)
   const inRange = 'day >= ? AND day <= ?'
-  const [sum, todaySum, seriesRows, pageRows, refRows, devRows, brRows, countryRows, hourRows] = await Promise.all([
+  const [sum, seriesRows, pageRows, refRows, devRows, brRows, countryRows, hourRows] = await Promise.all([
     db
       .prepare(`SELECT COUNT(*) AS pv, COUNT(DISTINCT vid) AS uv FROM visit_log WHERE ${inRange}`)
       .bind(startDay, today)
       .first<{ pv: number; uv: number }>(),
-    db.prepare('SELECT COUNT(*) AS pv, COUNT(DISTINCT vid) AS uv FROM visit_log WHERE day = ?').bind(today).first<{ pv: number; uv: number }>(),
     db
       .prepare(
         `SELECT day, COUNT(*) AS pv, COUNT(DISTINCT vid) AS uv FROM visit_log WHERE ${inRange} GROUP BY day ORDER BY day`
@@ -161,6 +160,8 @@ export async function getVisitStats(db: D1Database, days: number): Promise<Visit
   ])
 
   const seriesMap = new Map((seriesRows.results ?? []).map((r) => [r.day, r]))
+  // 今天的数据直接取自 series（同表同区间 GROUP BY day 的结果里就有），不再单发一条查询
+  const todayRow = seriesMap.get(today)
   const series: VisitStats['series'] = []
   for (let i = days - 1; i >= 0; i--) {
     const day = fmtDate(now - i * 86_400_000)
@@ -175,8 +176,8 @@ export async function getVisitStats(db: D1Database, days: number): Promise<Visit
     days,
     pv: sum?.pv ?? 0,
     uv: sum?.uv ?? 0,
-    todayPv: todaySum?.pv ?? 0,
-    todayUv: todaySum?.uv ?? 0,
+    todayPv: todayRow?.pv ?? 0,
+    todayUv: todayRow?.uv ?? 0,
     series,
     topPages: pageRows.results ?? [],
     topRefs: refRows.results ?? [],

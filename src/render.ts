@@ -1,7 +1,7 @@
 import type { CommentRow, PostRow, SettingsMap } from './types'
 import type { PostSort } from './db'
 import { renderFooterHtml } from './hooks'
-import { cstDate, esc, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate } from './utils'
+import { cstDate, esc, excerpt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate } from './utils'
 
 export interface ThemePageOptions {
   settings: SettingsMap
@@ -555,8 +555,9 @@ export function weiboHomeEntry(o: { items: WeiboItemView[]; total: number }): st
   if (!o.items.length) return ''
   const items = o.items
     .map((w) => {
-      const text = (w.content || '').replace(/\s+/g, ' ').trim()
-      const short = text ? (text.length > 64 ? text.slice(0, 64) + '…' : text) : `发了 ${w.images.length} 张图`
+      // 摘要统一走 excerpt（含空白折叠），与历史上的今天等处同口径
+      const text = w.content || ''
+      const short = text ? excerpt(text, 64) : `发了 ${w.images.length} 张图`
       const thumb = w.images[0]
         ? `<span class="wb-home-thumb"><img src="${esc(w.images[0])}" loading="lazy" alt=""></span>`
         : ''
@@ -721,8 +722,9 @@ export function commentsHtml(o: {
     children.set(c.parent_id, list)
   }
 
-  // 孤儿回复（父评论被删）：按顶层展示，避免消失
-  const orphans = o.comments.filter((c) => c.parent_id && !o.comments.some((p) => p.id === c.parent_id))
+  // 孤儿回复（父评论被删）：按顶层展示，避免消失（先建 id 集合，免得逐条平方级扫全量评论）
+  const commentIds = new Set(o.comments.map((c) => c.id))
+  const orphans = o.comments.filter((c) => c.parent_id && !commentIds.has(c.parent_id))
   for (const c of orphans) tops.push({ ...c, parent_id: 0 })
 
   const renderItem = (c: CommentRow): string => {

@@ -1,8 +1,8 @@
 {
-  "name": "xwblog",
+  "name": "bloghao",
   "version": "2.0.0",
   "private": true,
-  "description": "xwblog —— 基于博客号 BlogHao 二次开发的个人博客系统（Workers + D1 + R2）",
+  "description": "博客号 BlogHao —— 轻写作博客系统，完全跑在 Cloudflare（Workers + D1 + R2）上",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

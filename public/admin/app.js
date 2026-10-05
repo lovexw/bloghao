@@ -8,7 +8,6 @@ const state = {
   user: null,
   needsSetup: false,
   settings: null,
-  themes: [],
 }
 
 /* 微博编辑态：null = 新建；点「编辑」后暂存，离开微博页时清空 */
@@ -22,7 +21,7 @@ let searchFocused = false
 let currentRoute = ''
 
 /* ---------------- 工具 ---------------- */
-export function esc(s) {
+function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
@@ -82,10 +81,10 @@ function toast(msg, isErr = false) {
   setTimeout(() => el.remove(), 2600)
 }
 
-function modal(html, opts = {}) {
+function modal(html) {
   const mask = document.createElement('div')
   mask.className = 'modal-mask'
-  mask.innerHTML = `<div class="modal${opts.large ? ' modal-lg' : ''}" role="dialog">${html}</div>`
+  mask.innerHTML = `<div class="modal" role="dialog">${html}</div>`
   const close = () => {
     document.removeEventListener('keydown', onKey)
     mask.remove()
@@ -1175,7 +1174,7 @@ async function viewCategories() {
     try {
       await api('/admin/categories', { method: 'POST', body: { name } })
       toast('分类已创建')
-      viewCategories()
+      navigate()
     } catch (e) {
       toast(e.message, true)
       btn.disabled = false
@@ -1191,7 +1190,7 @@ async function viewCategories() {
     try {
       await api('/admin/tags', { method: 'POST', body: { name } })
       toast('标签已创建')
-      viewCategories()
+      navigate()
     } catch (e) {
       toast(e.message, true)
       btn.disabled = false
@@ -1211,7 +1210,7 @@ async function viewCategories() {
       try {
         await api(`/admin/tags/${encodeURIComponent(name)}`, { method: 'DELETE' })
         toast('标签已删除')
-        viewCategories()
+        navigate()
       } catch (e) {
         toast(e.message, true)
       }
@@ -1239,7 +1238,7 @@ async function viewCategories() {
           })
           toast('已保存')
           m.close()
-          viewCategories()
+          navigate()
         } catch (e) {
           toast(e.message, true)
         }
@@ -1250,7 +1249,7 @@ async function viewCategories() {
       try {
         await api(`/admin/categories/${id}`, { method: 'DELETE' })
         toast('已删除')
-        viewCategories()
+        navigate()
       } catch (e) {
         toast(e.message, true)
       }
@@ -1552,7 +1551,7 @@ async function viewMedia() {
       try {
         await uploadFile(await compressImage(input.files[0]), null)
         toast('上传成功')
-        viewMedia()
+        navigate()
       } catch (e) {
         toast(e.message, true)
       }
@@ -1595,7 +1594,7 @@ async function viewMedia() {
           await api(`/admin/uploads?key=${encodeURIComponent(key)}`, { method: 'DELETE' })
           toast('已删除')
           m.close()
-          viewMedia()
+          navigate()
         } catch (e) {
           toast(e.message, true)
         }
@@ -2128,7 +2127,7 @@ async function viewSettings() {
       faviconUrl: g('st-faviconUrl').value.trim(),
       avatarUrl: g('st-avatarUrl').value.trim(),
       ogImageDefault: g('st-ogImageDefault').value.trim(),
-      theme: $app.querySelector('.theme-card.is-active')?.dataset.theme || 'wechat',
+      // 主题不在这里改（皮肤页专职）；body 里不带 theme 键，服务端对缺键即保留
       allowComments: g('st-allowComments').checked ? '1' : '0',
       moderateComments: g('st-moderateComments').checked ? '1' : '0',
       postsPerPage: g('st-postsPerPage').value || '10',

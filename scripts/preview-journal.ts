@@ -1,5 +1,6 @@
 /**
- * 主题视觉预览生成器（仅本地开发用，不参与部署）
+ * 主题视觉预览生成器（仅本地开发用，不参与部署；留档工具，未接入 npm scripts）
+ * 只覆盖 journal 一套主题；换其他主题截图需照此改 import。
  * 用与线上一致的渲染函数（render.ts + themes/journal.ts）生成七类页面的静态 HTML，
  * 供浏览器截图审查主题视觉效果。运行：
  *   npx esbuild scripts/preview-journal.ts --bundle --platform=node --format=esm --loader:.css=text --outfile=.preview/build.mjs
