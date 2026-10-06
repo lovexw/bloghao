@@ -19,34 +19,23 @@ src/themes/
 一套主题 = **八个渲染函数**（`home` / `weibo` / `links` / `post` / `about` / `page` / `archives` / `guestbook`）+ 全局 CSS。新建 `src/themes/mytheme.ts` 与 `src/themes/mytheme.css`：
 
 ```ts
-import type { ThemeModule } from './registry'
+import type {
+  HomeData, WeiboData, LinksData, PostData, AboutData, PageData, ArchivesData, GuestbookData,
+} from './registry'
 import {
-  commentsHtml, esc, fmtDate, likesBtn, pagerHtml, tagLink, type HomePostView,
-  friendLinkCards, friendLinkApply, siteNav, weiboCards, weiboPager, type WeiboItemView,
-  archiveListHtml, type ArchiveYearGroup,
+  esc, fmtDate, likesBtn, pagerHtml,
+  friendLinkCards, friendLinkApply, siteNav, weiboCards, weiboPager,
+  archiveListHtml,
 } from '../render'
 import css from './mytheme.css'
 
 const id = 'mytheme'
 
-export function home(d: {
-  settings: Record<string, string>   // 全站设置（siteName/siteDescription/avatarUrl/footerText…）
-  posts: HomePostView[]              // 当前页文章列表
-  page: number; totalPages: number; total: number
-  tag?: string                       // /tag/xxx 筛选时当前标签
-  q?: string                         // 搜索页当前关键词（刊头搜索框回填用）
-  sort?: 'latest' | 'views' | 'likes' | 'comments' | 'random'  // 当前排序（排序条用）
-  seed?: number                      // 随机排序的种子，翻页链接要带上
-  categorySlug?: string              // 分类页当前 slug
-  categories: { name: string; slug: string }[]   // 顶部导航数据
-  tags: { name: string; count: number }[]        // 顶部导航「分类话题」菜单的标签（带计数）
-  navActive?: string                 // 导航高亮：'home' | 'weibo' | 'archives' | 'guestbook' | 'links' | 'about' | 'p:页面slug' | 分类slug | 'tag:标签名' | 'search'
-  notice?: string                    // 列表上方通知区（搜索结果/分类说明），服务端拼好的 HTML
-  emptyText?: string                 // 空列表文案
-  weibo?: { items: WeiboItemView[]; total: number } | null  // 首页微博入口卡数据（仅首页传入）
-  onThisDay?: OnThisDayItemView[] | null  // 历史上的今天（仅首页第一页且未筛选时传入），用 onThisDayCard 渲染
-}): string {
+// 入参类型全部来自 registry 的命名类型（HomeData / WeiboData / …，字段含义以 registry.ts 注释为准），
+// 五套官方主题（wechat.ts 最完整）是现成参照。这里示范最常用的 home()：
+export function home(d: HomeData): string {
   return `<div class="my-page">
+    ${siteNav({ cls: 'my-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
     ${d.posts.map(p => `
       <a class="my-item" href="/post/${esc(p.slug)}">
         <h2>${esc(p.title)}</h2>
@@ -57,17 +46,7 @@ export function home(d: {
   </div>`
 }
 
-export function weibo(d: {
-  settings: Record<string, string>
-  categories: { name: string; slug: string }[]   // 顶部站点导航数据
-  tags?: { name: string; count: number }[]
-  items: WeiboItemView[]             // 微博列表 { id, content, images, created_at, likes, commentCount, pinned }
-  page: number; totalPages: number; total: number
-  allowComments: boolean             // 站点「允许评论」开关：关闭时卡片不出评论表单
-  adminName?: string                 // 管理员登录时免填昵称的发言身份
-  topic?: string                     // 当前筛选的话题（?topic=）
-  topics?: { name: string; count: number }[]     // 话题条数据，为空不渲染
-}): string {
+export function weibo(d: WeiboData): string {
   // 卡片/翻页复用 render.ts 的 weiboCards / weiboPager（语义化 .wb-* class，样式由你的 CSS 塑形）
   return `<div class="my-page">
     <h1>微博</h1>
@@ -76,13 +55,7 @@ export function weibo(d: {
   </div>`
 }
 
-export function links(d: {
-  settings: Record<string, string>
-  categories: { name: string; slug: string }[]
-  tags?: { name: string; count: number }[]
-  items: { name: string; url: string; description: string; icon: string }[]  // icon 为空时卡片用站名首字
-  total: number
-}): string {
+export function links(d: LinksData): string {
   // 卡片与「申请收录」表单复用 friendLinkCards / friendLinkApply（语义化 .fl-* class）
   return `<div class="my-page">
     <h1>友情链接</h1>
@@ -91,20 +64,7 @@ export function links(d: {
   </div>`
 }
 
-export function post(d: {
-  settings: Record<string, string>
-  post: {
-    slug: string; title: string; contentHtml: string  // 正文已是净化后的 HTML
-    summary: string; cover: string; tags: string[]
-    published_at: number | null; views: number; likes: number
-    readingMinutes: number
-  }
-  category: { name: string; slug: string } | null // 文章所属分类
-  categories: { name: string; slug: string }[]
-  tags?: { name: string; count: number }[]
-  comments: { html: string; count: number }  // 直接输出即可（含留言表单）
-  related: HomePostView[]
-}): string {
+export function post(d: PostData): string {
   return `<div class="my-article">
     <h1>${esc(d.post.title)}</h1>
     <div class="rich">${d.post.contentHtml}</div>
@@ -113,35 +73,16 @@ export function post(d: {
   </div>`
 }
 
-export function about(d: {
-  settings: Record<string, string>
-  contentHtml: string
-  categories: { name: string; slug: string }[]
-  tags?: { name: string; count: number }[]
-  navActive?: string                 // 关于我页固定传 'about'
-}): string {
+export function about(d: AboutData): string {
   return `<div class="my-about"><h1>关于我</h1><div class="rich">${d.contentHtml}</div></div>`
 }
 
-export function page(d: {
-  settings: Record<string, string>
-  title: string                      // 页面标题（独立页面系统，/page/:slug）
-  contentHtml: string                // 净化后的页面正文
-  categories: { name: string; slug: string }[]
-  tags?: { name: string; count: number }[]
-  navActive?: string                 // 独立页面传 'p:<slug>'；关于我页复用本函数渲染 /about 时传 'about'
-}): string {
-  // 独立页面与 about 同构：siteNav + 标题 + .rich 容器；漏实现时 pages.ts 有通用兜底（仅正文壳）
+export function page(d: PageData): string {
+  // 独立页面与 about 同构；漏实现时 pages.ts 有通用兜底（仅正文壳）
   return `<div class="my-page"><h1>${esc(d.title)}</h1><div class="rich">${d.contentHtml}</div></div>`
 }
 
-export function archives(d: {
-  settings: Record<string, string>
-  categories: { name: string; slug: string }[]
-  tags?: { name: string; count: number }[]
-  total: number                      // 文章总篇数（页头副标题用）
-  groups: ArchiveYearGroup[]         // 按年分组（年份倒序、组内时间倒序），直接交给 archiveListHtml
-}): string {
+export function archives(d: ArchivesData): string {
   // 归档列表复用 render.ts 的 archiveListHtml（语义化 .ar-* class，样式由你的 CSS 塑形）
   return `<div class="my-page">
     <h1>文章归档</h1>
@@ -149,13 +90,8 @@ export function archives(d: {
   </div>`
 }
 
-export function guestbook(d: {
-  settings: Record<string, string>
-  categories: { name: string; slug: string }[]
-  tags?: { name: string; count: number }[]
-  html: string                       // 留言墙 + 表单，pages 层用 commentsHtml({ guestbook: true }) 拼好，直接输出
-  count: number                      // 留言条数（页头副标题用）
-}): string {
+export function guestbook(d: GuestbookData): string {
+  // 留言墙 + 表单由 pages 层用 commentsHtml({ guestbook: true }) 拼好，直接输出
   return `<div class="my-page">
     <h1>留言板</h1>
     ${d.html}
@@ -175,11 +111,11 @@ export const THEMES: Record<string, ThemeModule> = {
   mytheme: { ...mytheme, id: 'mytheme', name: '我的主题', description: '一句话描述',
     // 可选：后台「皮肤」卡片预览色板 [背景, 强调条, 卡面, 卡面2, 卡面3]
     colors: ['#faf8f4', '#b23a29', '#ffffff', '#f2ede4', '#f7f3ec'],
-  } as ThemeModule,
+  },
 }
 ```
 
-保存后（本地 `npm run dev` 即时生效）到后台「皮肤」页（「系统」分组下）就能看到并一键启用；同时可把它登记进 `public/market/catalog.json`，让它出现在「皮肤市场」。**入参的权威定义**是 `registry.ts` 的 `ThemeModule` 接口与 `pages.ts` 的调用处——改版后以它们为准，抄现成主题（如 `wechat.ts`）最省事。
+保存后（本地 `npm run dev` 即时生效）到后台「皮肤」页（「系统」分组下）就能看到并一键启用；同时可把它登记进 `public/market/catalog.json`，让它出现在「皮肤市场」。**入参的权威定义**是 `registry.ts` 的各 `*Data` 命名类型（字段注释就在那里）与 `pages.ts` 的调用处——改版后以它们为准，抄现成主题（如 `wechat.ts`）最省事。
 
 ## 公共积木（来自 `src/render.ts`，鼓励复用）
 

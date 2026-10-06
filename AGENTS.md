@@ -30,8 +30,9 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 - markdown.ts 的 `inline()` 收到的文本已经 `escLine` 转义过，属性上下文只能用 `escQuote` 补引号，**严禁再过 `escAttr`**（会把 `&` 打成 `&amp;amp;`，含参数的链接/图片 URL 全坏）
 - 图片转存（collect.ts）**只认文件魔数**（`sniffImageExt`），不信任源站 Content-Type / URL 参数；`/images/` 路由必须保留 `X-Content-Type-Options: nosniff`
 - sanitizeHtml 的**透传段统一过 `escapeStrayLt`**：未终结的标签前缀（`<img src=x onerror=…` 无 `>`）与未闭合 `<!--` 曾原样透传，浏览器会把后续页面标记当 img 属性（内联事件复活）或把整页吞进注释——改净化器别拆这个防护
-- RSS/WXR 等 XML 输出（rss.ts、export.ts）的 `xmlEsc`/`cdata` 入口**统一剥控制字符**（XML 1.0 禁 U+0000-0008/000B/000C/000E-001F，CDATA 内同样非法）：一条脏数据曾能打挂整份 feed；`<loc>` 对 siteUrl 过 xmlEsc，slug 进 URL 统一 `encodeURIComponent`
-- 上传 mime 白名单查表**必须 `Object.prototype.hasOwnProperty.call(IMAGE_MIMES, mime)`**（`IMAGE_MIMES['constructor']` 是继承属性可穿透校验），api.ts upload 与 external.ts storeImage/saveTgImage 三处同款
+- RSS/WXR 等 XML 输出的 `xmlEsc`/`cdata`/`rfc822` **统一来自 `src/xml.ts`**（rss.ts / sitemap / export.ts 同源），入口**统一剥控制字符**（XML 1.0 禁 U+0000-0008/000B/000C/000E-001F，CDATA 内同样非法）：一条脏数据曾能打挂整份 feed；`<loc>` 对 siteUrl 过 xmlEsc，slug 进 URL 统一 `encodeURIComponent`——别在文件里再写本地副本
+- 上传常量与落库**统一走 `src/store.ts`**（`MAX_UPLOAD_BYTES`/`IMAGE_MIMES`/`imageExtOf`/`saveUpload`，api 上传、collect 采集转存、external 外部发布共用）；mime 白名单查表**必须走 `imageExtOf`**（内部 `hasOwnProperty`，`IMAGE_MIMES['constructor']` 是继承属性可穿透校验）——改体积/类型口径只改 store.ts 一处
+- 公开留言三路（文章 /api/public/comments、留言板 /api/public/guestbook、微博评论）共用 api.ts 的 **`publicComment` 公共核心**（限流、蜜罐、作者回复、先审后展、TG 通知与插件广播全在里面）；新增留言形态只写细路由 + opts（文案称呼/归属列/是否收 email/website/通知上下文），别再抄整段流程
 - `:id` 路由参数一律 `api.ts parseId()`（非法 404），别 `Number()` 后直传 D1——NaN bind 是 500
 - PUT /admin/posts/:id 是**缺键即保留**语义（readPostPayload 的 `has` 标志）：列表页状态切换只发 `{status}`，新增部分更新字段要同步 has 列表与 PUT 赋值——冒烟「文章状态切换保留正文」守着，别改回全量覆盖
 
@@ -49,6 +50,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 **后台交互（public/admin/，无自动化测试，靠约定）**
 
 - 后台所有请求走 `api()`：401 会话过期已统一拦截回登录页（勿在别处重复处理，也别动 `state.user` 的判断顺序——登录表单的密码错误提示依赖它）；每个写操作按钮必须 try/catch + toast，请求期间 disabled 防连击
+- 设置页「保存全部」的 body **不带 theme 键**（主题只在皮肤页管理；服务端 PUT 对 body 里存在的 key 一律写入——历史上带了就曾把皮肤静默重置成 wechat）；分类/媒体页等操作后的列表刷新统一 `navigate()`，别直调 `viewX()` 绕过防串页守卫
 - 后台 SPA 经 wrangler assets 直出不经过 Worker，CSP 靠 admin/index.html 的 **meta 兜底**（前台在 pages.ts baseHeaders）：后台模板/弹窗里**禁止新增内联事件属性（onclick 等）与内联 `<script>`**，交互一律 addEventListener
 - 操作回调里刷新列表统一 `navigate()`（自带 pendingRoute/navSeq 防串页守卫），别直接 `viewX()`——慢响应会把用户从新页面拽回旧页面
 - editor.js 的 `plugins` 数组是模块级：`mountEditor` 开头清空 + `renderPluginButtons` 按停用名单过滤（ES module import 有缓存，只靠「不 import」卸不掉已加载插件）；路由离开编辑器调 `disposeEditor()` 摘除全局监听与挂起定时器
@@ -93,7 +95,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 
 ## 结构速查
 
-- `src/themes/`：五套主题 + `registry.ts` 注册表，新主题见 docs/THEMES.md；`wechat` 为默认主题
+- `src/themes/`：五套主题 + `registry.ts` 注册表（八类页面参数是导出的命名类型 `HomeData`/`PostData`/…，新增主题或字段只改 registry 一处；五主题 × 八页面渲染回归在 tests/themes.test.ts，改主题先跑）；`wechat` 为默认主题
 - `src/pages.ts` 渲染公开页（含独立页面 `/page/:slug`，pages 表承载，`about` 页渲染在 `/about`）；`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）；`src/export.ts` + `src/zip.ts` + `src/html-md.ts` 是数据导出（Markdown 包流式打 zip、WXR）；`src/closed.ts` 是一键闭站 / 灰度（settings `siteClosed` / `siteGrayscale`，独立成模块是为了 Node 测试能导入——index.ts 会级联加载主题 CSS）；`src/hooks.ts` 是服务端插件钩子（总线 + 注册表 + 官方示例三合一，发布/评论事件与页脚注入，插件失败必须吞掉不影响主流程，启停存 settings `serverPluginsDisabled`）
 - `public/admin/`：后台（app.js 路由与页面——侧栏菜单看顶部 `MENU` 配置数组，editor.js 写作编辑器，admin.css 样式）；「皮肤 / 插件」是独立页面（`#/appearance`、`#/plugins`），市场目录在 `public/market/catalog.json`
 - `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao 的 issues；官网 UI 改动同样过 390px 移动端检查
