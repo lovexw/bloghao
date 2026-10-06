@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS uploads (
   name       TEXT    NOT NULL DEFAULT '',
   mime       TEXT    NOT NULL,
   size       INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  hash       TEXT    NOT NULL DEFAULT ''    -- 内容 SHA-256 指纹（媒体体检查重用，src/audit.ts）；missing = R2 里已丢失
 );
 
 -- 友情链接：站长维护，访客也可申请收录（source=user，默认 pending 待审）

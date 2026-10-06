@@ -50,6 +50,7 @@ import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes
 import { fireCommentCreated, firePostPublished, listServerPlugins } from './hooks'
 import { SITE_MODE_VALUES, siteBase, toHomePost, type SiteMode } from './render'
 import { sanitizeHtml } from './sanitize'
+import { cleanupUnreferenced, backfillHashes, mergeDuplicate, runAudit } from './audit'
 import { imageExtOf, MAX_REMOTE_IMAGES, MAX_UPLOAD_BYTES, saveUpload, transferImage } from './store'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
 import { THEMES } from './themes/registry'
@@ -985,6 +986,40 @@ api.delete('/admin/uploads', async (c) => {
     c.env.DB.prepare('DELETE FROM uploads WHERE key = ?').bind(key).run(),
   ])
   return c.json({ ok: true })
+})
+
+/* ---------------- 媒体体检：未引用 / 重复文件扫描与安全清理（逻辑在 src/audit.ts） ---------------- */
+
+api.get('/admin/uploads/audit', async (c) => {
+  if (!rateLimit(`audit:${clientIp(c.req.raw)}`, 10, 60_000)) return jsonError('操作太频繁，请稍后再试', 429)
+  return c.json(await runAudit(c.env))
+})
+
+api.post('/admin/uploads/hash-backfill', async (c) => {
+  const b = await c.req.json<{ limit?: number }>().catch(() => null)
+  return c.json(await backfillHashes(c.env, Number(b?.limit) || 25))
+})
+
+api.post('/admin/uploads/merge', async (c) => {
+  if (!rateLimit(`audit:${clientIp(c.req.raw)}`, 10, 60_000)) return jsonError('操作太频繁，请稍后再试', 429)
+  const b = await c.req.json<{ keep?: unknown; remove?: unknown }>().catch(() => null)
+  if (!b || typeof b.keep !== 'string' || !Array.isArray(b.remove)) return jsonError('参数不完整')
+  try {
+    return c.json({ ok: true, ...(await mergeDuplicate(c.env, b.keep, b.remove)) })
+  } catch (e) {
+    return jsonError(e instanceof Error ? e.message : '合并失败')
+  }
+})
+
+api.post('/admin/uploads/cleanup', async (c) => {
+  if (!rateLimit(`audit:${clientIp(c.req.raw)}`, 10, 60_000)) return jsonError('操作太频繁，请稍后再试', 429)
+  const b = await c.req.json<{ keys?: unknown }>().catch(() => null)
+  if (!b || !Array.isArray(b.keys)) return jsonError('参数不完整')
+  try {
+    return c.json({ ok: true, ...(await cleanupUnreferenced(c.env, b.keys)) })
+  } catch (e) {
+    return jsonError(e instanceof Error ? e.message : '清理失败')
+  }
 })
 
 /* ---------------- OG 分享卡图 ----------------

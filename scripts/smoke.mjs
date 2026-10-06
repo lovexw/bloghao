@@ -14,7 +14,13 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const PORT = 8799
-const READY_TIMEOUT_MS = 90_000
+const READY_TIMEOUT_MS = 180_000
+/* Windows 上 spawn('npm') 会 ENOENT（Node 18+ 不再自动补 .cmd），必须显式用 npm.cmd；
+ * node_modules/.bin/wrangler 同理（wrangler.cmd）。POSIX 维持原名 */
+const IS_WIN = process.platform === 'win32'
+const NPM_BIN = IS_WIN ? 'npm.cmd' : 'npm'
+const NPX_BIN = IS_WIN ? 'npx.cmd' : 'npx'
+const WRANGLER_BIN = path.join(ROOT, 'node_modules', '.bin', IS_WIN ? 'wrangler.cmd' : 'wrangler')
 
 const results = []
 let dev = null
@@ -22,7 +28,7 @@ let dev = null
 function run(cmd, args, label) {
   return new Promise((resolve, reject) => {
     console.log(`\n▸ ${label}`)
-    const p = spawn(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+    const p = spawn(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], shell: IS_WIN })
     let out = ''
     p.stdout.on('data', (d) => (out += d))
     p.stderr.on('data', (d) => (out += d))
@@ -41,10 +47,11 @@ function run(cmd, args, label) {
 
 async function startDevServer() {
   console.log(`\n▸ 启动 wrangler dev（端口 ${PORT}）`)
-  const bin = path.join(ROOT, 'node_modules', '.bin', 'wrangler')
+  const bin = WRANGLER_BIN
   dev = spawn(bin, ['dev', '--port', String(PORT), '--ip', '127.0.0.1'], {
     cwd: ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: IS_WIN,
   })
   let out = ''
   dev.stdout.on('data', (d) => (out += d))
@@ -106,9 +113,9 @@ async function check(method, url, expectStatus, expectBody, opts = {}) {
 }
 
 try {
-  await run('npm', ['run', 'db:init:local'], '初始化本地 D1（幂等）')
+  await run(NPM_BIN, ['run', 'db:init:local'], '初始化本地 D1（幂等）')
   await run(
-    'npx',
+    NPX_BIN,
     ['wrangler', 'd1', 'execute', 'DB', '--local', '--file', 'scripts/smoke.fixtures.sql'],
     '写入冒烟夹具（幂等）'
   )
@@ -163,7 +170,7 @@ try {
   await new Promise((r) => setTimeout(r, 1500))
   try {
     const out = await run(
-      'npx',
+      NPX_BIN,
       [
         'wrangler', 'd1', 'execute', 'DB', '--local', '--json', '--command',
         "SELECT COUNT(*) AS n FROM visit_log WHERE vid = 'smoke-visitor-1'",

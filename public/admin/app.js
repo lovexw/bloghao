@@ -1540,7 +1540,10 @@ async function viewMedia() {
     'media',
     `<div class="page-head">
       <div><div class="page-title">媒体库</div><div class="page-sub">存在 R2 图床 · 共 ${d.total} 个文件</div></div>
-      <button class="btn btn-primary" id="media-upload">上传文件</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn" id="media-audit" title="检查未引用与重复的文件，安全清理或合并">体检</button>
+        <button class="btn btn-primary" id="media-upload">上传文件</button>
+      </div>
     </div>
     <div class="media-grid">${grid || '<div class="empty-box" style="grid-column:1/-1;">还没有上传过文件</div>'}</div>
     ${
@@ -1553,6 +1556,7 @@ async function viewMedia() {
     }`
   )
 
+  document.getElementById('media-audit').addEventListener('click', openMediaAudit)
   document.getElementById('media-upload').addEventListener('click', () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -1616,6 +1620,218 @@ async function viewMedia() {
   const next = document.getElementById('pg-next')
   if (prev) prev.addEventListener('click', () => (location.hash = `#/media?page=${page - 1}`))
   if (next) next.addEventListener('click', () => (location.hash = `#/media?page=${page + 1}`))
+}
+
+/* ---------------- 媒体体检（未引用 / 重复 / 失踪文件） ----------------
+ * 三步：算指纹（首次把老文件的 SHA-256 增量回填）→ 报告 → 确认后清理或合并。
+ * 服务端在执行清理/合并前会再验一遍引用：体检之后新写的文章若用上了某张图，
+ * 那张图会被保留并回告。操作成功后 navigate() 刷新身后的媒体库网格（弹窗挂在 body 上不受影响）。 */
+function auditThumb(u) {
+  if (u.mime.startsWith('video/')) return '<div class="audit-thumb is-video">▶</div>'
+  return `<div class="audit-thumb" style="background-image:url('/images/${esc(u.key)}')"></div>`
+}
+
+async function openMediaAudit() {
+  const m = modal(`<div class="modal-head"><span>媒体体检</span><button class="modal-close" data-close>×</button></div>
+    <div class="modal-body audit-body" id="audit-body"><div class="empty-box">正在体检…</div></div>`)
+  m.mask.querySelector('.modal').classList.add('audit-modal')
+  const body = m.mask.querySelector('#audit-body')
+  try {
+    await renderAuditReport(body)
+  } catch (e) {
+    body.innerHTML = `<div class="empty-box">${esc(e.message)}</div>`
+  }
+}
+
+/** 拉报告；有文件还没算指纹就先增量回填（循环到算完），再重扫一次 */
+async function loadAuditReport(body) {
+  let d = await api('/admin/uploads/audit')
+  if (d.missingHash > 0) {
+    const total = d.missingHash
+    let done = 0
+    for (;;) {
+      body.innerHTML = `<div class="empty-box">首次体检：正在计算文件指纹 ${done}/${total}…</div>`
+      const r = await api('/admin/uploads/hash-backfill', { method: 'POST', body: { limit: 25 } })
+      done += r.processed + r.missing
+      if (!r.remaining) break
+    }
+    d = await api('/admin/uploads/audit')
+  }
+  return d
+}
+
+async function renderAuditReport(body) {
+  const d = await loadAuditReport(body)
+  const free = d.unreferenced
+
+  const sum = `<div class="audit-sum">
+    <span class="audit-chip">共 <b>${d.scanned}</b> 个文件</span>
+    ${free.length ? `<span class="audit-chip is-warn">未引用 <b>${free.length}</b> 个 · ${fmtSize(d.unreferencedBytes)}</span>` : '<span class="audit-chip is-ok">✓ 无未引用文件</span>'}
+    ${d.duplicateGroups.length ? `<span class="audit-chip is-warn">重复 <b>${d.duplicateGroups.length}</b> 组 · 冗余 ${fmtSize(d.duplicateBytes)}</span>` : '<span class="audit-chip is-ok">✓ 无重复文件</span>'}
+    ${d.ghosts.length ? `<span class="audit-chip is-warn">失踪记录 <b>${d.ghosts.length}</b> 个</span>` : ''}
+  </div>`
+
+  const dupHtml = d.duplicateGroups.length
+    ? `<div class="audit-sec">
+      <div class="audit-sec-head"><span>重复文件<span class="audit-sec-sub">　内容完全相同：点「保留这张」，其余副本的引用会自动改写到它再删除，前台照常显示</span></span></div>
+      ${d.duplicateGroups
+        .map(
+          (g, gi) => `<div class="dup-group">
+        <div class="dup-group-head">第 ${gi + 1} 组 · ${g.items.length} 个相同文件 · 冗余 ${fmtSize(g.wasteBytes)}</div>
+        <div class="audit-grid">${g.items
+          .map(
+            (u) => `<div class="audit-item">
+          ${auditThumb(u)}
+          <div class="audit-item-info"><div class="audit-name" title="${esc(u.name || u.key)}">${esc(u.name || u.key)}</div>
+          <div class="audit-meta"><span>${fmtSize(u.size)}</span><span class="audit-badge ${u.referenced ? 'is-ref' : 'is-free'}">${u.referenced ? '已引用' : '未引用'}</span></div></div>
+          <button class="btn btn-sm audit-keep" data-keep="${esc(u.key)}">保留这张</button>
+        </div>`
+          )
+          .join('')}</div>
+      </div>`
+        )
+        .join('')}
+    </div>`
+    : ''
+
+  const freeHtml = free.length
+    ? `<div class="audit-sec">
+      <div class="audit-sec-head"><span>未引用<span class="audit-sec-sub">　站内没有任何内容用到，删除不影响前台显示</span></span>
+        <span class="audit-actions"><button class="btn btn-sm" id="audit-selall">全选</button>
+        <button class="btn btn-sm btn-danger" id="audit-clean" disabled>删除所选</button></span></div>
+      <div class="audit-grid">${free
+        .map(
+          (u) => `<div class="audit-item is-pick" data-key="${esc(u.key)}">
+        ${auditThumb(u)}<input type="checkbox" class="audit-check" data-key="${esc(u.key)}">
+        <div class="audit-item-info"><div class="audit-name" title="${esc(u.name || u.key)}">${esc(u.name || u.key)}</div>
+        <div class="audit-meta"><span>${fmtSize(u.size)}</span><span>${fmtDateTime(u.created_at)}</span></div></div>
+      </div>`
+        )
+        .join('')}</div>
+      <div class="audit-footnote">注意：若某张图被站外文章当作图床热链，站内检测不到这种引用，删掉后对方页面会挂图。</div>
+    </div>`
+    : ''
+
+  const ghostHtml = d.ghosts.length
+    ? `<div class="audit-sec">
+      <div class="audit-sec-head"><span>失踪记录<span class="audit-sec-sub">　图床里的文件已不在（多半是手动清过 R2），只剩这条登记</span></span>
+        ${d.ghosts.some((g) => !g.referenced) ? '<button class="btn btn-sm btn-danger" id="audit-ghost-clean">清理无引用的记录</button>' : ''}</div>
+      <div class="audit-grid">${d.ghosts
+        .map(
+          (u) => `<div class="audit-item is-ghost">
+        ${auditThumb(u)}
+        <div class="audit-item-info"><div class="audit-name" title="${esc(u.name || u.key)}">${esc(u.name || u.key)}</div>
+        <div class="audit-meta"><span>${fmtSize(u.size)}</span><span class="audit-badge ${u.referenced ? 'is-ref' : 'is-free'}">${u.referenced ? '仍被引用' : '无引用'}</span></div></div>
+      </div>`
+        )
+        .join('')}</div>
+    </div>`
+    : ''
+
+  const allClean = !free.length && !d.duplicateGroups.length && !d.ghosts.length
+  body.innerHTML =
+    sum +
+    (allClean ? '<div class="empty-box">🎉 很干净：没有未引用、重复或失踪的文件</div>' : '') +
+    dupHtml +
+    freeHtml +
+    ghostHtml
+
+  /* --- 未引用：点选 + 批量删除 --- */
+  const selected = new Set()
+  const boxes = [...body.querySelectorAll('.audit-check')]
+  const cleanBtn = body.querySelector('#audit-clean')
+  const syncCleanBtn = () => {
+    cleanBtn.disabled = !selected.size
+    cleanBtn.textContent = selected.size ? `删除所选（${selected.size} 个）` : '删除所选'
+  }
+  boxes.forEach((cb) => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) selected.add(cb.dataset.key)
+      else selected.delete(cb.dataset.key)
+      cb.closest('.audit-item').classList.toggle('is-checked', cb.checked)
+      syncCleanBtn()
+    })
+  })
+  body.querySelectorAll('.is-pick').forEach((item) => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.audit-check')) return
+      const cb = item.querySelector('.audit-check')
+      cb.checked = !cb.checked
+      cb.dispatchEvent(new Event('change'))
+    })
+  })
+  const selBtn = body.querySelector('#audit-selall')
+  if (selBtn)
+    selBtn.addEventListener('click', () => {
+      const all = selected.size !== boxes.length
+      boxes.forEach((cb) => {
+        cb.checked = all
+        cb.closest('.audit-item').classList.toggle('is-checked', all)
+      })
+      selected.clear()
+      if (all) boxes.forEach((cb) => selected.add(cb.dataset.key))
+      selBtn.textContent = all ? '全不选' : '全选'
+      syncCleanBtn()
+    })
+  if (cleanBtn)
+    cleanBtn.addEventListener('click', async () => {
+      const keys = [...selected]
+      const bytes = free.filter((u) => selected.has(u.key)).reduce((s, u) => s + u.size, 0)
+      if (!(await confirmBox(`删除 ${keys.length} 个未引用文件（共 ${fmtSize(bytes)}）？站内没有内容引用它们，删除后不可恢复。`))) return
+      cleanBtn.disabled = true
+      try {
+        const r = await api('/admin/uploads/cleanup', { method: 'POST', body: { keys } })
+        if (r.blocked && r.blocked.length) {
+          toast(`已删除 ${r.deleted} 个；${r.blocked.length} 个刚被内容引用，已保留——重新体检即可看到`, true)
+        } else {
+          toast(`已删除 ${r.deleted} 个文件，释放 ${fmtSize(r.freedBytes)}`)
+        }
+        navigate()
+        renderAuditReport(body)
+      } catch (e) {
+        toast(e.message, true)
+        cleanBtn.disabled = false
+      }
+    })
+
+  /* --- 重复：每组选一张保留，其余合并进去 --- */
+  body.querySelectorAll('.audit-keep').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const keep = btn.dataset.keep
+      const g = d.duplicateGroups.find((x) => x.items.some((u) => u.key === keep))
+      if (!g) return
+      const remove = g.items.map((u) => u.key).filter((k) => k !== keep)
+      if (!(await confirmBox(`保留这张，把其余 ${remove.length} 个相同副本的引用改到它并删除副本？改写的是站内数据库引用，前台内容照常可用。`))) return
+      btn.disabled = true
+      try {
+        const r = await api('/admin/uploads/merge', { method: 'POST', body: { keep, remove } })
+        toast(`已合并：改写 ${r.updated} 处引用，释放 ${fmtSize(r.freedBytes)}`)
+        navigate()
+        renderAuditReport(body)
+      } catch (e) {
+        toast(e.message, true)
+        btn.disabled = false
+      }
+    })
+  })
+
+  /* --- 失踪记录：只删登记条目 --- */
+  const ghostBtn = body.querySelector('#audit-ghost-clean')
+  if (ghostBtn)
+    ghostBtn.addEventListener('click', async () => {
+      const keys = d.ghosts.filter((g) => !g.referenced).map((g) => g.key)
+      if (!(await confirmBox(`清理 ${keys.length} 条失踪记录？图床里的文件本来就不在了，只会删除这些登记条目。`))) return
+      ghostBtn.disabled = true
+      try {
+        const r = await api('/admin/uploads/cleanup', { method: 'POST', body: { keys } })
+        toast(`已清理 ${r.deleted} 条记录`)
+        navigate()
+        renderAuditReport(body)
+      } catch (e) {
+        toast(e.message, true)
+        ghostBtn.disabled = false
+      }
+    })
 }
 
 /* ---------------- 皮肤 ---------------- */

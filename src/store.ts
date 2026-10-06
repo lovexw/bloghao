@@ -3,6 +3,7 @@
  * 常量与白名单只此一份——此前三份拷贝曾漂移出行为差异（image/jpg 别名、ico），改口径一处生效。
  */
 import type { Env } from './types'
+import { sha256Hex } from './utils'
 
 /** 上传体积上限（手动上传与各转存链路同口径） */
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -41,8 +42,9 @@ export async function saveUpload(
   await env.IMAGES.put(key, buf, {
     httpMetadata: { contentType: mime, cacheControl: 'public, max-age=31536000, immutable' },
   })
-  await env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(key, name.slice(0, 120), mime, buf.byteLength, Date.now())
+  await env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at, hash) VALUES (?, ?, ?, ?, ?, ?)')
+    // SHA-256 指纹随登记入库（媒体「体检」查重用，见 src/audit.ts）；老数据由 hash-backfill 端点增量回填
+    .bind(key, name.slice(0, 120), mime, buf.byteLength, Date.now(), await sha256Hex(buf))
     .run()
   return `/images/${key}`
 }

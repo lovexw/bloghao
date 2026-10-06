@@ -212,6 +212,10 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | POST | `/api/admin/og-image` | multipart，字段名 `file`；仅 PNG（编辑器 canvas 生成的 1200×630 分享卡图），存 R2 `og/` 目录；返回 `{url:"/images/og/...", key}` |
 | GET | `/api/admin/uploads?page=1` | 媒体列表（每页 24） |
 | DELETE | `/api/admin/uploads?key=u/202610/xxx.png` | 从 R2 与索引中删除 |
+| GET | `/api/admin/uploads/audit` | 媒体体检：`{scanned, missingHash, unreferenced:[…], unreferencedBytes, duplicateGroups:[{hash,items:[{key,name,size,referenced}],wasteBytes}], duplicateBytes, ghosts:[…]}`（逻辑见 src/audit.ts；限频 10 次/分钟/IP） |
+| POST | `/api/admin/uploads/hash-backfill` | Body `{limit?:25}`（≤50），为本轮 ≤limit 个无指纹文件从 R2 读内容算 SHA-256；R2 里已丢失的写哨兵 `missing`；返回 `{processed, missing, remaining}`，remaining>0 就继续调 |
+| POST | `/api/admin/uploads/merge` | Body `{keep, remove:[key…]}`（≤20 个），把重复文件的引用改写到保留项（posts/pages/weibo/users/friend_links/settings/tg_buffer）再删文件；要求所有 key 内容指纹一致，否则 400 |
+| POST | `/api/admin/uploads/cleanup` | Body `{keys:[key…]}`（≤100 个），删除未引用媒体；执行前会重新校验引用，期间被内容引用的保留并回告 `blocked:[…]`；返回 `{deleted, freedBytes, blocked}` |
 
 ### 评论
 | 方法 | 路径 | 说明 |

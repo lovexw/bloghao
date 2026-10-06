@@ -645,6 +645,8 @@ const SCHEMA_COLUMNS: { table: string; column: string; ddl: string }[] = [
   { table: 'comments', column: 'weibo_id', ddl: 'ALTER TABLE comments ADD COLUMN weibo_id INTEGER NOT NULL DEFAULT 0' },
   { table: 'comments', column: 'parent_id', ddl: 'ALTER TABLE comments ADD COLUMN parent_id INTEGER NOT NULL DEFAULT 0' },
   { table: 'comments', column: 'is_admin', ddl: 'ALTER TABLE comments ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0' },
+  // 媒体体检查重指纹（src/audit.ts）：新上传在 saveUpload 时写入，存量由 hash-backfill 端点回填
+  { table: 'uploads', column: 'hash', ddl: "ALTER TABLE uploads ADD COLUMN hash TEXT NOT NULL DEFAULT ''" },
 ]
 const SCHEMA_TABLES = [
   // Telegram 相册缓冲（src/external.ts）：多选拆成的多条消息先落这里，几秒后合并成一条微博

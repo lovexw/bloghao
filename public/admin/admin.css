@@ -263,6 +263,44 @@ input, textarea, select { font: inherit; color: inherit; }
 .media-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-size { font-size: 11px; color: var(--sub); margin-top: 2px; }
 
+/* ---------- 媒体体检 ---------- */
+.audit-modal { max-width: 860px; }
+.audit-body { padding: 16px 20px 20px; }
+.audit-sum { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.audit-chip { background: #f6f3ec; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 12px; color: var(--sub); }
+.audit-chip b { color: var(--ink); font-weight: 600; }
+.audit-chip.is-warn { background: #fdf3e7; border-color: #f3ddb8; }
+.audit-chip.is-ok { background: #eef7ee; border-color: #cfe8cf; }
+.audit-sec { margin-bottom: 22px; }
+.audit-sec:last-child { margin-bottom: 4px; }
+.audit-sec-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; font-weight: 600; font-size: 14px; }
+.audit-sec-sub { color: var(--sub); font-weight: 400; font-size: 12px; }
+.audit-actions { display: flex; gap: 8px; }
+.audit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+.audit-item { position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--card); overflow: hidden; }
+.audit-item.is-pick { cursor: pointer; }
+.audit-item.is-pick:hover { border-color: var(--accent); }
+.audit-item.is-checked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.audit-item.is-ghost { opacity: 0.72; }
+.audit-thumb { height: 84px; background: #f4f4f4 center/cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--sub); }
+.audit-thumb.is-video { font-size: 22px; }
+.audit-item-info { padding: 6px 8px 8px; }
+.audit-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audit-meta { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 2px; font-size: 11px; color: var(--sub); }
+.audit-badge { border-radius: 4px; padding: 0 5px; font-size: 10px; }
+.audit-badge.is-ref { background: #eef2fb; color: #3b5bdb; }
+.audit-badge.is-free { background: #eef7ee; color: #2f7d32; }
+.audit-check { position: absolute; top: 6px; right: 6px; width: 17px; height: 17px; accent-color: var(--accent); }
+.audit-keep { width: calc(100% - 12px); margin: 0 6px 8px; }
+.audit-footnote { margin-top: 10px; font-size: 12px; color: var(--sub); }
+.dup-group { margin-bottom: 14px; }
+.dup-group:last-child { margin-bottom: 0; }
+.dup-group-head { font-size: 12px; color: var(--sub); margin-bottom: 8px; }
+@media (max-width: 700px) {
+  .audit-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+  .audit-thumb { height: 72px; }
+}
+
 /* ---------- 编辑器页 ---------- */
 .editor-page { display: flex; flex-direction: column; height: 100vh; height: 100dvh; background: var(--bg); }
 .ed-topbar {

@@ -168,3 +168,10 @@ export function normalizeLinkUrl(input: string): string {
 export function isDemo(env: { DEMO_MODE?: string } | undefined): boolean {
   return env?.DEMO_MODE === '1' || env?.DEMO_MODE === 'true'
 }
+
+/** 字节流的 SHA-256 十六进制指纹：媒体「体检」查重复文件用（uploads.hash，见 src/audit.ts）。
+ *  Workers 与 Node 18+ 都内置 webcrypto */
+export async function sha256Hex(buf: ArrayBuffer): Promise<string> {
+  const d = await crypto.subtle.digest('SHA-256', buf)
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}

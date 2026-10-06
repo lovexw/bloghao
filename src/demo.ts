@@ -15,6 +15,7 @@ import { buildDemoPlan, DEMO_ADMIN, DEMO_RESET_CRON } from './demo-content'
 import { demoImages } from './demo-images'
 import SCHEMA_SQL from '../schema.sql'
 import type { Env } from './types'
+import { sha256Hex } from './utils'
 
 export { DEMO_RESET_CRON }
 
@@ -256,15 +257,16 @@ async function seedAll(env: Env): Promise<void> {
     )
   )
 
-  // 12) 媒体库登记（种子图在「后台 → 媒体」里可见可管）
-  const images = demoImages()
-  await db.batch(
-    images.map((img) =>
+  // 12) 媒体库登记（种子图在「后台 → 媒体」里可见可管）；指纹直接算好，演示站体检无需先回填
+  const uploadStmts: D1PreparedStatement[] = []
+  for (const img of demoImages()) {
+    uploadStmts.push(
       db
-        .prepare('INSERT INTO uploads (key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
-        .bind(img.key, img.key.slice('u/demo/'.length), img.mime, img.svg.length, now)
+        .prepare('INSERT INTO uploads (key, name, mime, size, created_at, hash) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(img.key, img.key.slice('u/demo/'.length), img.mime, img.svg.length, now, await sha256Hex(new TextEncoder().encode(img.svg).buffer as ArrayBuffer))
     )
-  )
+  }
+  await db.batch(uploadStmts)
 
   // 13) 访客统计：多行 INSERT 分批落库——SQLite 单条语句变量上限 100（9 列 × 10 行 = 90，留余量）
   const visitCols = '(ts, day, vid, path, title, ref, dev, br, country)'
