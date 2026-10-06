@@ -4,6 +4,7 @@ import {
   archiveListHtml,
   categoryLink,
   esc,
+  footLinks,
   fmtDate,
   friendLinkApply,
   friendLinkCards,
@@ -29,7 +30,7 @@ const id = 'paper'
 
 /** 页脚公共件：八个页面只差链接组，结构统一在这里 */
 function foot(s: SettingsMap, links: string): string {
-  return `<footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links">${links}</span></footer>`
+  return `<footer class="pp-footer">${esc(s.footerText || '')}<span class="pp-footer-links">${footLinks(s, links)}</span></footer>`
 }
 const FOOT_LINKS = {
   home: '<a href="/weibo">微博</a><a href="/about">关于我</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a>',

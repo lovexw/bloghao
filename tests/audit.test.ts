@@ -169,6 +169,14 @@ test('collectReferencedKeys：不误伤（key 精确命中，前缀相似的 key
   assert.equal(collectReferencedKeys([a], ['普通文字，没有引用']).size, 0)
 })
 
+test('collectReferencedKeys：与非 URL 字符直接相邻不吸附尾巴（防漏识别→误删）', () => {
+  const k = 'u/202510/ccc333.jpg'
+  // 中文正文里紧贴 key：候选串若把「即可」吸进来，精确命中失败 → 会被当成未引用误删
+  assert.ok(collectReferencedKeys([k], [`详见/images/${k}即可`]).has(k))
+  // HTML 属性值以 &amp; 结尾（& 在 key 字符集之外，自然截断）
+  assert.ok(collectReferencedKeys([k], [`<img src="/images/${k}&amp;">`]).has(k))
+})
+
 test('groupDuplicates：只认 64 位十六进制指纹，空串与 missing 哨兵不参与，冗余按 (n-1)×size', () => {
   const k1 = 'u/x/1.jpg'
   const k2 = 'u/x/2.jpg'

@@ -8,7 +8,7 @@
 
 **在线示例：[https://blog.xiaowuleyi.com](https://blog.xiaowuleyi.com)**（作者小吴乐意自己的博客，由本系统驱动）
 
-[![License](https://img.shields.io/badge/License-MIT-07c160) ![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers%20%C2%B7%20D1%20%C2%B7%20R2-F38020) ![No Framework](https://img.shields.io/badge/%E5%89%8D%E5%90%8E%E7%AB%AF-%E6%97%A0%E6%A1%86%E6%9E%B6%E4%BE%9D%E8%B5%96-1a1a1a)](https://github.com/lovexw/bloghao)
+[![Version](https://img.shields.io/github/package-json/v/lovexw/bloghao?color=1a73e8)](https://github.com/lovexw/bloghao/blob/main/CHANGELOG.md) [![License](https://img.shields.io/badge/License-MIT-07c160) ![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers%20%C2%B7%20D1%20%C2%B7%20R2-F38020) ![No Framework](https://img.shields.io/badge/%E5%89%8D%E5%90%8E%E7%AB%AF-%E6%97%A0%E6%A1%86%E6%9E%B6%E4%BE%9D%E8%B5%96-1a1a1a)](https://github.com/lovexw/bloghao)
 
 <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="36"></a>
 
@@ -40,6 +40,7 @@
 | ⚡ **快** | SSR 直出、主题 CSS 内联零额外请求、边缘节点全球分发 |
 | 📡 **自带生态件** | 全文 RSS、sitemap、robots.txt、OG 分享标签（可一键生成 1200×630 专属分享卡图）、JSON-LD 结构化数据、图片灯箱、每晚自动备份到 R2、GitHub Actions 自动部署 |
 | 🚚 **数据导出** | 一键打包 Markdown（文章含草稿 + 微博 + 页面 + 引用的图片，front-matter 齐全）与 WordPress WXR——数据主权随时兑现，搬家不留钳制 |
+| 🐳 **Docker 自托管** | 同一套代码零改动跑进普通 Node 容器：文章存内置 SQLite，图片落本地磁盘或继续用 Cloudflare R2；单进程按域名托管多个独立博客站，定时发布 / 每晚备份照常（见「部署」方式三） |
 
 <details>
 <summary><b>📖 查看全部特性细节</b></summary>
@@ -119,6 +120,18 @@ npm run deploy
 
 </details>
 
+**方式三：Docker 自托管**（不想把代码跑在 Cloudflare 上、手头有 VPS 时选这条）
+
+业务代码零改动地跑进一个 Node 容器：文章存内置 SQLite（单文件 WAL），图片存本地磁盘目录，也可以继续用 Cloudflare R2 桶（零出口流量费）。单进程按域名同时托管多个完全独立的博客站，Cloudflare 退回只做 DNS + CDN。
+
+```bash
+git clone https://github.com/lovexw/bloghao.git
+cd bloghao/docker-poc
+docker compose up --build -d     # 镜像约 70MB（node:26-alpine），数据落在 ./data/<域名>/
+```
+
+把真实域名写进 `docker-poc/tenants.json` 后重启容器，访问 `/admin/` 创建管理员（与 Workers 版完全一致）；定时发布、每晚备份、回收站清理等定时任务随容器自动运行。端口 / 反代 / HTTPS / 图片存储二选一等完整步骤见 [docker-poc/DEPLOY.md](docker-poc/DEPLOY.md)，架构与适配层说明见 [docker-poc/README.md](docker-poc/README.md)。
+
 ## 🧑‍💻 本地开发
 
 ```bash
@@ -152,6 +165,7 @@ bloghao/
 ├── tests/              # 回归测试（npm test，CI 强制执行）
 ├── scripts/            # smoke.mjs 本地冒烟；emlog-migrate 一次性迁移工具（留档）
 ├── migration-memos/    # Memos 旧站 → 微博 的一次性迁移工具（已完成，留档）
+├── docker-poc/         # Docker 自托管：Node 单进程多站点（SQLite + 磁盘 / R2 图床）
 ├── website/            # 「博客号」官网（bloghao.com，Cloudflare Pages 部署，与本站运行无关）
 ├── docs/               # 全部文档
 └── schema.sql          # D1 表结构（幂等）
@@ -167,6 +181,8 @@ bloghao/
 | [docs/THEMES.md](docs/THEMES.md) | 主题开发指南：一套主题 = 七类页面（首页 / 文章 / 微博 / 友链 / 关于我 / 归档 / 留言板） |
 | [docs/PLUGINS.md](docs/PLUGINS.md) | 插件开发指南：编辑器插件 API 与内置「公众号采集」 |
 | [docs/DEMO.md](docs/DEMO.md) | **演示站指南**：跑一个预置一年数据、每 2 小时自动重置的在线体验站（与生产完全隔离） |
+| [docker-poc/README.md](docker-poc/README.md) | **Docker 自托管**：架构与适配层、本地直跑、图片存储二选一（本地盘 / R2）、加站点 |
+| [docker-poc/DEPLOY.md](docker-poc/DEPLOY.md) | 自托管服务器部署清单：选机、端口与反代、HTTPS 与缓存、验收与升级 |
 | [docs/wechat-typography-spec.md](docs/wechat-typography-spec.md) | 微信排版规范落地对照 + 体检规则表 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 开发方向备忘：已调研未启动的功能方向（会员体系等）与待拍板决策 |
 
@@ -216,7 +232,7 @@ npm run deploy    # schema 有更新时再执行一次 npx wrangler d1 execute D
 ## 🤝 相关仓库
 
 - **官方仓库**：[lovexw/bloghao](https://github.com/lovexw/bloghao)（本仓库）——2.0 起整合作者实例线的全部增强，欢迎提 Issue / PR；官网源码在仓库内 `website/` 目录（**[bloghao.com](https://bloghao.com)**，Cloudflare Pages 部署，官网「博客号目录」上榜请提 Issue）
-- **作者实例**：[lovexw/bloghao-xwblog](https://github.com/lovexw/bloghao-xwblog)——[blog.xiaowuleyi.com](https://blog.xiaowuleyi.com) 的源仓库，与官方仓库保持同源，提交信息沿用 `theme:` / `mobile:` / `feat:` / `docs:` 前缀的中文风格
+- **作者实例**：[lovexw/bloghao-xwblog](https://github.com/lovexw/bloghao-xwblog)——[blog.xiaowuleyi.com](https://blog.xiaowuleyi.com) 的源仓库，官方仓库的滚动开发线（迭代先行于此，稳定后清洗发布至官方仓库），提交信息沿用 `theme:` / `mobile:` / `feat:` / `docs:` 前缀的中文风格
 
 ## 📄 License
 

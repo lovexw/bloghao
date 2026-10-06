@@ -408,6 +408,41 @@ try {
     await check('GET', '/api/admin/trash', 200, undefined, { notContains: '回收站链路文章', headers: tCookie.headers })
   }
 
+  // 误删守卫：对「存活」文章调单条彻底删除必须 404，且级联不得动它的评论。
+  // 历史真 bug：级联 DELETE 缺 deleted_at IS NOT NULL 守卫——先删光存活文章的评论再回 404，
+  // 接口报错但数据已丢。守卫正确时级联子查询匹配不到存活行，什么都不会发生
+  const gCreate = await raw('POST', '/api/admin/posts', {
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ title: '冒烟：彻底删除误删守卫', content: '<p>误删守卫正文</p>', status: 'published' }),
+  })
+  const gCreated = await gCreate.json().catch(() => null)
+  const gId = gCreated && gCreated.post && gCreated.post.id
+  if (gId) {
+    const gCookie = { headers: { Cookie: cookie } }
+    const gSlug = gCreated.post.slug
+    const gMark = '误删守卫评论唯一标记'
+    const gCmt = await raw('POST', '/api/public/comments', {
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ slug: gSlug, content: gMark, nickname: '作者' }),
+    })
+    const gPurge = await raw('DELETE', `/api/admin/trash/post/${gId}`, gCookie)
+    const gList = await raw('GET', '/api/admin/comments?type=post', gCookie)
+    const gListBody = await gList.json().catch(() => null)
+    const gCmtAlive = JSON.stringify(gListBody || {}).includes(gMark)
+    const gOk = gPurge.status === 404 && gCmt.status === 200 && gCmtAlive
+    results.push(['回收站：误删守卫（存活行彻底删除 404 且评论无恙）', gOk])
+    console.log(`  ${gOk ? '✓' : '✗'} 回收站：误删守卫（purge 存活行 → ${gPurge.status}，评论${gCmtAlive ? '在' : '丢'}）`)
+    await check('GET', `/post/${gSlug}`, 200, '误删守卫正文')
+    // 正常链路：软删 → 彻底删除，评论此时才随级联清掉
+    await raw('DELETE', `/api/admin/posts/${gId}`, gCookie)
+    const gPurge2 = await raw('DELETE', `/api/admin/trash/post/${gId}`, gCookie)
+    const gList2 = await raw('GET', '/api/admin/comments?type=post', gCookie)
+    const gList2Body = await gList2.json().catch(() => null)
+    const gCascade = gPurge2.status === 200 && !JSON.stringify(gList2Body || {}).includes(gMark)
+    results.push(['回收站：彻底删除级联清评论', gCascade])
+    console.log(`  ${gCascade ? '✓' : '✗'} 回收站：彻底删除级联清评论`)
+  }
+
   // 回收站恢复语义守卫：过期的定时文（到点未被 cron 发出）恢复后必须转草稿，不能恢复即撞发
   const sCreate = await raw('POST', '/api/admin/posts', {
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -426,9 +461,13 @@ try {
     const sRestore = await raw('POST', `/api/admin/trash/post/${sId}/restore`, sCookie)
     const sRow = await raw('GET', `/api/admin/posts/${sId}`, sCookie)
     const sBody = await sRow.json().catch(() => null)
-    const staleOk = sRestore.status === 200 && sBody?.post?.status === 'draft'
-    results.push(['回收站：过期定时文恢复转草稿', staleOk])
-    console.log(`  ${staleOk ? '✓' : '✗'} 回收站：过期定时文恢复转草稿（status ${sBody?.post?.status}）`)
+    // 转草稿的同时 publish_at 必须清空：残留旧定时点的话，这条草稿之后被切回 scheduled 会立即撞发
+    const staleOk =
+      sRestore.status === 200 && sBody?.post?.status === 'draft' && (sBody?.post?.publish_at ?? null) === null
+    results.push(['回收站：过期定时文恢复转草稿（publish_at 一并清空）', staleOk])
+    console.log(
+      `  ${staleOk ? '✓' : '✗'} 回收站：过期定时文恢复转草稿（status ${sBody?.post?.status}，publish_at ${sBody?.post?.publish_at ?? 'null'}）`
+    )
     await raw('DELETE', `/api/admin/posts/${sId}`, sCookie)
     await raw('DELETE', `/api/admin/trash/post/${sId}`, sCookie)
   }

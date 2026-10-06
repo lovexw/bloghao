@@ -1,6 +1,6 @@
 # 博客号 BlogHao 完整部署教程
 
-从零开始，把这套博客部署到 Cloudflare（全程可使用免费套餐）。
+从零开始，把这套博客部署到 Cloudflare（全程可使用免费套餐）。不想把代码跑在 Cloudflare 上、想用自己的服务器？见下方「方式三：Docker 自托管」。
 
 > 在线示例：**https://blog.xiaowuleyi.com**（作者实例；Worker 名 `xwblog`，数据库 `xwblog-db`，图床桶 `xwblog-images`，与仓库内 wrangler.jsonc 一致）。给自己部署一套时，资源名可以原样沿用，也可以自行替换——与你的 wrangler.jsonc 保持一致即可。
 
@@ -159,6 +159,26 @@ git push -u origin main
 3. 之后每次 push 到 `main`，GitHub Actions 会自动：类型检查 → 安装依赖 → 执行 schema.sql（幂等）→ `wrangler deploy`。另有内置的 `ci.yml` 与部署并行，跑类型检查 + 回归测试（`tests/` 30+ 用例），防止已修复的 bug 悄悄复发
 
 > 更省事的替代：不配任何密钥，在 Cloudflare 面板 → 你的 Worker → Settings → Git 支持（Builds）连接 GitHub 仓库，push 即自动部署（一键部署的副本默认就是这条路）。
+
+## 方式三：Docker 自托管（自有服务器）
+
+不想把代码跑在 Cloudflare 上、手头有 VPS 时，仓库内的 `docker-poc/` 提供零改动的自托管方案：业务代码原样跑进一个 Node 容器，文章存进内置 SQLite（单文件、WAL 模式），图片存本地磁盘目录，也可以继续用 Cloudflare R2 桶（零出口流量费，备份自动异地）。单进程按域名同时托管多个完全独立的博客站，Cloudflare 退回只做 DNS + CDN。
+
+```bash
+git clone https://github.com/lovexw/bloghao.git
+cd bloghao/docker-poc
+docker compose up --build -d     # 镜像约 70MB（node:26-alpine），数据落在 ./data/<域名>/
+```
+
+要点：
+
+- **站点配置**：把真实域名写进 `docker-poc/tenants.json`（`*.localhost` 只在本地有意义），重启容器生效；首次访问 `/admin/` 创建管理员，与 Workers 版完全一致
+- **端口与反代**：默认监听 `8787`；`XWLBLOG_PORT=80` 可直接挂 80，`XWLBLOG_BIND=127.0.0.1` 只绑回环、交给 nginx / Caddy / 1Panel 反代分流——多站点靠 Host 头识别，反代必须透传 Host
+- **HTTPS**：域名套 Cloudflare 橙云代理时，先用「灵活 SSL」回源源站 80 最快跑通；正式期建议前置 Caddy 终结 TLS，SSL 模式改「完全（严格）」
+- **图片存储二选一**：默认本地磁盘；tenants.json 里 `storage: "r2"` 切换到共享 R2 桶（按域名前缀隔离），启动日志出现「[r2] 自检通过」即配置正确，`--copy-local-to-r2` 幂等迁移存量图片
+- **定时任务**：定时发布（每分钟扫描）与北京时间 00:30 的备份 / 回收站清理随容器自动运行；图床桶在 R2 上时，备份快照同步变成异地备份
+
+容量参考：4核8G / 200G NVMe 舒适跑 100 个站点（实测 3 租户单进程内存约 64MB，天花板在磁盘图片量而非 CPU / 内存）。完整部署清单（含国内镜像加速、验收明细）见 [docker-poc/DEPLOY.md](../docker-poc/DEPLOY.md)，架构与适配层说明见 [docker-poc/README.md](../docker-poc/README.md)。
 
 ## 8. 日常运维备忘
 

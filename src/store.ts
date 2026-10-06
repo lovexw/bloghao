@@ -26,7 +26,7 @@ export function imageExtOf(mime: string): string | undefined {
 }
 
 /** 字节进 R2 图床并登记 uploads 表，返回站内地址。
- *  ext/mime 由调用方先过白名单（imageExtOf）或魔数识别（collect.sniffImageExt）；
+ *  ext/mime 由调用方先过白名单（imageExtOf）或魔数识别（sniffImageExt）；
  *  dir 为图床目录（普通上传 u/，OG 卡图 og/），年月子目录由这里统一拼 */
 export async function saveUpload(
   env: Env,

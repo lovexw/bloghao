@@ -43,6 +43,12 @@ export function siteMode(settings: SettingsMap): SiteMode {
   return SITE_MODE_VALUES.includes(settings.siteMode as SiteMode) ? (settings.siteMode as SiteMode) : 'blog-weibo'
 }
 
+/** 页脚链接组按站点模式收口：纯博客模式剥掉指向 /weibo 的链接（导航已下线微博入口，页脚同步口径）。
+ *  只作用于各主题 FOOT_LINKS 的自有静态串（href 恰为 "/weibo"），不是通用 HTML 过滤器 */
+export function footLinks(settings: SettingsMap, links: string): string {
+  return siteMode(settings) === 'blog' ? links.replace(/<a href="\/weibo">[^<]*<\/a>/g, '') : links
+}
+
 /** 站点绝对地址前缀：后台「站点链接」优先，未配置时回退请求 origin；去尾部斜杠 */
 export function siteBase(settings: SettingsMap, origin?: string): string {
   return ((settings.siteUrl || origin || '') as string).replace(/\/+$/, '')

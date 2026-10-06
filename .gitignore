@@ -18,3 +18,7 @@ scripts/emlog-migrate/download-results.json
 
 # 主题视觉预览产物（scripts/preview-journal.ts 生成，仅本地截图用）
 .preview/
+
+# ZCode 工作区（本地审计笔记 / 计划等）
+.zcode/
+.zcodeignore

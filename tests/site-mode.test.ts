@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_SETTINGS } from '../src/db.ts'
 import { buildSitemap } from '../src/rss.ts'
-import { siteMode, siteNav, weiboHomeFeed, type SiteMode } from '../src/render.ts'
+import { footLinks, siteMode, siteNav, weiboHomeFeed, type SiteMode } from '../src/render.ts'
 import type { WeiboItemView } from '../src/render.ts'
 
 // ── 站点模式（后台「设置 → 站点模式」）：四值决定微博/博客模块的显隐与首页优先级 ──
@@ -83,4 +83,18 @@ test('buildSitemap：默认与纯微博模式收录 /weibo，纯博客剔除', (
     buildSitemap({ ...DEFAULT_SETTINGS, siteMode: 'blog' }, posts, 'https://x.com'),
     /\/weibo</
   )
+})
+
+// ── 页脚链接组：导航下线微博入口时页脚同步口径（各主题 FOOT_LINKS 经 footLinks 收口）──
+
+test('footLinks：纯博客剥掉 /weibo 链接，其余模式原样保留', () => {
+  const links = '<a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a>'
+  assert.equal(footLinks({ siteMode: 'blog' }, links), '<a href="/rss.xml">RSS</a><a href="/admin">管理</a>')
+  // journal 主题的「随手记」同样按 href 剥
+  assert.equal(footLinks({ siteMode: 'blog' }, '<a href="/weibo">随手记</a><a href="/links">友链</a>'), '<a href="/links">友链</a>')
+  for (const m of ['blog-weibo', 'weibo-blog', 'weibo'] as SiteMode[]) {
+    assert.equal(footLinks({ siteMode: m }, links), links, m)
+  }
+  // 脏值回退 blog-weibo → 不剥
+  assert.equal(footLinks({}, links), links)
 })

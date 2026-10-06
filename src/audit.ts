@@ -46,17 +46,20 @@ const HEX64 = /^[0-9a-f]{64}$/
 
 /** 库内引用媒体的统一形态是 /images/<key>（外链绝对 URL 也含这一段）。
  *  线性扫一遍把候选串抠出来，再对 key 全集做精确命中——不做子串包含判断，
- *  天然规避两个 key 互为前缀的误判；?query/#hash/&参数 与中英文尾随标点一并剥掉 */
+ *  天然规避两个 key 互为前缀的误判。候选字符集收紧到 key 的真实形态
+ *  （saveUpload 生成的 key 只含 [a-z0-9/._-]）：中文等非 URL 字符与 &、引号
+ *  相邻时自然截断（「见图/images/u/a.jpg即可」、HTML 属性结尾 &amp; 都不会把
+ *  尾巴吸进候选串造成漏识别），?query/#hash 与中英文尾随标点再兜底剥一层 */
 export function collectReferencedKeys(keys: string[], texts: readonly string[]): Set<string> {
   const candidates = new Set(keys)
   const found = new Set<string>()
   if (!candidates.size) return found
-  const re = /\/images\/[^\s"'<>()[\]{}]+/g
+  const re = /\/images\/[\w./-]+/g
   for (const text of texts) {
     if (!text || !text.includes('/images/')) continue
     for (const m of text.matchAll(re)) {
       const key = m[0]
-        .replace(/[&.,;:!?'")\]}>、，。！？；：」』）】]+$/, '')
+        .replace(/[.,;:!?'")\]}>、，。！？；：」』）】]+$/, '')
         .split(/[?#&]/)[0]
         .slice('/images/'.length)
       if (candidates.has(key)) found.add(key)

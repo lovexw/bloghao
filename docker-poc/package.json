@@ -1,0 +1,16 @@
+{
+  "name": "xwblog-docker-poc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "xwblog 自托管 POC：单进程多租户，D1→node:sqlite、R2→磁盘。独立目录，不改仓库主代码任何文件",
+  "scripts": {
+    "build": "esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --loader:.css=text --loader:.sql=text --log-level=warning",
+    "start": "node dist/server.js",
+    "dev": "npm run build && npm run start",
+    "smoke": "bash smoke.sh"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}

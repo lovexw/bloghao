@@ -1402,12 +1402,15 @@ async function viewTrash() {
   const purgeAll = document.getElementById('trash-purge-all')
   if (purgeAll)
     purgeAll.addEventListener('click', async () => {
-      if (!(await confirmBox('清空回收站？所有项目将被彻底删除，无法恢复。'))) return
+      const scope = type ? TRASH_TYPE_LABEL[type] || '' : ''
+      if (!(await confirmBox(scope ? `清空回收站里的全部${scope}？这些内容将被彻底删除，无法恢复。` : '清空回收站？所有项目将被彻底删除，无法恢复。'))) return
+      purgeAll.disabled = true
       try {
         await api('/admin/trash/purge', { method: 'POST', body: type ? { type } : {} })
-        toast('回收站已清空')
+        toast(scope ? `已清空${scope}` : '回收站已清空')
         navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
+        purgeAll.disabled = false
         toast(e.message, true)
       }
     })
@@ -1415,23 +1418,31 @@ async function viewTrash() {
   $app.querySelectorAll('.post-row').forEach((row) => {
     const id = Number(row.dataset.id)
     const t = row.dataset.type
-    row.querySelector('[data-act=restore]').addEventListener('click', async () => {
+    row.querySelector('[data-act=restore]').addEventListener('click', async (e) => {
+      const btn = e.currentTarget
+      if (btn.disabled) return
+      btn.disabled = true
       try {
         await api(`/admin/trash/${t}/${id}/restore`, { method: 'POST' })
         toast('已恢复，内容回到原处')
         navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
-      } catch (e) {
-        toast(e.message, true)
+      } catch (e2) {
+        btn.disabled = false
+        toast(e2.message, true)
       }
     })
-    row.querySelector('[data-act=purge]').addEventListener('click', async () => {
+    row.querySelector('[data-act=purge]').addEventListener('click', async (e) => {
+      const btn = e.currentTarget
+      if (btn.disabled) return
       if (!(await confirmBox(`彻底删除这条${TRASH_TYPE_LABEL[t] || '内容'}？${t !== 'page' ? '其下评论将一并删除，' : ''}该操作不可恢复。`))) return
+      btn.disabled = true
       try {
         await api(`/admin/trash/${t}/${id}`, { method: 'DELETE' })
         toast('已彻底删除')
         navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
-      } catch (e) {
-        toast(e.message, true)
+      } catch (e2) {
+        btn.disabled = false
+        toast(e2.message, true)
       }
     })
   })
@@ -1883,16 +1894,26 @@ async function renderAuditReport(body) {
       if (!(await confirmBox(`删除 ${keys.length} 个未引用文件（共 ${fmtSize(bytes)}）？站内没有内容引用它们，删除后不可恢复。`))) return
       cleanBtn.disabled = true
       try {
-        const r = await api('/admin/uploads/cleanup', { method: 'POST', body: { keys } })
-        if (r.blocked && r.blocked.length) {
-          toast(`已删除 ${r.deleted} 个；${r.blocked.length} 个刚被内容引用，已保留——重新体检即可看到`, true)
+        // 服务端单次最多收 100 个 key：多批提交并汇总（每批执行前都会重验引用，被新内容引用的会留在 blocked 里）
+        let deleted = 0
+        let freedBytes = 0
+        const blocked = []
+        for (let i = 0; i < keys.length; i += 100) {
+          const r = await api('/admin/uploads/cleanup', { method: 'POST', body: { keys: keys.slice(i, i + 100) } })
+          deleted += r.deleted || 0
+          freedBytes += r.freedBytes || 0
+          if (r.blocked && r.blocked.length) blocked.push(...r.blocked)
+        }
+        if (blocked.length) {
+          toast(`已删除 ${deleted} 个；${blocked.length} 个刚被内容引用，已保留——重新体检即可看到`, true)
         } else {
-          toast(`已删除 ${r.deleted} 个文件，释放 ${fmtSize(r.freedBytes)}`)
+          toast(`已删除 ${deleted} 个文件，释放 ${fmtSize(freedBytes)}`)
         }
         navigate()
         renderAuditReport(body)
       } catch (e) {
-        toast(e.message, true)
+        // 分批提交时前面几批可能已删掉：如实回告进度，剩下的稍后重试（已删的 key 重复提交会被跳过）
+        toast(deleted ? `已删除 ${deleted} 个，剩余的稍后重试：${e.message}` : e.message, true)
         cleanBtn.disabled = false
       }
     })
@@ -1907,12 +1928,19 @@ async function renderAuditReport(body) {
       if (!(await confirmBox(`保留这张，把其余 ${remove.length} 个相同副本的引用改到它并删除副本？改写的是站内数据库引用，前台内容照常可用。`))) return
       btn.disabled = true
       try {
-        const r = await api('/admin/uploads/merge', { method: 'POST', body: { keep, remove } })
-        toast(`已合并：改写 ${r.updated} 处引用，释放 ${fmtSize(r.freedBytes)}`)
+        // 服务端单次最多合并 20 个副本：超大重复组分批提交（同一 keep，REPLACE 改写幂等）
+        let updated = 0
+        let freedBytes = 0
+        for (let i = 0; i < remove.length; i += 20) {
+          const r = await api('/admin/uploads/merge', { method: 'POST', body: { keep, remove: remove.slice(i, i + 20) } })
+          updated += r.updated || 0
+          freedBytes += r.freedBytes || 0
+        }
+        toast(`已合并：改写 ${updated} 处引用，释放 ${fmtSize(freedBytes)}`)
         navigate()
         renderAuditReport(body)
       } catch (e) {
-        toast(e.message, true)
+        toast(updated ? `已合并 ${updated} 处引用，剩余的重新体检后再试：${e.message}` : e.message, true)
         btn.disabled = false
       }
     })

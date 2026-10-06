@@ -908,11 +908,19 @@ api.post('/admin/trash/:type/:id/restore', async (c) => {
   if (table === 'posts') {
     const row = await getPostById(c.env.DB, id)
     if (!row || row.deleted_at == null) return jsonError('回收站里没有这条内容', 404)
-    // 过期的定时文恢复为草稿（restorePostStatus），防「恢复即撞发」
-    await c.env.DB
-      .prepare('UPDATE posts SET deleted_at = NULL, status = ? WHERE id = ?')
-      .bind(restorePostStatus(row.status, row.publish_at, Date.now()), id)
+    // 过期的定时文恢复为草稿（restorePostStatus），防「恢复即撞发」；顺带清掉 publish_at，
+    // 回到「非 scheduled 不留定时点」，防止这条草稿之后被切回 scheduled 时按旧时间立即撞发
+    const status = restorePostStatus(row.status, row.publish_at, Date.now())
+    const expiredScheduled = row.status === 'scheduled' && status === 'draft'
+    const res = await c.env.DB
+      .prepare(
+        expiredScheduled
+          ? 'UPDATE posts SET deleted_at = NULL, status = ?, publish_at = NULL WHERE id = ? AND deleted_at IS NOT NULL'
+          : 'UPDATE posts SET deleted_at = NULL, status = ? WHERE id = ? AND deleted_at IS NOT NULL'
+      )
+      .bind(status, id)
       .run()
+    if ((res.meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
   } else {
     const res = await c.env.DB
       .prepare(`UPDATE ${table} SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`)
@@ -927,20 +935,25 @@ api.delete('/admin/trash/:type/:id', async (c) => {
   const table = trashTable(c.req.param('type'))
   const id = parseId(c.req.param('id'))
   if (!table || !id) return jsonError('内容不存在', 404)
-  // 彻底删除只作用于已在回收站的行（deleted_at IS NOT NULL 防误删存活数据），batch 事务内级联清评论
+  // 彻底删除只作用于已在回收站的行（deleted_at IS NOT NULL 防误删存活数据），batch 事务内级联清评论。
+  // 级联必须在主行 DELETE 之前、且用「xx_id IN (回收站行)」子查询守卫：主行先删的话子查询就看不到它了；
+  // 行还活着时子查询匹配不到，级联不动任何数据，主 DELETE 0 行 → 404
   if (table === 'posts') {
+    const cascade = 'AND post_id IN (SELECT id FROM posts WHERE deleted_at IS NOT NULL)'
     const res = await c.env.DB.batch([
+      c.env.DB.prepare(`DELETE FROM comments WHERE post_id = ? ${cascade}`).bind(id),
+      c.env.DB.prepare(`DELETE FROM post_categories WHERE post_id = ? ${cascade}`).bind(id),
       c.env.DB.prepare('DELETE FROM posts WHERE id = ? AND deleted_at IS NOT NULL').bind(id),
-      c.env.DB.prepare('DELETE FROM comments WHERE post_id = ?').bind(id),
-      c.env.DB.prepare('DELETE FROM post_categories WHERE post_id = ?').bind(id),
     ])
-    if ((res[0].meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
+    if ((res[2].meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
   } else if (table === 'weibo') {
     const res = await c.env.DB.batch([
+      c.env.DB.prepare(
+        'DELETE FROM comments WHERE weibo_id = ? AND weibo_id IN (SELECT id FROM weibo WHERE deleted_at IS NOT NULL)'
+      ).bind(id),
       c.env.DB.prepare('DELETE FROM weibo WHERE id = ? AND deleted_at IS NOT NULL').bind(id),
-      c.env.DB.prepare('DELETE FROM comments WHERE weibo_id = ?').bind(id),
     ])
-    if ((res[0].meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
+    if ((res[1].meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
   } else {
     const res = await c.env.DB.prepare('DELETE FROM pages WHERE id = ? AND deleted_at IS NOT NULL').bind(id).run()
     if ((res.meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
@@ -1077,6 +1090,8 @@ api.get('/admin/uploads/audit', async (c) => {
 })
 
 api.post('/admin/uploads/hash-backfill', async (c) => {
+  // 前端回填是循环连发（每批最多 50 个），不能与 audit 的 10/分钟共桶；独立桶放宽到 60/分钟仍有界
+  if (!rateLimit(`backfill:${clientIp(c.req.raw)}`, 60, 60_000)) return jsonError('操作太频繁，请稍后再试', 429)
   const b = await c.req.json<{ limit?: number }>().catch(() => null)
   return c.json(await backfillHashes(c.env, Number(b?.limit) || 25))
 })

@@ -51,8 +51,8 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 **回收站 / 软删除（tests/trash.test.ts、冒烟「回收站链路」，机制在 src/trash.ts）**
 
 - posts / weibo / pages 三表统一软删：`deleted_at` 毫秒时间戳，NULL = 存活；**任何新增的涉及三表的业务查询必须带 `deleted_at IS NULL`**（后台概览统计、likeDelta、置顶名额、scheduler 定时发布、/random、export 全部有过滤），改完跑 `grep -n "FROM posts\|FROM weibo\|FROM pages" src/` 逐个核对——漏一处就是把回收站内容泄漏到那个公开面；已知的**故意不过滤**例外：backup.ts（全表备份兜底）、trash 自身查询（listTrash/purgeTrash 只认 deleted_at IS NOT NULL）、db.ts 的 getPostById/getPageById（后台按 id 直取与恢复）、uniqueSlugIn（回收站行继续占用 slug，恢复后链接照旧）、api.ts 标签清理扫描（恢复时标签完整）
-- `DELETE /api/admin/posts|weibo|pages/:id` 是**软删进回收站**（保留 30 天），不要改回硬删、不要在这里加级联——评论/分类关联只在「彻底删除」时清掉；彻底删除只走 `/admin/trash/*`，且 SQL 必须带 `AND deleted_at IS NOT NULL`（防误删存活行）
-- 恢复文章时过期定时文自动转草稿（`trash.ts restorePostStatus`，防「恢复即撞发」，冒烟守着）；purgeTrash 挂在 index.ts scheduled() 的 00:30 备份 cron 分支（与 purgeVisits 并排），保留期常量 `TRASH_RETENTION_DAYS = 30`
+- `DELETE /api/admin/posts|weibo|pages/:id` 是**软删进回收站**（保留 30 天），不要改回硬删、不要在这里加级联——评论/分类关联只在「彻底删除」时清掉；彻底删除只走 `/admin/trash/*`，且 SQL 必须带 `AND deleted_at IS NOT NULL`（防误删存活行）。**级联语句（comments / post_categories）同样要带守卫**：用 `xx_id IN (SELECT id FROM <表> WHERE deleted_at IS NOT NULL)` 子查询、且排在主行 DELETE **之前**（主行先删子查询就看不到它了）——历史上级联裸删曾把存活文章的评论删光后回 404，冒烟「回收站：误删守卫」守着
+- 恢复文章时过期定时文自动转草稿并**清掉 publish_at**（`trash.ts restorePostStatus` + api.ts 恢复端点，防「恢复即撞发」，也防草稿被切回 scheduled 时按旧定时点撞发，冒烟守着）；purgeTrash 挂在 index.ts scheduled() 的 00:30 备份 cron 分支（与 purgeVisits 并排），保留期常量 `TRASH_RETENTION_DAYS = 30`
 - 后台「回收站」页（viewTrash）已登记 MENU 与 navigate；不进 `MOBILE_TAB_IDS`（自动落移动端「更多」抽屉）；前台 site.js 的微博删除确认文案是「移入回收站」口径，与删除端点的软删语义必须一致
 
 **后台交互（public/admin/，无自动化测试，靠约定）**
@@ -90,10 +90,10 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 
 ## Git 约定
 
-- 本工作区同时服务**两个同源仓库**（2.0 起内容完全一致）：origin = `github.com/lovexw/bloghao-xwblog`（作者实例/开发仓库），upstream = `github.com/lovexw/bloghao`（官方发布仓库，对外开放部署）。不做这两个仓库之外的操作
-- 发布流程：提交后**双推**——`git push origin main && git push upstream main`，两仓库始终指向同一提交（同分支同内容，两仓库各自维护 README 会造成同步冲突，故统一一份官方口吻文档）
+- 本工作区服务**双仓库、两角色**：origin = `github.com/lovexw/bloghao-xwblog`（滚动开发测试仓库，日常提交只推这里），upstream = `github.com/lovexw/bloghao`（官方稳定版仓库，对外开放部署入口，main 永远保持可部署）。不做这两个仓库之外的操作
+- 发布流程（2026-10-06 起废止旧「双推、两仓库同一提交」约定）：日常提交**只推 origin**；upstream 只在迭代稳定、审查清洗后手动发布——`git fetch upstream`，从 `upstream/main` 切发布分支，`git merge --squash` 本地 main（此时按需挑选/清洗，个人实例定制与实验内容不进官方版），确认 diff 后以单个版本提交推 upstream。两仓库历史自此允许分叉，**不要** `git push upstream origin/main:main` 直灌开发历史。**发布操作照 docs/RELEASING.md 清单执行**（版本号规则、挑洗依据「个人定制台账」、CHANGELOG 回填与镜像回开发线）；个人定制**合入 main 当天登记进台账**
 - README / docs / 官网以「博客号 BlogHao」官方项目口吻书写，对两个仓库都自洽；线上地址 blog.xiaowuleyi.com 在文档中一律表述为「在线示例」
-- 旧「同步上游」流程已废止（官方仓库不再单独演进），**不要**从 upstream pull 覆盖本地
+- 同步方向永远 dev→stable 单向：**不要**从 upstream pull 覆盖本地（upstream 只接收发布，永不反向流入开发线）
 - 2026-10-05 仓库整理：官方发布仓库由 bloghao-blog **改名**为 `lovexw/bloghao`（旧地址 GitHub 自动重定向）；更早的独立官网仓库已删除、内容并入 `website/`——遇到提这两个旧名字的链接/文档一律以现名为准
 - 提交信息沿用 `theme:` / `mobile:` / `docs:` / `brand:` 等前缀的中文风格
 
@@ -111,10 +111,11 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 ## 结构速查
 
 - `src/themes/`：五套主题 + `registry.ts` 注册表（八类页面参数是导出的命名类型 `HomeData`/`PostData`/…，新增主题或字段只改 registry 一处；五主题 × 八页面渲染回归在 tests/themes.test.ts，改主题先跑）；`wechat` 为默认主题
-- 站点模式（settings `siteMode`：`blog-weibo` / `weibo-blog` / `blog` / `weibo`，解析统一走 `render.ts siteMode()`）决定微博/博客模块的前台显隐与首页优先级：导航在 `siteNav` 的 mode 参数、首页微博流在 `weiboHomeFeed`、`/weibo` 与 `/` 的分流在 pages.ts——**新增前台模块或导航项时要四种模式都过一遍**（tests/site-mode.test.ts + tests/themes.test.ts 微博流回归守着）；后台设置页是「三选一 + 双方模式下的顺序」联动控件
+- 站点模式（settings `siteMode`：`blog-weibo` / `weibo-blog` / `blog` / `weibo`，解析统一走 `render.ts siteMode()`）决定微博/博客模块的前台显隐与首页优先级：导航在 `siteNav` 的 mode 参数、首页微博流在 `weiboHomeFeed`、页脚链接组在 `footLinks`（纯博客模式剥掉各主题 FOOT_LINKS 里的 /weibo 链接，五主题的 foot() 都要过它）、`/weibo` 与 `/` 的分流在 pages.ts——**新增前台模块或导航项时要四种模式都过一遍**（tests/site-mode.test.ts + tests/themes.test.ts 微博流回归守着）；后台设置页是「三选一 + 双方模式下的顺序」联动控件
 - `src/pages.ts` 渲染公开页（含独立页面 `/page/:slug`，pages 表承载，`about` 页渲染在 `/about`）；`src/api.ts` 全部 JSON API；`src/collect.ts` 是公众号采集插件的服务端（编辑器插件在 `public/plugins/`，开发文档 docs/PLUGINS.md）；`src/export.ts` + `src/zip.ts` + `src/html-md.ts` 是数据导出（Markdown 包流式打 zip、WXR）；`src/closed.ts` 是一键闭站 / 灰度（settings `siteClosed` / `siteGrayscale`，独立成模块是为了 Node 测试能导入——index.ts 会级联加载主题 CSS）；`src/trash.ts` 是回收站 / 三表软删除（posts/weibo/pages 的 `deleted_at` 标记、恢复与 30 天到期清理，同样可被 Node 测试导入，详见「回收站 / 软删除」防线节）；`src/hooks.ts` 是服务端插件钩子（总线 + 注册表 + 官方示例三合一，发布/评论事件与页脚注入，插件失败必须吞掉不影响主流程，启停存 settings `serverPluginsDisabled`）
 - `src/demo.ts` + `demo-content.ts` / `demo-posts.ts` / `demo-images.ts`：官方演示站引擎（独立 wrangler.demo.jsonc，DEMO_MODE 门控）——空库自播种、每 2 小时 cron 清库重灌、演示守卫（登录页公示 demo 账号、禁改密码、禁闭站、禁外发通知、全站 noindex）；种子内容确定性生成，文档 docs/DEMO.md
 - `public/admin/`：后台（app.js 路由与页面——侧栏菜单看顶部 `MENU` 配置数组，editor.js 写作编辑器，admin.css 样式）；「皮肤 / 插件」是独立页面（`#/appearance`、`#/plugins`），市场目录在 `public/market/catalog.json`
 - `website/`：「博客号」官网静态页（朱砂红新版设计），部署走 Cloudflare Pages 项目 `bloghao`，**勿用 Workers assets 另起部署通道**；「博客号目录」数据在 `website/public/data/showcase.json`，上榜入口指向 bloghao 的 issues；官网 UI 改动同样过 390px 移动端检查
+- `docker-poc/`：Docker 自托管——业务代码零改动跑进 Node 单进程多站点（D1→node:sqlite、R2→磁盘目录 `shims/r2disk.ts` 或 R2 S3 接口 `shims/r2s3.ts`，静态直出与 cron 对齐 wrangler 行为，文档在其 README.md / DEPLOY.md）；**改 Workers 专有 API 面（D1/R2 用法、静态资源、cron、waitUntil）或 schema.sql 时，必须同步 docker-poc 的 shim 并跑 `docker-poc/smoke.sh` 冒烟**
 - 编辑器内容样式（`.ed-editor`）与文章页（`.rich`）需保持视觉一致——改一处记得镜像另一处
 - 前台微博卡管理（编辑 / 置顶 / 删除，site.js 末段）：管理按钮由 `render.ts weiboCards` 仅在 `adminName`（⟺ 管理员登录）时渲染，**访客 HTML 里不存在**；写操作复用 `/api/admin/weibo*`（session 鉴权）——`PUT` 是全量更新，**必须带原 images 否则配图被清**、必须显式传 `status:'published'` 否则会转草稿；编辑保存后的就地渲染（wbTextHtml / imgsClass）与后端 `weiboTextHtml / weiboImageGrid` 同口径，改正则或网格分列规则要两边同步；编辑态切换显隐用内联 `style.display`（主题 CSS 的 display 会盖掉 `[hidden]`）

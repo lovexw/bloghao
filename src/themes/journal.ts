@@ -5,6 +5,7 @@ import {
   archiveListHtml,
   categoryLink,
   esc,
+  footLinks,
   fmtDateCN,
   fmtViews,
   friendLinkApply,
@@ -36,7 +37,7 @@ const id = 'journal'
 function foot(s: SettingsMap, links: string): string {
   return `<footer class="jrn-footer">
     <span class="jrn-footer-note">${esc(s.footerText || '')}</span>
-    <span class="jrn-footer-links">${links}</span>
+    <span class="jrn-footer-links">${footLinks(s, links)}</span>
   </footer>`
 }
 const FOOT_LINKS = {
