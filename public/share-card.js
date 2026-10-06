@@ -3,7 +3,8 @@
  * 图片全部先经 loadImage（跨域强制 crossOrigin='anonymous'，失败返回 null 画占位），
  * 保证画布永不被跨域内容污染，toBlob 导出必成功。
  * 产出 1280px 宽 PNG：弹窗内 <img> 预览（手机长按可存），「保存图片」走 download，
- * 支持 navigator.share 带文件的设备（iOS/安卓）唤起系统分享面板直发朋友圈。 */
+ * 支持 navigator.share 带文件的设备（iOS/安卓）唤起系统分享面板直发朋友圈，
+ * 支持 Clipboard API 的浏览器（桌面 Chrome/Edge/Safari 16+/Firefox 127+）可「复制图片」直接粘贴。 */
 
 const S = 2 // 输出倍率：逻辑 640 宽 × 2 = 1280px 成品
 const W = 640
@@ -410,6 +411,7 @@ function ensureModal() {
     '<div class="sc-body"><div class="sc-spin" aria-hidden="true"></div></div>' +
     '<p class="sc-tip">手机长按图片可保存或转发</p>' +
     '<div class="sc-foot">' +
+    '<button type="button" class="sc-btn sc-btn-alt" data-act="copy" hidden>复制图片</button>' +
     '<button type="button" class="sc-btn sc-btn-alt" data-act="share" hidden>分享给朋友</button>' +
     '<button type="button" class="sc-btn sc-btn-main" data-act="save" disabled>生成中…</button>' +
     '</div>' +
@@ -440,8 +442,31 @@ function ensureModal() {
       .share({ files: [state.file], title: state.site + '的微博', text: state.text })
       .catch(function () {})
   })
+  // 复制图片：state.file 本身就是 PNG Blob，同步塞进 ClipboardItem 不破坏用户手势（Safari 硬性要求）
+  overlay.querySelector('[data-act=copy]').addEventListener('click', function () {
+    if (!state) return
+    const btn = this
+    const note = function (msg) {
+      btn.textContent = msg
+      setTimeout(function () {
+        btn.textContent = '复制图片'
+      }, 1600)
+    }
+    try {
+      navigator.clipboard.write([new ClipboardItem({ 'image/png': state.file })]).then(
+        function () {
+          note('已复制 ✓')
+        },
+        function () {
+          note('复制失败')
+        }
+      )
+    } catch (e) {
+      note('复制失败')
+    }
+  })
 
-  modal = { overlay: overlay, body: overlay.querySelector('.sc-body'), save: overlay.querySelector('[data-act=save]'), share: overlay.querySelector('[data-act=share]') }
+  modal = { overlay: overlay, body: overlay.querySelector('.sc-body'), save: overlay.querySelector('[data-act=save]'), share: overlay.querySelector('[data-act=share]'), copy: overlay.querySelector('[data-act=copy]') }
   return modal
 }
 
@@ -462,6 +487,7 @@ export async function openShareCard(card) {
   m.save.disabled = true
   m.save.textContent = '生成中…'
   m.share.hidden = true
+  m.copy.hidden = true
   if (state) {
     URL.revokeObjectURL(state.url)
     state = null
@@ -493,6 +519,7 @@ export async function openShareCard(card) {
       m.save.disabled = false
       m.save.textContent = '保存图片'
       m.share.hidden = !(navigator.canShare && navigator.canShare({ files: [file] }))
+      m.copy.hidden = !(navigator.clipboard && window.ClipboardItem)
       resolve()
     }, 'image/png')
   })
