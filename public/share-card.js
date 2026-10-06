@@ -666,7 +666,10 @@ function renderArticleCard(d, av, cover) {
   const LH_TITLE = 48
   const LH_ABS = 38
 
+  // 量宽必须先用真实字体：canvas 默认 10px 量出来的行宽，按 34px/23px 画会冲出卡片右缘
+  ctx.font = F_TITLE
   const titleLines0 = d.title ? wrapLines(ctx, atoms([{ t: d.title }]), INNER) : []
+  ctx.font = F_ABS
   const absLines0 = d.desc ? wrapLines(ctx, atoms([{ t: d.desc }]), INNER) : []
   const qrSide = d.qr ? d.qr.length : 0
   const QPX = 2.6 // 码模块逻辑边长：v4 码 33 模块 → 托底 ~100px
@@ -748,7 +751,7 @@ function renderArticleCard(d, av, cover) {
     y += 22 + LH_TITLE / 2
     ctx.font = F_TITLE
     for (let i = 0; i < titleLines.length; i++) {
-      drawSegLine(ctx, i === titleLines.length - 1 && (titleCut || (titleLines0.length === titleMax && absLines0.length > absMax) ? ellipsize(ctx, titleLines[i], INNER) : titleLines[i]), x0, y)
+      drawSegLine(ctx, i === titleLines.length - 1 && titleCut ? ellipsize(ctx, titleLines[i], INNER) : titleLines[i], x0, y)
       y += LH_TITLE
     }
     y -= LH_TITLE / 2
