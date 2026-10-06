@@ -205,6 +205,7 @@ const IC = {
 
 /* ---------------- 插件系统 ---------------- */
 const plugins = []
+const pluginDefs = new Map() // name -> 插件定义。ES module import 有缓存，模块顶层（registerPlugin 调用）只在首次挂载执行一次，重挂载时从这里补注册
 let pluginSlotEl = null
 let pluginDisabledIds = [] // 本次挂载的停用名单（renderPluginButtons 过滤用）
 let saveSelectionHook = null // mountEditor 注入；renderPluginButtons 在模块作用域，拿不到内部的 saveSelection
@@ -215,8 +216,8 @@ function renderPluginButtons(ctx) {
   const off = new Set(pluginDisabledIds)
   for (const p of plugins) {
     // 停用过滤放渲染层：ES module import 有缓存，首次挂载加载过的插件无法靠「不 import」卸载，
-    // 只清空重载 + 这里过滤才能让「停用立即生效」
-    if (p.id && off.has(p.id)) continue
+    // 只清空重载 + 这里过滤才能让「停用立即生效」；插件定义没有 id 字段，名单是 manifest id，按 name 过滤（文档约定 id 与 name 一致）
+    if (off.has(p.name)) continue
     const b = document.createElement('button')
     b.className = 'ed-btn'
     b.type = 'button'
@@ -236,17 +237,20 @@ function renderPluginButtons(ctx) {
 }
 
 async function loadPlugins(ctx, disabledIds) {
+  let activeIds = null // 本次 manifest 里未停用的插件 id；manifest 拉取失败时保持 null（不补注册也不清场）
   try {
     const res = await fetch('/plugins/manifest.json', { credentials: 'same-origin' })
     if (!res.ok) return
     const list = await res.json()
     if (!Array.isArray(list)) return
     const off = new Set(disabledIds || [])
+    activeIds = new Set()
     for (const entry of list) {
       // 清单兼容两种形态：旧版纯文件名字符串，新版对象 { id, file, ... }（后台「插件」页按 id 启停）
       const file = typeof entry === 'string' ? entry : entry && entry.file
       const id = typeof entry === 'string' ? entry.replace(/\.js$/, '') : entry && entry.id
       if (!file || (id && off.has(id))) continue
+      if (id) activeIds.add(id)
       try {
         await import('/plugins/' + file)
       } catch (e) {
@@ -255,6 +259,14 @@ async function loadPlugins(ctx, disabledIds) {
     }
   } catch {
     /* 没有插件清单也完全不影响使用 */
+  }
+  // 首次挂载后 import 恒命中缓存，模块不会再执行 registerPlugin——已加载过的定义从 pluginDefs 补回。
+  // 只补 manifest 仍在列且未停用的（activeIds），下线/停用的插件按钮才不会跨挂载残留
+  if (activeIds) {
+    for (const [name, def] of pluginDefs) {
+      if (!activeIds.has(name) || plugins.includes(def)) continue
+      plugins.push(def)
+    }
   }
   renderPluginButtons(ctx)
 }
@@ -451,7 +463,8 @@ export function disposeEditor() {
 export async function mountEditor(root, postId, opts = {}) {
   cleanupEditor?.()
   flushSave = null
-  // 每次挂载重置插件注册表：模块级数组跨挂载残留，已停用/已下线的插件按钮会一直留着
+  // 每次挂载清空插件运行表：残留的按钮以「本次 manifest 有效名单」为准重建；
+  // 已加载插件的定义留在 pluginDefs，由 loadPlugins 补注册（import 缓存导致模块不会重新执行）
   plugins.length = 0
   pluginDisabledIds = Array.isArray(opts.disabledPlugins) ? opts.disabledPlugins.map(String) : []
   const post = {
@@ -1573,7 +1586,10 @@ export async function mountEditor(root, postId, opts = {}) {
   window.BlogHao = {
     version: '1.0',
     registerPlugin(p) {
-      if (p && p.name && typeof p.onClick === 'function') plugins.push(p)
+      if (p && p.name && typeof p.onClick === 'function') {
+        pluginDefs.set(p.name, p)
+        if (!plugins.includes(p)) plugins.push(p)
+      }
       renderPluginButtons(pluginCtx)
     },
     ...pluginCtx,
