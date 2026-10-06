@@ -159,14 +159,20 @@ export async function getPostById(db: D1Database, id: number): Promise<PostRow |
   return db.prepare('SELECT * FROM posts WHERE id = ?').bind(id).first<PostRow>()
 }
 
-export async function uniqueSlug(db: D1Database, base: string, excludeId?: number): Promise<string> {
+/** slug 查重公共件：posts / pages 同一套「占用即加后缀」探测（categories 是重名即拒绝语义，不走这里）。
+ *  table 只来自下方两个包装函数的字面量，无注入面 */
+async function uniqueSlugIn(db: D1Database, table: 'posts' | 'pages', base: string, excludeId?: number): Promise<string> {
   let slug = base
   for (let i = 2; i < 100; i++) {
-    const row = await db.prepare('SELECT id FROM posts WHERE slug = ?').bind(slug).first<{ id: number }>()
+    const row = await db.prepare(`SELECT id FROM ${table} WHERE slug = ?`).bind(slug).first<{ id: number }>()
     if (!row || row.id === excludeId) return slug
     slug = `${base}-${i}`
   }
   return `${base}-${Date.now().toString(36)}`
+}
+
+export async function uniqueSlug(db: D1Database, base: string, excludeId?: number): Promise<string> {
+  return uniqueSlugIn(db, 'posts', base, excludeId)
 }
 
 export async function listApprovedComments(db: D1Database, postId: number): Promise<CommentRow[]> {
@@ -406,13 +412,7 @@ export async function getPageById(db: D1Database, id: number): Promise<PageRow |
 
 /** slug 查重（posts 同款递增后缀），excludeId 供编辑时排除自身 */
 export async function uniquePageSlug(db: D1Database, base: string, excludeId?: number): Promise<string> {
-  let slug = base
-  for (let i = 2; i < 100; i++) {
-    const row = await db.prepare('SELECT id FROM pages WHERE slug = ?').bind(slug).first<{ id: number }>()
-    if (!row || row.id === excludeId) return slug
-    slug = `${base}-${i}`
-  }
-  return `${base}-${Date.now().toString(36)}`
+  return uniqueSlugIn(db, 'pages', base, excludeId)
 }
 
 /** sitemap 用的已发布页面（含更新时间） */
@@ -441,6 +441,9 @@ export async function categoryNameMap(db: D1Database, postIds: number[]): Promis
 /* ---------------- 微博（随手记） ---------------- */
 
 export const WEIBO_MAX_IMAGES = 9
+
+/** 微博正文字数上限（后台发布器与外部发布 / Telegram 同口径） */
+export const WEIBO_MAX_CHARS = 5000
 
 /** 校验并规整微博图片数组：只接受站内 /images/ 与 http(s) 外链，最多 9 张 */
 export function parseWeiboImages(v: unknown): string[] {

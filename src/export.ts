@@ -10,6 +10,7 @@
 import { Hono } from 'hono'
 import { getSettings, listPages, parseTags } from './db'
 import { htmlToMd } from './html-md'
+import { siteBase } from './render'
 import { extractOgImage, sanitizeHtml } from './sanitize'
 import type { Env, PageRow, PostRow, SessionUser, WeiboRow } from './types'
 import { cstDate, fmtDate } from './utils'
@@ -241,7 +242,7 @@ exportRoutes.get('/wxr', async (c) => {
       .prepare('SELECT pc.post_id, c.name AS name FROM post_categories pc JOIN categories c ON c.id = pc.category_id')
       .all<{ post_id: number; name: string }>(),
   ])
-  const siteUrl = (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')
+  const siteUrl = siteBase(settings, new URL(c.req.url).origin)
   const posts = postsRes.results ?? []
   const catByName = new Map((catRes.results ?? []).map((r) => [r.post_id, r.name]))
   const tagSet = new Set<string>()

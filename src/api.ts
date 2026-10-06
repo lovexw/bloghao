@@ -41,14 +41,16 @@ import {
   weiboCommentCountMap,
   weiboImageList,
   weiboTopicList,
+  WEIBO_MAX_CHARS,
 } from './db'
 import { mdToHtml } from './markdown'
 import { collectRoutes } from './collect'
 import { exportRoutes } from './export'
 import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes } from './external'
 import { fireCommentCreated, firePostPublished, listServerPlugins } from './hooks'
-import { toHomePost } from './render'
+import { siteBase, toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
+import { imageExtOf, MAX_UPLOAD_BYTES, saveUpload } from './store'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
@@ -57,16 +59,6 @@ import { clampInt, cleanDisabledPlugins, cleanSlug, excerpt, extractWeiboTopics,
 type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
 const MAX_CONTENT_BYTES = 1_000_000 // 正文 ~1MB
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-const IMAGE_MIMES: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  // favicon 用；不放行 SVG——同源直接打开 SVG 可执行脚本，有存储 XSS 风险
-  'image/x-icon': 'ico',
-  'image/vnd.microsoft.icon': 'ico',
-}
 const VIDEO_MIMES: Record<string, string> = {
   'video/mp4': 'mp4',
   'video/webm': 'webm',
@@ -450,7 +442,6 @@ api.delete('/admin/posts/:id', async (c) => {
 })
 
 /* ---------------- 微博管理（随手记） ---------------- */
-const WEIBO_MAX_CHARS = 5000
 const WEIBO_MAX_PINNED = 3
 
 async function readWeiboPayload(c: { req: { json: () => Promise<unknown> } }) {
@@ -958,24 +949,14 @@ api.post('/admin/upload', async (c) => {
   const file = body && typeof body === 'object' ? ((body as Record<string, unknown>)['file'] as unknown) : null
   if (!(file instanceof File)) return jsonError('缺少文件字段 file')
   const mime = file.type || 'application/octet-stream'
-  // hasOwnProperty 挡原型链：IMAGE_MIMES['constructor'] 是继承属性（truthy），声明类型可借此穿透校验
-  const ext = Object.prototype.hasOwnProperty.call(IMAGE_MIMES, mime)
-    ? IMAGE_MIMES[mime]
-    : Object.prototype.hasOwnProperty.call(VIDEO_MIMES, mime)
-      ? VIDEO_MIMES[mime]
-      : undefined
+  // 白名单查表统一走 imageExtOf（内部 hasOwnProperty 挡原型链穿透）
+  const ext =
+    imageExtOf(mime) ??
+    (Object.prototype.hasOwnProperty.call(VIDEO_MIMES, mime) ? VIDEO_MIMES[mime] : undefined)
   if (!ext) return jsonError('仅支持 JPG / PNG / WebP / GIF 图片与 MP4 / WebM 视频')
   if (file.size > MAX_UPLOAD_BYTES) return jsonError('文件超过 25MB 限制')
-  const now = new Date()
-  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-  const key = `u/${ym}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.${ext}`
-  await c.env.IMAGES.put(key, await file.arrayBuffer(), {
-    httpMetadata: { contentType: mime, cacheControl: 'public, max-age=31536000, immutable' },
-  })
-  await c.env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(key, file.name.slice(0, 120), mime, file.size, Date.now())
-    .run()
-  return c.json({ ok: true, url: `/images/${key}`, key, mime, size: file.size })
+  const url = await saveUpload(c.env, await file.arrayBuffer(), mime, file.name, ext)
+  return c.json({ ok: true, url, key: url.slice('/images/'.length), mime, size: file.size })
 })
 
 api.get('/admin/uploads', async (c) => {
@@ -1016,14 +997,8 @@ api.post('/admin/og-image', async (c) => {
   if (!(file instanceof File)) return jsonError('缺少文件字段 file')
   if (file.type !== 'image/png') return jsonError('OG 卡图仅支持 PNG')
   if (file.size > MAX_UPLOAD_BYTES) return jsonError('文件超过 25MB 限制')
-  const key = `og/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.png`
-  await c.env.IMAGES.put(key, await file.arrayBuffer(), {
-    httpMetadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000, immutable' },
-  })
-  await c.env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(key, 'og-card.png', 'image/png', file.size, Date.now())
-    .run()
-  return c.json({ ok: true, url: `/images/${key}`, key })
+  const url = await saveUpload(c.env, await file.arrayBuffer(), 'image/png', 'og-card.png', 'png', 'og')
+  return c.json({ ok: true, url, key: url.slice('/images/'.length) })
 })
 
 /* ---------------- 评论管理 ---------------- */
@@ -1338,7 +1313,7 @@ api.post('/public/comments', async (c) => {
       nickname,
       content,
       pending,
-      siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
+      siteBase: siteBase(settings, new URL(c.req.url).origin),
       path: `/post/${encodeURIComponent(post.slug)}#comments`,
     })
   )
@@ -1349,7 +1324,7 @@ api.post('/public/comments', async (c) => {
       context: post.title,
       nickname,
       content,
-      url: `${(settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')}/post/${encodeURIComponent(post.slug)}#comments`,
+      url: `${siteBase(settings, new URL(c.req.url).origin)}/post/${encodeURIComponent(post.slug)}#comments`,
       pending,
     })
   )
@@ -1409,7 +1384,7 @@ api.post('/public/guestbook', async (c) => {
       nickname,
       content,
       pending,
-      siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
+      siteBase: siteBase(settings, new URL(c.req.url).origin),
       path: '/guestbook',
     })
   )
@@ -1418,7 +1393,7 @@ api.post('/public/guestbook', async (c) => {
       kind: 'guestbook',
       nickname,
       content,
-      url: `${(settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')}/guestbook`,
+      url: `${siteBase(settings, new URL(c.req.url).origin)}/guestbook`,
       pending,
     })
   )
@@ -1426,6 +1401,29 @@ api.post('/public/guestbook', async (c) => {
 })
 
 /* ---------------- 微博互动（点赞 + 评论，公开） ---------------- */
+/** 点赞公共件（posts 按 slug / weibo 按 id 两路共用）：条件更新防负数，
+ *  回读同口径只认已发布——草稿/不存在的统一返回 0（草稿历史点赞数不外泄）。
+ *  table/col 只来自两个调用点的字面量，无注入面 */
+async function likeDelta(
+  db: D1Database,
+  table: 'posts' | 'weibo',
+  col: 'slug' | 'id',
+  key: string,
+  delta: number
+): Promise<number> {
+  await db
+    .prepare(
+      `UPDATE ${table} SET likes = CASE WHEN likes + ? < 0 THEN 0 ELSE likes + ? END WHERE ${col} = ? AND status = 'published'`
+    )
+    .bind(delta, delta, key)
+    .run()
+  const row = await db
+    .prepare(`SELECT likes FROM ${table} WHERE ${col} = ? AND status = 'published'`)
+    .bind(key)
+    .first<{ likes: number }>()
+  return row?.likes ?? 0
+}
+
 api.post('/public/like/weibo/:id', async (c) => {
   // 限流防脚本刷赞刷踩（正常用户连点几条微博远够用）
   if (!rateLimit(`like:${clientIp(c.req.raw)}`, 30, 10 * 60_000)) return jsonError('操作太频繁了，休息一下吧', 429)
@@ -1433,17 +1431,7 @@ api.post('/public/like/weibo/:id', async (c) => {
   if (!id) return jsonError('参数错误')
   const body = await c.req.json<{ delta?: number }>().catch(() => null)
   const delta = body?.delta === -1 ? -1 : 1
-  await c.env.DB.prepare(
-    'UPDATE weibo SET likes = CASE WHEN likes + ? < 0 THEN 0 ELSE likes + ? END WHERE id = ? AND status = \'published\''
-  )
-    .bind(delta, delta, id)
-    .run()
-  // 回读同口径只认已发布：草稿/不存在的统一返回 0（草稿历史点赞数不外泄）
-  const row = await c.env.DB
-    .prepare("SELECT likes FROM weibo WHERE id = ? AND status = 'published'")
-    .bind(id)
-    .first<{ likes: number }>()
-  return c.json({ ok: true, likes: row?.likes ?? 0 })
+  return c.json({ ok: true, likes: await likeDelta(c.env.DB, 'weibo', 'id', String(id), delta) })
 })
 
 api.get('/public/weibo/:id/comments', async (c) => {
@@ -1517,7 +1505,7 @@ api.post('/public/weibo/:id/comments', async (c) => {
       nickname,
       content,
       pending,
-      siteBase: (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, ''),
+      siteBase: siteBase(settings, new URL(c.req.url).origin),
       path: `/weibo?wb=${id}#wb-${id}`,
     })
   )
@@ -1527,7 +1515,7 @@ api.post('/public/weibo/:id/comments', async (c) => {
       context: excerpt(wb.content, 40),
       nickname,
       content,
-      url: `${(settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')}/weibo?wb=${id}#wb-${id}`,
+      url: `${siteBase(settings, new URL(c.req.url).origin)}/weibo?wb=${id}#wb-${id}`,
       pending,
     })
   )
@@ -1539,17 +1527,7 @@ api.post('/public/like/:slug', async (c) => {
   const slug = c.req.param('slug').slice(0, 100)
   const body = await c.req.json<{ delta?: number }>().catch(() => null)
   const delta = body?.delta === -1 ? -1 : 1
-  await c.env.DB.prepare(
-    `UPDATE posts SET likes = CASE WHEN likes + ? < 0 THEN 0 ELSE likes + ? END WHERE slug = ? AND status = 'published'`
-  )
-    .bind(delta, delta, slug)
-    .run()
-  // 回读同口径只认已发布：草稿/不存在的统一返回 0（草稿历史点赞数不外泄）
-  const row = await c.env.DB
-    .prepare("SELECT likes FROM posts WHERE slug = ? AND status = 'published'")
-    .bind(slug)
-    .first<{ likes: number }>()
-  return c.json({ ok: true, likes: row?.likes ?? 0 })
+  return c.json({ ok: true, likes: await likeDelta(c.env.DB, 'posts', 'slug', slug, delta) })
 })
 
 /* ---------------- 访客统计打点（公开，site.js 上报，见 src/stats.ts） ---------------- */

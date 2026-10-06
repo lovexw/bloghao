@@ -6,6 +6,7 @@ import { siteClosedResponse } from './closed'
 import { ensureSchema, getSettings, listCategories, listPublishedTags, listPosts, listSitemapPages, listSitemapPosts } from './db'
 import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome, renderLinks, renderNotFound, renderPage, renderPost, renderSearch, renderWeibo } from './pages'
 import { buildRss, buildSitemap } from './rss'
+import { siteBase } from './render'
 import { purgeVisits } from './stats'
 import type { Env, SessionUser } from './types'
 
@@ -61,7 +62,7 @@ app.get('/random', async (c) => {
 app.get('/rss.xml', async (c) => {
   const settings = await getSettings(c.env.DB)
   const { items } = await listPosts(c.env.DB, { status: 'published', limit: 50 })
-  const siteUrl = (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')
+  const siteUrl = siteBase(settings, new URL(c.req.url).origin)
   c.header('Content-Type', 'application/rss+xml; charset=utf-8')
   c.header('Cache-Control', 'public, max-age=600')
   return c.body(buildRss(settings, items, siteUrl))
@@ -75,7 +76,7 @@ app.get('/sitemap.xml', async (c) => {
     listPublishedTags(c.env.DB),
     listSitemapPages(c.env.DB),
   ])
-  const siteUrl = (settings.siteUrl || new URL(c.req.url).origin).replace(/\/+$/, '')
+  const siteUrl = siteBase(settings, new URL(c.req.url).origin)
   c.header('Content-Type', 'application/xml; charset=utf-8')
   c.header('Cache-Control', 'public, max-age=600')
   return c.body(buildSitemap(settings, posts, siteUrl, categories, tags, pages))

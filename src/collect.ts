@@ -13,6 +13,7 @@ import { Hono } from 'hono'
 import { clientIp, rateLimit } from './auth'
 import { getPostById, uniqueSlug } from './db'
 import { sanitizeHtml } from './sanitize'
+import { MAX_UPLOAD_BYTES, saveUpload } from './store'
 import type { Env, SessionUser } from './types'
 import { esc, excerpt, slugify } from './utils'
 
@@ -20,7 +21,6 @@ type CollectEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
 export const collectRoutes = new Hono<CollectEnv>()
 
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024 // 与手动上传一致
 const MAX_IMAGES = 30 // Workers 免费档单请求 50 个子请求，预留余量
 const MAX_PAGE_BYTES = 5 * 1024 * 1024 // 抓取页面上限：贴图页（图片消息）内嵌 JS 数据可达 2-3MB
 const MAX_HTML_BYTES = 900_000 // 生成的草稿正文上限，与文章接口 1MB 上限留余量
@@ -112,14 +112,10 @@ interface ArticleMeta {
   publishedAt: number | null
 }
 
-/** JS 字符串字面量里的 \uXXXX 转义 */
-function unescapeJs(s: string): string {
-  return s.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-}
-
-/** var nickname = htmlDecode("…") / var x = '…' / var x = "…" 三种写法都兼容 */
+/** var nickname = htmlDecode("…") / var x = '…' / var x = "…" 三种写法都兼容。
+ *  捕获的是 JS 字符串字面量原文，统一走 unescapeJsString 全量解转义（\uXXXX 是其子集） */
 function jsVar(html: string, name: string): string {
-  return unescapeJs(
+  return unescapeJsString(
     match1(html, new RegExp(`var ${name}\\s*=\\s*htmlDecode\\("([^"]*)"\\)`)) ||
       match1(html, new RegExp(`var ${name}\\s*=\\s*'([^']*)'`)) ||
       match1(html, new RegExp(`var ${name}\\s*=\\s*"([^"]*)"`, 'i'))
@@ -358,20 +354,11 @@ async function saveImage(
     // 由识别出的扩展名反推，保证 /images/ 回源时永远是安全的图片类型
     const ext = sniffImageExt(buf)
     if (!ext) return null
+    // 类型只认文件魔数，不信任源站 Content-Type / URL 的 wx_fmt：
+    // 声明成图片但内容是 HTML/SVG 的响应一律拒收，存储的 Content-Type
+    // 由识别出的扩展名反推，保证 /images/ 回源时永远是安全的图片类型
     const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`
-    const now = new Date()
-    const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-    const key = `u/${ym}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.${ext}`
-    await c.env.IMAGES.put(key, buf, {
-      httpMetadata: {
-        contentType,
-        cacheControl: 'public, max-age=31536000, immutable',
-      },
-    })
-    await c.env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(key, name.slice(0, 120), contentType, buf.byteLength, Date.now())
-      .run()
-    return `/images/${key}`
+    return saveUpload(c.env, buf, contentType, name, ext)
   } catch {
     return null
   }

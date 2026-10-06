@@ -142,15 +142,20 @@ export function renderFooterHtml(settings: SettingsMap): string {
   return html
 }
 
-/** 发布事件广播：后台发布与定时到点两条路都会调；任何失败都不影响发布本身 */
-export async function firePostPublished(env: Env, p: PostPublishedPayload): Promise<void> {
+/** 事件广播公共件：遍历启用的插件逐个调 handler，任何失败都不影响调用方主流程 */
+async function fireHook<P>(
+  env: Env,
+  pick: (plugin: ServerPlugin) => ((p: P, ctx: HookContext) => void | Promise<void>) | undefined,
+  p: P
+): Promise<void> {
   try {
     const settings = await getSettings(env.DB)
     const ctx: HookContext = { env, settings, base: (settings.siteUrl || '').replace(/\/+$/, '') }
     for (const plugin of enabledPlugins(settings)) {
-      if (!plugin.onPostPublished) continue
+      const handler = pick(plugin)
+      if (!handler) continue
       try {
-        await plugin.onPostPublished(p, ctx)
+        await handler(p, ctx)
       } catch {
         /* 单个插件失败不影响其余插件 */
       }
@@ -160,20 +165,12 @@ export async function firePostPublished(env: Env, p: PostPublishedPayload): Prom
   }
 }
 
+/** 发布事件广播：后台发布与定时到点两条路都会调；任何失败都不影响发布本身 */
+export function firePostPublished(env: Env, p: PostPublishedPayload): Promise<void> {
+  return fireHook(env, (plugin) => plugin.onPostPublished, p)
+}
+
 /** 评论事件广播：访客评论/留言三条路（文章、微博、留言板）都会调；任何失败都不影响留言本身 */
-export async function fireCommentCreated(env: Env, p: CommentCreatedPayload): Promise<void> {
-  try {
-    const settings = await getSettings(env.DB)
-    const ctx: HookContext = { env, settings, base: (settings.siteUrl || '').replace(/\/+$/, '') }
-    for (const plugin of enabledPlugins(settings)) {
-      if (!plugin.onCommentCreated) continue
-      try {
-        await plugin.onCommentCreated(p, ctx)
-      } catch {
-        /* 单个插件失败不影响其余插件 */
-      }
-    }
-  } catch {
-    /* 读不到设置就放弃，不影响主流程 */
-  }
+export function fireCommentCreated(env: Env, p: CommentCreatedPayload): Promise<void> {
+  return fireHook(env, (plugin) => plugin.onCommentCreated, p)
 }

@@ -476,10 +476,15 @@ function weiboAdminBar(w: WeiboItemView): string {
 </div>`
 }
 
+/** 心形（点赞）图标：微博底栏 16 与文章页 18 两种规格共用同一 path */
+function heartSvg(size: number): string {
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.5 8.4 2.3 4.9 5.7 4.5c2-.2 3.9.8 5 2.5a5.7 5.7 0 0 1 5-2.5c3.4.4 5.2 3.9 3.7 7.2C19.5 16.1 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`
+}
+
 /** 微博卡片底栏：点赞（同文章 like-btn，data-type=weibo）+ 评论数（点开卡片内折叠评论区） */
 export function weiboCardFoot(w: WeiboItemView, isAdmin?: boolean): string {
   const like = `<button class="wb-action like-btn" type="button" data-type="weibo" data-id="${w.id}" data-likes="${w.likes}" aria-label="点赞">
-  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.5 8.4 2.3 4.9 5.7 4.5c2-.2 3.9.8 5 2.5a5.7 5.7 0 0 1 5-2.5c3.4.4 5.2 3.9 3.7 7.2C19.5 16.1 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+  ${heartSvg(16)}
   <b class="like-count" data-count>${w.likes}</b>
 </button>`
   const cmt = `<button class="wb-action wb-cmt-toggle" type="button" data-wb="${w.id}" aria-label="评论" aria-expanded="false">
@@ -777,7 +782,7 @@ export function commentsHtml(o: {
 
 export function likesBtn(slug: string, likes: number): string {
   return `<button class="like-btn" data-slug="${esc(slug)}" data-likes="${likes}" type="button">
-  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.5 8.4 2.3 4.9 5.7 4.5c2-.2 3.9.8 5 2.5a5.7 5.7 0 0 1 5-2.5c3.4.4 5.2 3.9 3.7 7.2C19.5 16.1 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+  ${heartSvg(18)}
   <span class="like-label">赞</span>
   <b class="like-count" data-count>${likes}</b>
 </button>`
@@ -810,14 +815,19 @@ export interface ListPageContext {
   q?: string
 }
 
-/** 排序条/翻页共用的列表地址：分类页、搜索页留在原路径，首页/标签页用 /?tag= */
-export function listPageUrl(o: ListPageContext): string {
+/** 列表地址共用的查询串：tag/q/sort/seed 四件套 */
+function listQuery(o: ListPageContext): string {
   const params = new URLSearchParams()
   if (o.tag) params.set('tag', o.tag)
   if (o.q) params.set('q', o.q)
   if (o.sort && o.sort !== 'latest') params.set('sort', o.sort)
   if (o.sort === 'random' && o.seed) params.set('seed', String(o.seed))
-  const qs = params.toString()
+  return params.toString()
+}
+
+/** 排序条/翻页共用的列表地址：分类页、搜索页留在原路径，首页/标签页用 /?tag= */
+export function listPageUrl(o: ListPageContext): string {
+  const qs = listQuery(o)
   if (o.categorySlug) return `/category/${encodeURIComponent(o.categorySlug)}${qs ? `?${qs}` : ''}`
   if (o.q) return `/search${qs ? `?${qs}` : ''}`
   return '/' + (qs ? `?${qs}` : '')
@@ -836,12 +846,7 @@ export function homeSortBar(o: ListPageContext): string {
 
 /** 翻页链接前缀（形如 "/?tag=x&sort=random&seed=5&"），随机时带 seed 稳住顺序 */
 export function homeListBase(o: ListPageContext): string {
-  const params = new URLSearchParams()
-  if (o.tag) params.set('tag', o.tag)
-  if (o.q) params.set('q', o.q)
-  if (o.sort && o.sort !== 'latest') params.set('sort', o.sort)
-  if (o.sort === 'random' && o.seed) params.set('seed', String(o.seed))
-  const qs = params.toString()
+  const qs = listQuery(o)
   const head = o.categorySlug
     ? `/category/${encodeURIComponent(o.categorySlug)}?`
     : o.q

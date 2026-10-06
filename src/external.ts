@@ -13,21 +13,13 @@
  */
 import { Hono } from 'hono'
 import { randomToken, rateLimit, safeEqual } from './auth'
-import { getSettings, getWeiboById, saveSettings, WEIBO_MAX_IMAGES } from './db'
+import { getSettings, getWeiboById, saveSettings, WEIBO_MAX_CHARS, WEIBO_MAX_IMAGES } from './db'
+import { siteBase } from './render'
+import { imageExtOf, MAX_UPLOAD_BYTES, saveUpload } from './store'
 import type { Env, SessionUser, SettingsMap, WeiboRow } from './types'
 import { excerpt, extractWeiboTopics } from './utils'
 
-const WEIBO_MAX_CHARS = 5000
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024 // 与手动上传一致
 const TG_FILE_LIMIT = 20 * 1024 * 1024 // Bot API getFile 上限 20MB
-
-const IMAGE_MIMES: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/jpg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-}
 
 const TG_API = 'https://api.telegram.org'
 
@@ -35,11 +27,6 @@ type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
 function jsonError(message: string, status = 400) {
   return Response.json({ error: message }, { status })
-}
-
-/** 站点对外地址（设置里填了 siteUrl 用它，否则取当前请求域名） */
-function siteBase(settings: SettingsMap, fallbackOrigin: string): string {
-  return (settings.siteUrl || fallbackOrigin).replace(/\/+$/, '')
 }
 
 function reqOrigin(url: string): string {
@@ -63,22 +50,12 @@ async function insertWeibo(db: D1Database, content: string, images: string[], st
   return row
 }
 
-/** 图片字节进 R2 图床并登记 uploads 表，返回站内地址 */
+/** 图片字节进 R2 图床并登记 uploads 表，返回站内地址；类型/大小不过关返回 null */
 async function storeImage(env: Env, buf: ArrayBuffer, mime: string, name: string): Promise<string | null> {
   mime = (mime || '').split(';')[0].trim().toLowerCase()
-  // hasOwnProperty 挡原型链属性（constructor 等）穿透白名单
-  const ext = Object.prototype.hasOwnProperty.call(IMAGE_MIMES, mime) ? IMAGE_MIMES[mime] : undefined
+  const ext = imageExtOf(mime)
   if (!ext || buf.byteLength === 0 || buf.byteLength > MAX_UPLOAD_BYTES) return null
-  const now = new Date()
-  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-  const key = `u/${ym}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.${ext}`
-  await env.IMAGES.put(key, buf, {
-    httpMetadata: { contentType: mime, cacheControl: 'public, max-age=31536000, immutable' },
-  })
-  await env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(key, name.slice(0, 120), mime, buf.byteLength, Date.now())
-    .run()
-  return `/images/${key}`
+  return saveUpload(env, buf, mime, name, ext)
 }
 
 /** data:image/...;base64 解码，只认图片类型 */
@@ -343,12 +320,16 @@ async function saveTgImage(env: Env, botToken: string, fileId: string): Promise<
     const buf = await res.arrayBuffer()
     if (!buf.byteLength || buf.byteLength > MAX_UPLOAD_BYTES) return null
     let mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
-    if (!Object.prototype.hasOwnProperty.call(IMAGE_MIMES, mime)) {
+    let ext = imageExtOf(mime)
+    if (!ext) {
+      // Telegram 有时不回对 mime：按 file_path 后缀反推（storeImage 会再过一次白名单）
       const byPath = /\.(jpe?g|png|webp|gif)$/i.exec(path)?.[1]?.toLowerCase()
       if (!byPath) return null
       mime = `image/${byPath === 'jpg' || byPath === 'jpeg' ? 'jpeg' : byPath}`
+      ext = imageExtOf(mime)
     }
-    return storeImage(env, buf, mime, `telegram-${Date.now().toString(36)}.${IMAGE_MIMES[mime]}`)
+    if (!ext) return null
+    return storeImage(env, buf, mime, `telegram-${Date.now().toString(36)}.${ext}`)
   } catch {
     return null
   }
