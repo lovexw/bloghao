@@ -481,7 +481,7 @@ function heartSvg(size: number): string {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.5 8.4 2.3 4.9 5.7 4.5c2-.2 3.9.8 5 2.5a5.7 5.7 0 0 1 5-2.5c3.4.4 5.2 3.9 3.7 7.2C19.5 16.1 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`
 }
 
-/** 微博卡片底栏：点赞（同文章 like-btn，data-type=weibo）+ 评论数（点开卡片内折叠评论区） */
+/** 微博卡片底栏：点赞（同文章 like-btn，data-type=weibo）+ 评论数（点开卡片内折叠评论区）+ 分享卡片 */
 export function weiboCardFoot(w: WeiboItemView, isAdmin?: boolean): string {
   const like = `<button class="wb-action like-btn" type="button" data-type="weibo" data-id="${w.id}" data-likes="${w.likes}" aria-label="点赞">
   ${heartSvg(16)}
@@ -491,7 +491,12 @@ export function weiboCardFoot(w: WeiboItemView, isAdmin?: boolean): string {
   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
   <b class="wb-cmt-count" data-count>${w.commentCount}</b>
 </button>`
-  return `<footer class="wb-foot">${like}${cmt}${isAdmin ? weiboAdminBar(w) : ''}</footer>`
+  // 生成分享卡片（存图/转发）：纯前端，交互在 site.js（按需加载 /share-card.js）；管理三键仍 margin-left:auto 靠右
+  const share = `<button class="wb-action wb-share" type="button" data-wb-share="${w.id}" aria-label="生成分享卡片">
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 14V3.5m0 0L8.5 7m3.5-3.5L15.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.5 10.5H7a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <b>分享</b>
+</button>`
+  return `<footer class="wb-foot">${like}${cmt}${share}${isAdmin ? weiboAdminBar(w) : ''}</footer>`
 }
 
 /** 管理员登录时的发言身份行（文章/微博评论表单共用，免填昵称） */

@@ -502,6 +502,32 @@
       })
   })
 
+  /* ---------------- 微博分享卡片：点击按需加载 /share-card.js（保持本文件极小体积） ---------------- */
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.wb-share') : null
+    if (!btn) return
+    e.preventDefault()
+    var card = btn.closest('.wb-card')
+    if (!card || btn.dataset.busy) return
+    btn.dataset.busy = '1'
+    import('/share-card.js')
+      .then(function (m) {
+        return m.openShareCard(card)
+      })
+      .catch(function () {
+        var b = btn.querySelector('b')
+        if (b) {
+          b.textContent = '失败'
+          setTimeout(function () {
+            b.textContent = '分享'
+          }, 2000)
+        }
+      })
+      .finally(function () {
+        delete btn.dataset.busy
+      })
+  })
+
   /* ---------------- 前台发微博（管理员登录时微博页顶部的发布框，能力与后台发布器一致） ---------------- */
   var composerForm = document.querySelector('[data-wb-composer]')
   if (composerForm) {

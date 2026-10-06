@@ -51,7 +51,7 @@ function pageOpts(c: C, o: Parameters<typeof page>[0]): Parameters<typeof page>[
 }
 
 const CSP =
-  "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http:; media-src 'self' https:; script-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'; object-src 'none'"
+  "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: blob:; media-src 'self' https:; script-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'; object-src 'none'"
 
 function baseHeaders(c: C) {
   c.header('Content-Security-Policy', CSP)
