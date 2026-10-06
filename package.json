@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:site": "wrangler deploy --config website/wrangler.jsonc",
+    "deploy:site": "cd website && wrangler pages deploy public",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:init:local": "wrangler d1 execute DB --local --file schema.sql",
