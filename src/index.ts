@@ -53,7 +53,7 @@ app.get('/page/:slug', renderPage)
 app.get('/about', renderAbout)
 app.get('/archives', renderArchive)
 app.get('/guestbook', renderGuestbook)
-app.get('/weibo', renderWeibo)
+app.get('/weibo', (c) => renderWeibo(c))
 app.get('/links', renderLinks)
 app.get('/search', renderSearch)
 

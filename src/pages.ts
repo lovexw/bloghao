@@ -32,6 +32,7 @@ import {
   HOME_SORTS,
   page,
   siteBase,
+  siteMode,
   toHomePost,
   stripCoverDuplicate,
   type CategoryLink,
@@ -122,6 +123,9 @@ export async function renderHome(c: C): Promise<Response> {
   return renderList(c, { mode: 'home' })
 }
 
+/** 微博+博客模式：首页微博流直出的条数（更早的进 /weibo，首页不堆全部） */
+const HOME_WEIBO_FEED_LIMIT = 8
+
 /** 分类归档页（/category/:slug），列表结构与首页一致 */
 export async function renderCategory(c: C): Promise<Response> {
   return renderList(c, { mode: 'category' })
@@ -141,6 +145,9 @@ async function renderList(
   const theme = getTheme(settings.theme)
   const url = new URL(c.req.url)
   const tag = c.req.param('tag') || url.searchParams.get('tag') || undefined
+  const mode = siteMode(settings)
+  // 纯微博：打开首页就是微博时间线（文章数据不动，/post/ 直链仍可访问）；/tag/:tag 属博客概念照旧渲染
+  if (opts.mode === 'home' && mode === 'weibo' && !tag) return renderWeibo(c, true)
   const q = (url.searchParams.get('q') || '').trim().slice(0, 60)
   const categorySlug = opts.mode === 'category' ? c.req.param('slug') || '' : ''
   const pageNum = clampInt(url.searchParams.get('page'), 1, 1000, 1)
@@ -153,7 +160,7 @@ async function renderList(
     sort === 'random' ? clampInt(url.searchParams.get('seed'), 1, 999999999, 0) || 1 + Math.floor(Math.random() * 999999998) : 0
 
   // 搜索模式不分页，直接取前 50 条
-  const [r, tags, categories, pages, category, wb, otd] = await Promise.all([    listPosts(c.env.DB, {
+  const [r, tags, categories, pages, category, wb, wbFeedRaw, feedUser, otd] = await Promise.all([    listPosts(c.env.DB, {
       status: 'published',
       tag: opts.mode === 'home' ? tag : undefined,
       q: opts.mode === 'search' ? q || undefined : undefined,
@@ -167,10 +174,15 @@ async function renderList(
     navCategories(c),
     navPages(c),
     categorySlug ? getCategoryBySlug(c.env.DB, categorySlug) : Promise.resolve(null),
-    // 首页微博入口卡：最新两条随手记
-    opts.mode === 'home'
+    // 首页微博入口卡（博客+微博模式）：最新两条随手记摘要
+    opts.mode === 'home' && mode === 'blog-weibo'
       ? listWeibo(c.env.DB, { status: 'published', page: 1, limit: 2 })
       : Promise.resolve(null),
+    // 首页微博流（微博+博客模式）：完整卡片先行，管理员键与评论照常可用
+    opts.mode === 'home' && mode === 'weibo-blog'
+      ? listWeibo(c.env.DB, { status: 'published', page: 1, limit: HOME_WEIBO_FEED_LIMIT, pinnedFirst: true })
+      : Promise.resolve(null),
+    opts.mode === 'home' && mode === 'weibo-blog' ? getSessionUser(c.env.DB, c.req.raw) : Promise.resolve(null),
     // 历史上的今天：仅首页第一页且未带筛选时查（有内部按天缓存）
     opts.mode === 'home' && pageNum === 1 && !tag && !q ? listOnThisDay(c.env.DB) : Promise.resolve(null),
   ])
@@ -208,6 +220,29 @@ async function renderList(
         })),
       }
     : null
+
+  // 首页微博流（微博+博客模式）：补评论数与管理员身份，卡片交互与 /weibo 页同款
+  let weiboFeed: { items: WeiboItemView[]; total: number; allowComments: boolean; adminName?: string } | null = null
+  if (wbFeedRaw) {
+    const cmt = await weiboCommentCountMap(
+      c.env.DB,
+      wbFeedRaw.items.map((w) => w.id)
+    )
+    weiboFeed = {
+      items: wbFeedRaw.items.map((w) => ({
+        id: w.id,
+        content: w.content,
+        images: weiboImageList(w),
+        created_at: w.published_at ?? w.created_at,
+        likes: w.likes,
+        commentCount: cmt.get(w.id) || 0,
+        pinned: !!w.pinned,
+      })),
+      total: wbFeedRaw.total,
+      allowComments: settings.allowComments === '1',
+      adminName: feedUser ? (feedUser.display_name || feedUser.username || '').slice(0, 24) : undefined,
+    }
+  }
 
   let notice = ''
   let emptyText = ''
@@ -254,7 +289,9 @@ async function renderList(
           : 'search',
     notice,
     emptyText,
-    onThisDay: otd,
+    weiboFeed,
+    // 纯博客模式：历史上的今天只保留文章条目（微博模块已隐藏）
+    onThisDay: mode === 'blog' && otd ? otd.filter((i) => i.kind === 'post') : otd,
   })
   c.header('Cache-Control', 'no-cache')
   return c.html(
@@ -542,10 +579,14 @@ export async function renderGuestbook(c: C): Promise<Response> {
   )
 }
 
-/** 微博页（/weibo）：随手记时间线，复用主题的页面骨架与站点导航；?topic= 按话题筛选 */
-export async function renderWeibo(c: C): Promise<Response> {
+/** 微博页（/weibo）：随手记时间线，复用主题的页面骨架与站点导航；?topic= 按话题筛选。
+ *  纯微博模式（siteMode=weibo）由 renderHome 以 asHome=true 复用本函数渲染在 '/'：
+ *  正文结构完全一致，仅 canonical/标题换成首页口径；翻页与话题链接仍指向 /weibo（同一内容）。
+ *  纯博客模式（siteMode=blog）：微博模块整体下线，本路由 302 回首页（老链接不断）。 */
+export async function renderWeibo(c: C, asHome = false): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
+  if (siteMode(settings) === 'blog') return c.redirect('/', 302)
   const theme = getTheme(settings.theme)
   const url = new URL(c.req.url)
   const perPage = 15
@@ -614,9 +655,9 @@ export async function renderWeibo(c: C): Promise<Response> {
     page(pageOpts(c, {
       settings,
       css: theme.css,
-      title: '微博',
-      description: `${settings.siteName}的随手记`,
-      path: '/weibo',
+      title: asHome ? '' : '微博',
+      description: asHome ? settings.siteDescription : `${settings.siteName}的随手记`,
+      path: asHome ? '/' : '/weibo',
       origin: url.origin,
       body: html,
     }))

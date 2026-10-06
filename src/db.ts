@@ -5,6 +5,9 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   siteName: '博客号 BlogHao',
   siteDescription: '微信有公众号，你有博客号。想写就写，一切都归你。',
   theme: 'wechat',
+  // 站点模式：blog-weibo（博客+微博，博客优先，默认）/ weibo-blog（微博+博客，微博优先）/
+  // blog（纯博客）/ weibo（纯微博）——前台模块显隐与首页优先级，见 src/render.ts siteMode()
+  siteMode: 'blog-weibo',
   siteUrl: '',
   footerText: '由 博客号 驱动 · 住在 Cloudflare 上',
   allowComments: '1',

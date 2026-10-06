@@ -1919,6 +1919,19 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
+      <div class="form-section"><h3>站点模式</h3><div class="sec-desc">不爱写长文？可以只写微博，或让微博当主角。只影响前台展示，文章与微博数据都不会动</div>
+        <label class="mode-row"><input type="radio" name="st-siteModeGroup" value="both"><span class="mode-text"><b>博客 + 微博</b><i>文章和随手记都展示，打开首页先看谁，由下面的顺序决定</i></span></label>
+        <div class="mode-sub" id="mode-order-row" hidden>
+          <span class="mode-sub-label">打开首页先看</span>
+          <label class="mode-seg"><input type="radio" name="st-siteModeOrder" value="blog-weibo"><span>博客在前</span></label>
+          <label class="mode-seg"><input type="radio" name="st-siteModeOrder" value="weibo-blog"><span>微博在前</span></label>
+        </div>
+        <label class="mode-row"><input type="radio" name="st-siteModeGroup" value="blog"><span class="mode-text"><b>纯博客</b><i>隐藏微博模块：导航去掉「微博」，首页不出随手记，/weibo 跳回首页</i></span></label>
+        <label class="mode-row"><input type="radio" name="st-siteModeGroup" value="weibo"><span class="mode-text"><b>纯微博</b><i>打开首页就是微博时间线，导航隐藏归档/分类话题/随机等博客模块；文章数据保留，旧链接仍可访问</i></span></label>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:20px;">
       <div class="form-section"><h3>站点状态</h3><div class="sec-desc">特殊时刻的全站开关：两个都是可逆的，随时保存随时恢复</div>
         <div class="switch-row">
           <div><div class="switch-label">灰度模式</div><div class="switch-sub">全站去色显示（黑白），用于哀悼、纪念等特殊时刻；后台不受影响</div></div>
@@ -2126,6 +2139,21 @@ async function viewSettings() {
     toast('已恢复内置卡图，记得点「保存全部」生效')
   })
 
+  // 站点模式：三选一 + 双方模式下的首页顺序（落库为 blog-weibo / weibo-blog / blog / weibo 四值）
+  const modeGroup = () => document.querySelector('input[name="st-siteModeGroup"]:checked').value
+  const modeOrder = () => document.querySelector('input[name="st-siteModeOrder"]:checked').value
+  const orderRow = document.getElementById('mode-order-row')
+  const syncOrderRow = () => {
+    orderRow.hidden = modeGroup() !== 'both'
+  }
+  document.querySelectorAll('input[name="st-siteModeGroup"]').forEach((r) => r.addEventListener('change', syncOrderRow))
+  const savedMode = s.siteMode || 'blog-weibo'
+  const modeVal = savedMode === 'blog' || savedMode === 'weibo' ? savedMode : 'both'
+  const orderVal = savedMode === 'weibo-blog' ? 'weibo-blog' : 'blog-weibo'
+  document.querySelector(`input[name="st-siteModeGroup"][value="${modeVal}"]`).checked = true
+  document.querySelector(`input[name="st-siteModeOrder"][value="${orderVal}"]`).checked = true
+  syncOrderRow()
+
   document.getElementById('btn-save').addEventListener('click', async (e) => {
     const g = (id) => document.getElementById(id)
     const btn = e.currentTarget
@@ -2139,6 +2167,7 @@ async function viewSettings() {
       avatarUrl: g('st-avatarUrl').value.trim(),
       ogImageDefault: g('st-ogImageDefault').value.trim(),
       // 主题不在这里改（皮肤页专职）；body 里不带 theme 键，服务端对缺键即保留
+      siteMode: modeGroup() === 'both' ? modeOrder() : modeGroup(),
       allowComments: g('st-allowComments').checked ? '1' : '0',
       moderateComments: g('st-moderateComments').checked ? '1' : '0',
       postsPerPage: g('st-postsPerPage').value || '10',

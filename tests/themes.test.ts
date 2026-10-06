@@ -129,6 +129,22 @@ for (const [themeId, theme] of Object.entries(THEMES as Record<string, ThemeModu
     assert.ok(html.includes(postView.title))
   })
 
+  test(`${themeId}: home 渲染（微博+博客模式：微博流先行）`, () => {
+    const d = homeData()
+    d.weibo = null // 微博流模式下入口卡由服务端省略，两份数据互斥
+    d.weiboFeed = { items: [weiboView], total: 12, allowComments: true, adminName: '站长' }
+    const html = theme.home(d)
+    checkPage(themeId, 'home(weiboFeed)', html)
+    assert.ok(html.includes('wb-home-feed'), `${themeId} home 应渲染微博流容器`)
+    assert.ok(html.includes('wb-card'), `${themeId} home 应渲染完整微博卡片`)
+    assert.ok(html.includes(`id="wb-${weiboView.id}"`))
+    assert.ok(html.includes('共 12 条'))
+    assert.ok(html.includes('wb-home-head'))
+    // 纯博客模式：入口卡与微博流都不出现
+    const blogOnly = theme.home({ ...homeData(), weibo: null })
+    assert.ok(!blogOnly.includes('wb-home'))
+  })
+
   test(`${themeId}: post 渲染（正文/点赞/评论区）`, () => {
     const html = theme.post(postData())
     checkPage(themeId, 'post', html)

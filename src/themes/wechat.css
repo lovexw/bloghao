@@ -844,3 +844,6 @@ a.wx-account:hover { opacity: 0.75; }
   .otd-card { margin: 16px 0 2px; padding: 2px 14px; }
   .otd-sub { display: none; }
 }
+
+/* 微博+博客模式：首页微博流（头部复用 .wb-home-head，卡片复用 .wb-list 间距） */
+.wb-home-feed { margin: 24px 0 4px; }

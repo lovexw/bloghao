@@ -574,3 +574,6 @@ main .gb-section { margin-top: 12px; }
   .fs-chip { padding: 8px 6px; }
   .wb-pager-btn { padding: 10px 14px; }
 }
+
+/* 微博+博客模式：首页微博流（头部复用 .wb-home-head，卡片复用 .wb-list 间距） */
+.wb-home-feed { margin: 0 0 40px; }

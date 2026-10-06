@@ -1,4 +1,5 @@
 import type { PostRow, SettingsMap } from './types'
+import { siteMode } from './render'
 import { sanitizeHtml } from './sanitize'
 import { esc, fmtDate } from './utils'
 import { cdata, rfc822, xmlEsc } from './xml'
@@ -47,7 +48,8 @@ export function buildSitemap(
     { loc: `${siteUrl}/about`, lastmod: '' },
     { loc: `${siteUrl}/archives`, lastmod: fmtDate(Date.now()) },
     { loc: `${siteUrl}/guestbook`, lastmod: '' },
-    { loc: `${siteUrl}/weibo`, lastmod: '' },
+    // 纯博客模式前台隐藏了微博模块（/weibo 302 回首页），sitemap 不再收录
+    ...(siteMode(settings) === 'blog' ? [] : [{ loc: `${siteUrl}/weibo`, lastmod: '' }]),
     { loc: `${siteUrl}/links`, lastmod: '' },
     // 独立页面（/page/:slug）：slug 做百分号编码（中文 slug 是非 ASCII IRI）
     ...pages.map((p) => ({

@@ -48,7 +48,7 @@ import { collectRoutes } from './collect'
 import { exportRoutes } from './export'
 import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes } from './external'
 import { fireCommentCreated, firePostPublished, listServerPlugins } from './hooks'
-import { siteBase, toHomePost } from './render'
+import { SITE_MODE_VALUES, siteBase, toHomePost, type SiteMode } from './render'
 import { sanitizeHtml } from './sanitize'
 import { imageExtOf, MAX_REMOTE_IMAGES, MAX_UPLOAD_BYTES, saveUpload, transferImage } from './store'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
@@ -1110,6 +1110,11 @@ api.put('/admin/settings', async (c) => {
     if (SECRET_SETTINGS.includes(key) && v === SECRET_MASK) continue
     // hasOwnProperty 挡住 constructor/toString 等原型链属性穿透成「合法主题」导致全站 500
     if (key === 'theme' && !Object.prototype.hasOwnProperty.call(THEMES, v)) return jsonError('未知主题：' + v)
+    if (key === 'siteMode') {
+      // 站点模式四值白名单，脏值回退默认（前台 siteMode() 同口径兜底）
+      patch[key] = SITE_MODE_VALUES.includes(v as SiteMode) ? v : 'blog-weibo'
+      continue
+    }
     if (key === 'postsPerPage') {
       patch[key] = String(clampInt(v, 1, 50, 10))
       continue

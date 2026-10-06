@@ -14,11 +14,13 @@ import {
   likesBtn,
   onThisDayCard,
   pagerHtml,
+  siteMode,
   siteNav,
   tagLink,
   weiboCards,
   weiboComposer,
   weiboHomeEntry,
+  weiboHomeFeed,
   weiboPager,
   weiboTopicBar,
   type CategoryLink,
@@ -88,13 +90,14 @@ export function home(d: HomeData): string {
     })
     .join('\n')
   return `<div class="jrn-wrap">
-  ${siteNav({ cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <header class="jrn-masthead">
     <a class="jrn-logo" href="/">${avatar(s)}<span class="jrn-logo-name">${esc(s.siteName)}</span></a>
     <p class="jrn-intro">${esc(s.siteDescription)}</p>
   </header>
   <main>
   ${d.notice ? `<div class="jrn-notice">${d.notice}</div>` : ''}
+  ${d.weiboFeed ? weiboHomeFeed({ settings: s, items: d.weiboFeed.items, total: d.weiboFeed.total, avatarHtml: avatar(s), allowComments: d.weiboFeed.allowComments, adminName: d.weiboFeed.adminName }) : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
   ${onThisDayCard(d.onThisDay)}
   ${searchForm(d.q)}
@@ -128,7 +131,7 @@ export function post(d: PostData): string {
         .join('')}</aside>`
     : ''
   return `<div class="jrn-wrap">
-  ${siteNav({ cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
   <main>
   <article class="jrn-article">
     ${kicker}
@@ -160,7 +163,7 @@ function aboutPage(o: {
   about?: boolean
 }): string {
   return `<div class="jrn-wrap">
-  ${siteNav({ cls: 'jrn-snav', categories: o.categories, tags: o.tags, pages: o.pages, active: o.navActive })}
+  ${siteNav({ mode: siteMode(o.settings), cls: 'jrn-snav', categories: o.categories, tags: o.tags, pages: o.pages, active: o.navActive })}
   <main>
   <article class="jrn-article${o.about ? ' jrn-about' : ''}">
     <h1 class="jrn-title">${esc(o.title)}</h1>
@@ -184,7 +187,7 @@ export function page(d: PageData): string {
 export function archives(d: ArchivesData): string {
   const s = d.settings
   return `<div class="jrn-wrap">
-  ${siteNav({ cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
   <main>
   <h1 class="jrn-title jrn-page-title">归档</h1>
   <p class="jrn-intro jrn-page-sub">${d.total > 0 ? `这本手账一共写了 ${d.total} 篇` : '写下的每一篇都会收进这里'}</p>
@@ -198,7 +201,7 @@ export function archives(d: ArchivesData): string {
 export function guestbook(d: GuestbookData): string {
   const s = d.settings
   return `<div class="jrn-wrap">
-  ${siteNav({ cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
   <main>
   <h1 class="jrn-title jrn-page-title">留言板</h1>
   <p class="jrn-intro jrn-page-sub">${d.count > 0 ? `墙上已经贴了 ${d.count} 张便签` : '墙上还空着，贴张便签打个招呼吧'}</p>
@@ -221,7 +224,7 @@ export function weibo(d: WeiboData): string {
     adminName: d.adminName,
   })
   return `<div class="jrn-wrap jrn-wrap-weibo">
-  ${siteNav({ cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
   <main>
   <h1 class="jrn-title jrn-page-title">随手记</h1>
   <p class="jrn-intro jrn-page-sub">不用起标题的日常，想到什么记什么${d.total > 0 ? ` · 共 ${d.total} 条` : ''}</p>
@@ -240,7 +243,7 @@ export function weibo(d: WeiboData): string {
 export function links(d: LinksData): string {
   const s = d.settings
   return `<div class="jrn-wrap">
-  ${siteNav({ cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
   <main>
   <h1 class="jrn-title jrn-page-title">友邻</h1>
   <p class="jrn-intro jrn-page-sub">挂在墙上的 ${d.total} 张名片，都是交心的朋友</p>

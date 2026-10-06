@@ -12,11 +12,13 @@ import {
   likesBtn,
   onThisDayCard,
   pagerHtml,
+  siteMode,
   siteNav,
   tagLink,
   weiboCards,
   weiboComposer,
   weiboHomeEntry,
+  weiboHomeFeed,
   weiboPager,
   weiboTopicBar,
 } from '../render'
@@ -73,13 +75,14 @@ export function home(d: HomeData): string {
     .join('\n')
 
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <header class="pp-masthead">
     ${seal(s)}
     <h1 class="pp-site-name">${esc(s.siteName)}</h1>
     <p class="pp-site-desc">${esc(s.siteDescription)}</p>
   </header>
   ${d.notice ? `<div class="pp-notice">${d.notice}</div>` : ''}
+  ${d.weiboFeed ? weiboHomeFeed({ settings: s, items: d.weiboFeed.items, total: d.weiboFeed.total, avatarHtml: seal(s), allowComments: d.weiboFeed.allowComments, adminName: d.weiboFeed.adminName }) : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
   ${onThisDayCard(d.onThisDay)}
   ${searchForm(d.q)}
@@ -104,7 +107,7 @@ export function post(d: PostData): string {
         .join('')}</section>`
     : ''
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
   <article class="pp-article">
     <h1 class="pp-title">${esc(p.title)}</h1>
     <div class="pp-meta"><time>${fmtDate(p.published_at)}</time><span>·</span><span>${p.readingMinutes} 分钟读完</span><span>·</span><span>${p.views} 次阅读</span></div>
@@ -132,7 +135,7 @@ export function about(d: AboutData): string {
 /** 独立页面页（/page/:slug，slug='about' 时渲染 /about）：结构同关于我，标题由页面数据决定 */
 export function page(d: PageData): string {
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <article class="pp-article">
     <h1 class="pp-title">${esc(d.title)}</h1>
     <div class="pp-body rich">${d.contentHtml}</div>
@@ -145,7 +148,7 @@ export function page(d: PageData): string {
 export function archives(d: ArchivesData): string {
   const s = d.settings
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
   <header class="wb-page-head">
     <h1 class="wb-page-title">文章归档</h1>
     <p class="wb-page-sub">${d.total > 0 ? `字字皆岁月 · 共 ${d.total} 篇` : '写下的每一篇都会收进这里'}</p>
@@ -159,7 +162,7 @@ export function archives(d: ArchivesData): string {
 export function guestbook(d: GuestbookData): string {
   const s = d.settings
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
   <header class="wb-page-head">
     <h1 class="wb-page-title">留言板</h1>
     <p class="wb-page-sub">${d.count > 0 ? `已有 ${d.count} 条留言 · 随便聊聊` : '想说点什么，就在这里落笔'}</p>
@@ -182,7 +185,7 @@ export function weibo(d: WeiboData): string {
     adminName: d.adminName,
   })
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
   <header class="wb-page-head">
     <h1 class="wb-page-title">微博</h1>
     <p class="wb-page-sub">${d.topic ? `话题 #${esc(d.topic)} · 共 ${d.total} 则` : d.total > 0 ? `随手记 · 共 ${d.total} 则` : '随手记，想写就写'}</p>
@@ -201,7 +204,7 @@ export function weibo(d: WeiboData): string {
 export function links(d: LinksData): string {
   const s = d.settings
   return `<div class="pp-page">
-  ${siteNav({ cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'pp-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
   <header class="wb-page-head">
     <h1 class="wb-page-title">友情链接</h1>
     <p class="wb-page-sub">${d.total > 0 ? `朋友站点 · 共 ${d.total} 个` : '和朋友交换链接的地方'}</p>

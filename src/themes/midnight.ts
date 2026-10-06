@@ -12,11 +12,13 @@ import {
   likesBtn,
   onThisDayCard,
   pagerHtml,
+  siteMode,
   siteNav,
   tagLink,
   weiboCards,
   weiboComposer,
   weiboHomeEntry,
+  weiboHomeFeed,
   weiboPager,
   weiboTopicBar,
 } from '../render'
@@ -65,7 +67,7 @@ export function home(d: HomeData): string {
     )
     .join('\n')
   return `<div class="md-wrap">
-  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <header class="md-header">
     <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
     <nav class="md-nav"><a class="md-nav-link" href="/about">关于我</a></nav>
@@ -75,6 +77,7 @@ export function home(d: HomeData): string {
     <p>${esc(s.siteDescription)}</p>
   </section>
   ${d.notice ? `<div class="md-notice">${d.notice}</div>` : ''}
+  ${d.weiboFeed ? weiboHomeFeed({ settings: s, items: d.weiboFeed.items, total: d.weiboFeed.total, avatarHtml: logoMark(s), allowComments: d.weiboFeed.allowComments, adminName: d.weiboFeed.adminName }) : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
   ${onThisDayCard(d.onThisDay)}
   ${searchForm(d.q)}
@@ -99,7 +102,7 @@ export function post(d: PostData): string {
         .join('')}</aside>`
     : ''
   return `<div class="md-wrap">
-  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
   <header class="md-header">
     <a class="md-logo" href="/"><span class="md-logo-dot"></span>${esc(d.settings.siteName)}</a>
   </header>
@@ -126,7 +129,7 @@ export function about(d: AboutData): string {
 /** 独立页面页（/page/:slug，slug='about' 时渲染 /about）：结构同关于我，标题由页面数据决定 */
 export function page(d: PageData): string {
   return `<div class="md-wrap">
-  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <header class="md-header"><a class="md-logo" href="/">${logoMark(d.settings)}${esc(d.settings.siteName)}</a></header>
   <article class="md-article">
     <h1 class="md-title">${esc(d.title)}</h1>
@@ -140,7 +143,7 @@ export function page(d: PageData): string {
 export function archives(d: ArchivesData): string {
   const s = d.settings
   return `<div class="md-wrap">
-  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
   <header class="md-header">
     <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
     <nav class="md-nav"><a class="md-nav-link is-active" href="/archives">archives</a><a class="md-nav-link" href="/guestbook">guestbook</a><a class="md-nav-link" href="/about">关于我</a></nav>
@@ -158,7 +161,7 @@ export function archives(d: ArchivesData): string {
 export function guestbook(d: GuestbookData): string {
   const s = d.settings
   return `<div class="md-wrap">
-  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
   <header class="md-header">
     <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
     <nav class="md-nav"><a class="md-nav-link" href="/archives">archives</a><a class="md-nav-link is-active" href="/guestbook">guestbook</a><a class="md-nav-link" href="/about">关于我</a></nav>
@@ -185,7 +188,7 @@ export function weibo(d: WeiboData): string {
     adminName: d.adminName,
   })
   return `<div class="md-wrap">
-  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
   <header class="md-header">
     <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
     <nav class="md-nav"><a class="md-nav-link is-active" href="/weibo">weibo</a><a class="md-nav-link" href="/about">关于我</a></nav>
@@ -208,7 +211,7 @@ export function weibo(d: WeiboData): string {
 export function links(d: LinksData): string {
   const s = d.settings
   return `<div class="md-wrap">
-  ${siteNav({ cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
+  ${siteNav({ mode: siteMode(d.settings), cls: 'md-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
   <header class="md-header">
     <a class="md-logo" href="/">${logoMark(s)}${esc(s.siteName)}</a>
     <nav class="md-nav"><a class="md-nav-link is-active" href="/links">links</a><a class="md-nav-link" href="/about">关于我</a></nav>

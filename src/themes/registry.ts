@@ -48,8 +48,13 @@ export interface HomeData {
   notice?: string
   /** 空列表文案（搜索/分类页有定制文案） */
   emptyText?: string
-  /** 首页微博入口卡数据（仅首页列表传入；没有已发布微博时为 null） */
+  /** 首页微博入口卡数据（仅「博客+微博」模式的首页传入；没有已发布微博时为 null） */
   weibo?: { items: WeiboItemView[]; total: number } | null
+  /**
+   * 首页微博流（仅「微博+博客」模式的首页传入）：完整微博卡片先行，文章列表跟在后面。
+   * 主题侧用 weiboHomeFeed({ settings, ...weiboFeed, avatarHtml }) 渲染；没有已发布微博时为 null
+   */
+  weiboFeed?: { items: WeiboItemView[]; total: number; allowComments: boolean; adminName?: string } | null
   /** 历史上的今天（仅首页第一页且未筛选时传入）：往年今日的文章与微博，空数组/缺省不渲染 */
   onThisDay?: OnThisDayItemView[] | null
 }

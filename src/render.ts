@@ -26,6 +26,23 @@ export function resolveOgImage(ogImage: string | undefined, settings: SettingsMa
   return ogImage || settings.ogImageDefault || '/og-default.png'
 }
 
+/* ---------------- 站点模式（后台「设置 → 站点模式」） ----------------
+ * 不爱写长文的人可以只写微博：模式决定微博/博客两大模块在前台的显隐与首页优先级。
+ * - blog-weibo（默认）：文章为主，微博随手记作为首页入口卡（现状）
+ * - weibo-blog：微博为主，首页先出完整微博卡片流，文章列表跟在后面
+ * - blog：纯博客——微博模块全隐藏（导航/首页入口/历史上的今天的微博），/weibo 302 回首页
+ * - weibo：纯微博——打开首页就是微博时间线，博客专属模块（归档/分类话题/随机）从导航隐藏；
+ *   文章数据不动，直链仍可访问
+ */
+export type SiteMode = 'blog-weibo' | 'weibo-blog' | 'blog' | 'weibo'
+
+export const SITE_MODE_VALUES: SiteMode[] = ['blog-weibo', 'weibo-blog', 'blog', 'weibo']
+
+/** 设置里的站点模式：脏值/缺省一律回退 blog-weibo（与 DEFAULT_SETTINGS 同口径） */
+export function siteMode(settings: SettingsMap): SiteMode {
+  return SITE_MODE_VALUES.includes(settings.siteMode as SiteMode) ? (settings.siteMode as SiteMode) : 'blog-weibo'
+}
+
 /** 站点绝对地址前缀：后台「站点链接」优先，未配置时回退请求 origin；去尾部斜杠 */
 export function siteBase(settings: SettingsMap, origin?: string): string {
   return ((settings.siteUrl || origin || '') as string).replace(/\/+$/, '')
@@ -214,16 +231,20 @@ export interface NavPage {
 /**
  * 全站顶部导航：首页 + 微博 + 归档 + 留言板 + 分类话题（details 折叠菜单）+ 友情链接 + 自建页面 + 关于我 + 随机。
  * cls 传主题前缀（如 wx-snav），结构统一、样式交由主题 CSS 塑形。
+ * mode 传站点模式（siteMode(settings)）：纯博客隐藏「微博」，纯微博把「微博」提为首位并隐藏
+ * 归档/分类话题/随机等博客专属模块（未传按博客+微博处理，兼容第三方主题）。
  * 分类与标签收进同一折叠菜单（标签可能很多，菜单内部滚动），
  * active 传 'home' / 'weibo' / 'archives' / 'guestbook' / 'links' / 'about' / 分类 slug / 'tag:标签名' / 'p:页面slug'。
  */
 export function siteNav(o: {
   cls: string
+  mode?: SiteMode
   categories: CategoryLink[]
   tags?: TagCount[]
   pages?: NavPage[]
   active?: string
 }): string {
+  const m = o.mode || 'blog-weibo'
   const item = (href: string, label: string, active = false) =>
     `<a class="${o.cls}-link${active ? ' is-active' : ''}" href="${href}">${esc(label)}</a>`
   const chip = (href: string, label: string, count: number | undefined, active = false) =>
@@ -245,16 +266,19 @@ export function siteNav(o: {
   ${menu}
 </details>`
     : ''
+  // 纯微博：'/' 即微博时间线，导航首位「微博」直达 /weibo（首页 item 退出）；纯博客：去掉「微博」
+  const weiboItem = m === 'blog' ? '' : item('/weibo', '微博', o.active === 'weibo' || (m === 'weibo' && o.active === 'home'))
+  const homeItem = m === 'weibo' ? '' : item('/', '首页', o.active === 'home')
   return `<nav class="${o.cls}" aria-label="站点导航">
-  ${item('/', '首页', o.active === 'home')}
-  ${item('/weibo', '微博', o.active === 'weibo')}
-  ${item('/archives', '归档', o.active === 'archives')}
+  ${homeItem || weiboItem}
+  ${m === 'weibo' ? '' : weiboItem}
+  ${m === 'weibo' ? '' : item('/archives', '归档', o.active === 'archives')}
   ${item('/guestbook', '留言板', o.active === 'guestbook')}
-  ${drop}
+  ${m === 'weibo' ? '' : drop}
   ${item('/links', '友情链接', o.active === 'links')}
   ${(o.pages || []).map((p) => item(p.href, p.title, o.active === p.key)).join('')}
   ${item('/about', '关于我', o.active === 'about')}
-  ${item('/random', '随机')}
+  ${m === 'weibo' ? '' : item('/random', '随机')}
 </nav>`
 }
 
@@ -560,6 +584,16 @@ export function weiboCards(o: {
     .join('\n')
 }
 
+/** 微博模块头部（入口卡与首页微博流共用）：整条指向 /weibo */
+function weiboHomeHead(total: number): string {
+  return `<a class="wb-home-head" href="/weibo">
+    <svg class="wb-home-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    <span class="wb-home-title">微博 · 随手记</span>
+    <span class="wb-home-count">共 ${total} 条</span>
+    <span class="wb-home-more">全部 →</span>
+  </a>`
+}
+
 /** 首页微博入口卡：最新几条随手记摘要 + 总条数，整卡指向 /weibo（无已发布微博时不渲染） */
 export function weiboHomeEntry(o: { items: WeiboItemView[]; total: number }): string {
   if (!o.items.length) return ''
@@ -581,13 +615,34 @@ export function weiboHomeEntry(o: { items: WeiboItemView[]; total: number }): st
     })
     .join('\n')
   return `<section class="wb-home" aria-label="微博随手记">
-  <a class="wb-home-head" href="/weibo">
-    <svg class="wb-home-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-    <span class="wb-home-title">微博 · 随手记</span>
-    <span class="wb-home-count">共 ${o.total} 条</span>
-    <span class="wb-home-more">全部 →</span>
-  </a>
+  ${weiboHomeHead(o.total)}
   ${items}
+</section>`
+}
+
+/**
+ * 首页微博流（微博+博客模式）：完整微博卡片先行（点赞/评论/管理键全可用，交互在 site.js），
+ * 更早的顺着头部「全部 →」进 /weibo。卡片容器复用 /weibo 页的 .wb-list 间距。
+ */
+export function weiboHomeFeed(o: {
+  settings: SettingsMap
+  items: WeiboItemView[]
+  total: number
+  avatarHtml: string
+  allowComments?: boolean
+  adminName?: string
+}): string {
+  if (!o.items.length) return ''
+  const cards = weiboCards({
+    settings: o.settings,
+    items: o.items,
+    avatarHtml: o.avatarHtml,
+    allowComments: o.allowComments,
+    adminName: o.adminName,
+  })
+  return `<section class="wb-home-feed" aria-label="微博随手记">
+  ${weiboHomeHead(o.total)}
+  <div class="wb-list">${cards}</div>
 </section>`
 }
 

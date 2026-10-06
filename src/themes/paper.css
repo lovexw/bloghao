@@ -647,3 +647,6 @@ img { max-width: 100%; height: auto; }
 @media (max-width: 480px) {
   .otd-sub { display: none; }
 }
+
+/* 微博+博客模式：首页微博流（头部复用 .wb-home-head，卡片复用 .wb-list 间距） */
+.wb-home-feed { margin: 24px 0 0; }
