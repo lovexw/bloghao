@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import { runBackup } from './backup'
 import {
   clearSessionCookie,
@@ -1246,160 +1246,143 @@ api.get('/public/posts', async (c) => {
   })
 })
 
-api.post('/public/comments', async (c) => {
-  const settings = await getSettings(c.env.DB)
-  const user = await getSessionUser(c.env.DB, c.req.raw)
-  if (!user && settings.allowComments !== '1') return jsonError('作者已关闭留言', 403)
+/* ---------------- 公开留言公共核心（文章评论 / 留言板 / 微博评论三路共用） ----------------
+ * 开关检查、限流、蜜罐、作者回复、先审后展入库、TG 通知与插件广播全在这里；
+ * 三路的差异（称呼文案、归属列、是否收 email/website、通知上下文）由 opts 描述。
+ * 目标校验在限流/蜜罐/内容校验之后执行，与三条路的原有顺序一致 */
+type CommentBody = {
+  slug?: string
+  nickname?: string
+  content?: string
+  email?: string
+  website?: string
+  parentId?: number
+  link?: string
+}
+
+async function publicComment(
+  c: Context<AppEnv>,
+  o: {
+    kind: 'post' | 'guestbook' | 'weibo'
+    /** 文案称呼：「留言」/「评论」（内容为空、回复不存在等） */
+    noun: string
+    closedMessage: string
+    freqMessage: string
+    /** 文章评论接收 email/website，其余两路不收 */
+    withContact?: boolean
+    /** 归属与通知上下文；目标不存在返回 Response（404） */
+    target: (body: CommentBody | null) => Promise<{ postId: number; weiboId: number; context?: string; path: string } | Response>
+  }
+): Promise<Response> {
+  const db = c.env.DB
+  const settings = await getSettings(db)
+  const user = await getSessionUser(db, c.req.raw)
+  if (!user && settings.allowComments !== '1') return jsonError(o.closedMessage, 403)
   const ip = clientIp(c.req.raw)
-  // 管理员回复不受留言频率限制
-  if (!user && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError('留言太频繁，休息一下吧', 429)
-  const body = await c.req
-    .json<{ slug?: string; nickname?: string; content?: string; email?: string; website?: string; parentId?: number; link?: string }>()
-    .catch(() => null)
+  // 管理员发言不受留言频率限制
+  if (!user && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError(o.freqMessage, 429)
+  const body = await c.req.json<CommentBody>().catch(() => null)
   // 蜜罐字段：正常用户不会填写，机器人会 —— 静默丢弃
   if (body?.link) return c.json({ ok: true })
-  const slug = String(body?.slug || '').slice(0, 100)
   const content = String(body?.content || '').trim().slice(0, 1000)
-  if (!content) return jsonError('留言内容不能为空')
-  const post = await getPostBySlug(c.env.DB, slug)
-  if (!post || post.status !== 'published') return jsonError('文章不存在', 404)
+  if (!content) return jsonError(`${o.noun}内容不能为空`)
+
+  const t = await o.target(body)
+  if (t instanceof Response) return t
 
   const parentId = Number(body?.parentId) || 0
+  const now = Date.now()
   if (user) {
-    // 作者发言（回复或自己留言）：直接展示，带「作者」徽标
+    // 作者发言（回复或自己留言）：直接展示，带「作者」徽标；parent 按同一归属过滤
+    const scopeCond = o.kind === 'post' ? 'post_id = ?' : o.kind === 'weibo' ? 'weibo_id = ?' : 'post_id = 0 AND weibo_id = 0'
+    const scopeBind = o.kind === 'guestbook' ? [] : [o.kind === 'post' ? t.postId : t.weiboId]
     const parent = parentId
-      ? await c.env.DB.prepare('SELECT * FROM comments WHERE id = ? AND post_id = ?').bind(parentId, post.id).first<CommentRow>()
+      ? await db.prepare(`SELECT * FROM comments WHERE id = ? AND ${scopeCond}`).bind(parentId, ...scopeBind).first<CommentRow>()
       : null
-    if (parentId && !parent) return jsonError('要回复的留言不存在', 404)
-    await c.env.DB.prepare(
-      'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (?, 0, ?, 1, ?, ?, ?, ?, ?)'
-    )
+    if (parentId && !parent) return jsonError(`要回复的${o.noun}不存在`, 404)
+    await db
+      .prepare(
+        "INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (?, ?, ?, 1, ?, ?, 'approved', ?, ?)"
+      )
       .bind(
-        post.id,
+        t.postId,
+        t.weiboId,
         parent ? parent.parent_id || parent.id : 0,
         (user.display_name || user.username).slice(0, 24),
         content,
-        'approved',
         ip,
-        Date.now()
+        now
       )
       .run()
     return c.json({ ok: true })
   }
 
-  if (parentId) return jsonError('只有作者可以回复留言', 403)
+  if (parentId) return jsonError(`只有作者可以回复${o.noun}`, 403)
   const nickname = String(body?.nickname || '').trim().slice(0, 24)
-  if (!nickname) return jsonError('昵称和留言内容不能为空')
+  if (!nickname) return jsonError(`昵称和${o.noun}内容不能为空`)
   const pending = settings.moderateComments === '1'
-  await c.env.DB.prepare(
-    'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, email, website, content, status, ip, created_at) VALUES (?, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)'
-  )
-    .bind(
-      post.id,
-      nickname,
-      String(body?.email || '').slice(0, 100),
-      String(body?.website || '').slice(0, 200),
-      content,
-      pending ? 'pending' : 'approved',
-      ip,
-      Date.now()
-    )
-    .run()
+  if (o.withContact) {
+    await db
+      .prepare(
+        'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, email, website, content, status, ip, created_at) VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)'
+      )
+      .bind(
+        t.postId,
+        t.weiboId,
+        nickname,
+        String(body?.email || '').slice(0, 100),
+        String(body?.website || '').slice(0, 200),
+        content,
+        pending ? 'pending' : 'approved',
+        ip,
+        now
+      )
+      .run()
+  } else {
+    await db
+      .prepare(
+        'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?)'
+      )
+      .bind(t.postId, t.weiboId, nickname, content, pending ? 'pending' : 'approved', ip, now)
+      .run()
+  }
   // 新留言推送到 Telegram（异步，不阻塞回复；开关在后台「设置 → 外部发布」）
+  const base = siteBase(settings, new URL(c.req.url).origin)
   c.executionCtx.waitUntil(
-    notifyAdminComment(c.env, {
-      kind: 'post',
-      context: post.title,
-      nickname,
-      content,
-      pending,
-      siteBase: siteBase(settings, new URL(c.req.url).origin),
-      path: `/post/${encodeURIComponent(post.slug)}#comments`,
-    })
+    notifyAdminComment(c.env, { kind: o.kind, context: t.context, nickname, content, pending, siteBase: base, path: t.path })
   )
   // 广播评论事件给服务端插件（评论 webhook 等，见 src/hooks.ts）
   c.executionCtx.waitUntil(
-    fireCommentCreated(c.env, {
-      kind: 'post',
-      context: post.title,
-      nickname,
-      content,
-      url: `${siteBase(settings, new URL(c.req.url).origin)}/post/${encodeURIComponent(post.slug)}#comments`,
-      pending,
-    })
+    fireCommentCreated(c.env, { kind: o.kind, context: t.context, nickname, content, url: base + t.path, pending })
   )
   return c.json({ ok: true, pending })
-})
+}
 
+api.post('/public/comments', async (c) =>
+  publicComment(c, {
+    kind: 'post',
+    noun: '留言',
+    closedMessage: '作者已关闭留言',
+    freqMessage: '留言太频繁，休息一下吧',
+    withContact: true,
+    target: async (body) => {
+      const slug = String(body?.slug || '').slice(0, 100)
+      const post = await getPostBySlug(c.env.DB, slug)
+      if (!post || post.status !== 'published') return jsonError('文章不存在', 404)
+      return { postId: post.id, weiboId: 0, context: post.title, path: `/post/${encodeURIComponent(post.slug)}#comments` }
+    },
+  })
+)
 /* ---------------- 留言板（公开，post_id 与 weibo_id 均为 0 即留言板留言） ---------------- */
-api.post('/public/guestbook', async (c) => {
-  const settings = await getSettings(c.env.DB)
-  const user = await getSessionUser(c.env.DB, c.req.raw)
-  if (!user && settings.allowComments !== '1') return jsonError('作者已关闭留言', 403)
-  const ip = clientIp(c.req.raw)
-  // 管理员回复不受留言频率限制
-  if (!user && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError('留言太频繁，休息一下吧', 429)
-  const body = await c.req
-    .json<{ nickname?: string; content?: string; parentId?: number; link?: string }>()
-    .catch(() => null)
-  // 蜜罐字段：正常用户不会填写，机器人会 —— 静默丢弃
-  if (body?.link) return c.json({ ok: true })
-  const content = String(body?.content || '').trim().slice(0, 1000)
-  if (!content) return jsonError('留言内容不能为空')
-
-  const parentId = Number(body?.parentId) || 0
-  if (user) {
-    const parent = parentId
-      ? await c.env.DB.prepare('SELECT * FROM comments WHERE id = ? AND post_id = 0 AND weibo_id = 0').bind(parentId).first<CommentRow>()
-      : null
-    if (parentId && !parent) return jsonError('要回复的留言不存在', 404)
-    await c.env.DB.prepare(
-      'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (0, 0, ?, 1, ?, ?, ?, ?, ?)'
-    )
-      .bind(
-        parent ? parent.parent_id || parent.id : 0,
-        (user.display_name || user.username).slice(0, 24),
-        content,
-        'approved',
-        ip,
-        Date.now()
-      )
-      .run()
-    return c.json({ ok: true })
-  }
-
-  if (parentId) return jsonError('只有作者可以回复留言', 403)
-  const nickname = String(body?.nickname || '').trim().slice(0, 24)
-  if (!nickname) return jsonError('昵称和留言内容不能为空')
-  const pending = settings.moderateComments === '1'
-  await c.env.DB.prepare(
-    'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (0, 0, 0, 0, ?, ?, ?, ?, ?)'
-  )
-    .bind(nickname, content, pending ? 'pending' : 'approved', ip, Date.now())
-    .run()
-  // 留言板新留言同样推送（异步，不阻塞回复）
-  c.executionCtx.waitUntil(
-    notifyAdminComment(c.env, {
-      kind: 'guestbook',
-      nickname,
-      content,
-      pending,
-      siteBase: siteBase(settings, new URL(c.req.url).origin),
-      path: '/guestbook',
-    })
-  )
-  c.executionCtx.waitUntil(
-    fireCommentCreated(c.env, {
-      kind: 'guestbook',
-      nickname,
-      content,
-      url: `${siteBase(settings, new URL(c.req.url).origin)}/guestbook`,
-      pending,
-    })
-  )
-  return c.json({ ok: true, pending })
-})
-
+api.post('/public/guestbook', async (c) =>
+  publicComment(c, {
+    kind: 'guestbook',
+    noun: '留言',
+    closedMessage: '作者已关闭留言',
+    freqMessage: '留言太频繁，休息一下吧',
+    target: async () => ({ postId: 0, weiboId: 0, path: '/guestbook' }),
+  })
+)
 /* ---------------- 微博互动（点赞 + 评论，公开） ---------------- */
 /** 点赞公共件（posts 按 slug / weibo 按 id 两路共用）：条件更新防负数，
  *  回读同口径只认已发布——草稿/不存在的统一返回 0（草稿历史点赞数不外泄）。
@@ -1452,76 +1435,18 @@ api.get('/public/weibo/:id/comments', async (c) => {
 api.post('/public/weibo/:id/comments', async (c) => {
   const id = parseId(c.req.param('id'))
   if (!id) return jsonError('参数错误')
-  const wb = await getWeiboById(c.env.DB, id)
-  if (!wb || wb.status !== 'published') return jsonError('这条微博不存在', 404)
-  const settings = await getSettings(c.env.DB)
-  const user = await getSessionUser(c.env.DB, c.req.raw)
-  if (!user && settings.allowComments !== '1') return jsonError('作者已关闭评论', 403)
-  const ip = clientIp(c.req.raw)
-  if (!user && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError('评论太频繁，休息一下吧', 429)
-  const body = await c.req
-    .json<{ nickname?: string; content?: string; parentId?: number; link?: string }>()
-    .catch(() => null)
-  if (body?.link) return c.json({ ok: true })
-  const content = String(body?.content || '').trim().slice(0, 1000)
-  if (!content) return jsonError('评论内容不能为空')
-
-  const parentId = Number(body?.parentId) || 0
-  if (user) {
-    const parent = parentId
-      ? await c.env.DB.prepare('SELECT * FROM comments WHERE id = ? AND weibo_id = ?').bind(parentId, id).first<CommentRow>()
-      : null
-    if (parentId && !parent) return jsonError('要回复的评论不存在', 404)
-    await c.env.DB.prepare(
-      'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (0, ?, ?, 1, ?, ?, ?, ?, ?)'
-    )
-      .bind(
-        id,
-        parent ? parent.parent_id || parent.id : 0,
-        (user.display_name || user.username).slice(0, 24),
-        content,
-        'approved',
-        ip,
-        Date.now()
-      )
-      .run()
-    return c.json({ ok: true })
-  }
-
-  if (parentId) return jsonError('只有作者可以回复评论', 403)
-  const nickname = String(body?.nickname || '').trim().slice(0, 24)
-  if (!nickname) return jsonError('昵称和评论内容不能为空')
-  const pending = settings.moderateComments === '1'
-  await c.env.DB.prepare(
-    'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (0, ?, 0, 0, ?, ?, ?, ?, ?)'
-  )
-    .bind(id, nickname, content, pending ? 'pending' : 'approved', ip, Date.now())
-    .run()
-  // 微博新评论推送（异步，不阻塞回复）
-  c.executionCtx.waitUntil(
-    notifyAdminComment(c.env, {
-      kind: 'weibo',
-      context: excerpt(wb.content, 40),
-      nickname,
-      content,
-      pending,
-      siteBase: siteBase(settings, new URL(c.req.url).origin),
-      path: `/weibo?wb=${id}#wb-${id}`,
-    })
-  )
-  c.executionCtx.waitUntil(
-    fireCommentCreated(c.env, {
-      kind: 'weibo',
-      context: excerpt(wb.content, 40),
-      nickname,
-      content,
-      url: `${siteBase(settings, new URL(c.req.url).origin)}/weibo?wb=${id}#wb-${id}`,
-      pending,
-    })
-  )
-  return c.json({ ok: true, pending })
+  return publicComment(c, {
+    kind: 'weibo',
+    noun: '评论',
+    closedMessage: '作者已关闭评论',
+    freqMessage: '评论太频繁，休息一下吧',
+    target: async () => {
+      const wb = await getWeiboById(c.env.DB, id)
+      if (!wb || wb.status !== 'published') return jsonError('这条微博不存在', 404)
+      return { postId: 0, weiboId: id, context: excerpt(wb.content, 40), path: `/weibo?wb=${id}#wb-${id}` }
+    },
+  })
 })
-
 api.post('/public/like/:slug', async (c) => {
   if (!rateLimit(`like:${clientIp(c.req.raw)}`, 30, 10 * 60_000)) return jsonError('操作太频繁了，休息一下吧', 429)
   const slug = c.req.param('slug').slice(0, 100)
