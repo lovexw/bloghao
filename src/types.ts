@@ -33,6 +33,8 @@ export interface PostRow {
   publish_at: number | null
   created_at: number
   updated_at: number
+  /** 回收站：非 NULL = 已移入回收站（毫秒），NULL = 存活（src/trash.ts） */
+  deleted_at: number | null
 }
 
 export interface WeiboRow {
@@ -46,6 +48,8 @@ export interface WeiboRow {
   published_at: number | null
   created_at: number
   updated_at: number
+  /** 回收站：非 NULL = 已移入回收站（毫秒），NULL = 存活（src/trash.ts） */
+  deleted_at: number | null
 }
 
 export interface CommentRow {
@@ -82,6 +86,8 @@ export interface PageRow {
   sort: number
   created_at: number
   updated_at: number
+  /** 回收站：非 NULL = 已移入回收站（毫秒），NULL = 存活（src/trash.ts） */
+  deleted_at: number | null
 }
 
 export interface FriendLinkRow {

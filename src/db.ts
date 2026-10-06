@@ -104,7 +104,7 @@ export interface ListPostsResult {
 export async function listPosts(db: D1Database, opts: ListPostsOptions = {}): Promise<ListPostsResult> {
   const page = clampInt(opts.page, 1, 1000, 1)
   const limit = clampInt(opts.limit, 1, 100, 10)
-  const where: string[] = []
+  const where: string[] = ['deleted_at IS NULL'] // 回收站过滤：公开面与后台列表都不展示已删行（回收站走 src/trash.ts 自己的查询）
   const binds: unknown[] = []
 
   if (opts.status && opts.status !== 'all') {
@@ -155,15 +155,18 @@ export async function listPosts(db: D1Database, opts: ListPostsOptions = {}): Pr
 }
 
 export async function getPostBySlug(db: D1Database, slug: string): Promise<PostRow | null> {
-  return db.prepare('SELECT * FROM posts WHERE slug = ?').bind(slug).first<PostRow>()
+  // 回收站过滤：文章页与公开评论接口靠 status 兜底判可见性，已删行必须查不到（否则软删后照常渲染）
+  return db.prepare('SELECT * FROM posts WHERE slug = ? AND deleted_at IS NULL').bind(slug).first<PostRow>()
 }
 
 export async function getPostById(db: D1Database, id: number): Promise<PostRow | null> {
+  // 不含 deleted_at 过滤：后台编辑/恢复按 id 直取，回收站行也可见
   return db.prepare('SELECT * FROM posts WHERE id = ?').bind(id).first<PostRow>()
 }
 
 /** slug 查重公共件：posts / pages 同一套「占用即加后缀」探测（categories 是重名即拒绝语义，不走这里）。
- *  table 只来自下方两个包装函数的字面量，无注入面 */
+ *  table 只来自下方两个包装函数的字面量，无注入面。
+ *  故意不过滤 deleted_at：回收站行继续占用 slug，恢复时不会撞上后来新建的同名 slug */
 async function uniqueSlugIn(db: D1Database, table: 'posts' | 'pages', base: string, excludeId?: number): Promise<string> {
   let slug = base
   for (let i = 2; i < 100; i++) {
@@ -198,7 +201,7 @@ export async function listGuestbookComments(db: D1Database): Promise<CommentRow[
 export async function listAllPublishedArchives(db: D1Database): Promise<{ slug: string; title: string; ts: number }[]> {
   const { results } = await db
     .prepare(
-      "SELECT slug, title, COALESCE(published_at, created_at) AS ts FROM posts WHERE status = 'published' ORDER BY ts DESC LIMIT 2000"
+      "SELECT slug, title, COALESCE(published_at, created_at) AS ts FROM posts WHERE status = 'published' AND deleted_at IS NULL ORDER BY ts DESC LIMIT 2000"
     )
     .all<{ slug: string; title: string; ts: number }>()
   return results ?? []
@@ -207,7 +210,7 @@ export async function listAllPublishedArchives(db: D1Database): Promise<{ slug: 
 /** sitemap 用的轻量列表：slug + updated_at（不走 listPosts——它的 limit 被 clamp 到 100） */
 export async function listSitemapPosts(db: D1Database): Promise<{ slug: string; updated_at: number }[]> {
   const { results } = await db
-    .prepare("SELECT slug, updated_at FROM posts WHERE status = 'published' ORDER BY updated_at DESC LIMIT 2000")
+    .prepare("SELECT slug, updated_at FROM posts WHERE status = 'published' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 2000")
     .all<{ slug: string; updated_at: number }>()
   return results ?? []
 }
@@ -215,7 +218,7 @@ export async function listSitemapPosts(db: D1Database): Promise<{ slug: string; 
 /** 已发布文章用到的标签聚合（导航菜单/sitemap 用），按使用次数倒序 */
 export async function listPublishedTags(db: D1Database): Promise<{ name: string; count: number }[]> {
   const { results } = await db
-    .prepare("SELECT tags FROM posts WHERE status = 'published' LIMIT 1000")
+    .prepare("SELECT tags FROM posts WHERE status = 'published' AND deleted_at IS NULL LIMIT 1000")
     .all<{ tags: string }>()
   const count = new Map<string, number>()
   for (const r of results ?? []) {
@@ -293,14 +296,14 @@ export async function listOnThisDay(db: D1Database): Promise<OnThisDayItem[]> {
       .prepare(
         `SELECT slug AS key, title, '' AS content, '' AS images, COALESCE(published_at, created_at) AS ts
          FROM posts
-         WHERE status = 'published' AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now', '28800 seconds') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now', '28800 seconds') AS INTEGER)
+         WHERE status = 'published' AND deleted_at IS NULL AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now', '28800 seconds') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now', '28800 seconds') AS INTEGER)
          ORDER BY ts DESC LIMIT ${ON_THIS_DAY_SOURCE_LIMIT}`
       ),
     db
       .prepare(
         `SELECT id AS key, '' AS title, content, images, COALESCE(published_at, created_at) AS ts
          FROM weibo
-         WHERE status = 'published' AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now', '28800 seconds') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now', '28800 seconds') AS INTEGER)
+         WHERE status = 'published' AND deleted_at IS NULL AND ${ON_THIS_DAY_MD} = strftime('%m-%d', 'now', '28800 seconds') AND ${ON_THIS_DAY_Y} < CAST(strftime('%Y', 'now', '28800 seconds') AS INTEGER)
          ORDER BY ts DESC LIMIT ${ON_THIS_DAY_SOURCE_LIMIT}`
       ),
   ])
@@ -323,14 +326,14 @@ export async function relatedPosts(db: D1Database, post: PostRow, limit = 3): Pr
     const likeBinds = tags.map(() => "tags LIKE ? ESCAPE '\\'").join(' OR ')
     const { results } = await db
       .prepare(
-        `SELECT * FROM posts WHERE id != ? AND status = 'published' AND (${likeBinds}) ORDER BY views DESC LIMIT ?`
+        `SELECT * FROM posts WHERE id != ? AND status = 'published' AND deleted_at IS NULL AND (${likeBinds}) ORDER BY views DESC LIMIT ?`
       )
       .bind(post.id, ...tags.map((t) => jsonItemLikePattern(t)), limit)
       .all<PostRow>()
     if ((results?.length ?? 0) > 0) return results ?? []
   }
   const { results } = await db
-    .prepare("SELECT * FROM posts WHERE id != ? AND status = 'published' ORDER BY published_at DESC LIMIT ?")
+    .prepare("SELECT * FROM posts WHERE id != ? AND status = 'published' AND deleted_at IS NULL ORDER BY published_at DESC LIMIT ?")
     .bind(post.id, limit)
     .all<PostRow>()
   return results ?? []
@@ -393,23 +396,25 @@ export async function getPostCategoryId(db: D1Database, postId: number): Promise
 /* ---------------- 独立页面 ---------------- */
 
 export async function listPages(db: D1Database, opts: { status?: 'published' } = {}): Promise<PageRow[]> {
-  const sql = 'SELECT * FROM pages ORDER BY sort ASC, id ASC'
+  // 回收站过滤：导航/sitemap/后台页面列表都不展示已删行
   if (opts.status) {
     const { results } = await db
-      .prepare('SELECT * FROM pages WHERE status = ? ORDER BY sort ASC, id ASC')
+      .prepare('SELECT * FROM pages WHERE status = ? AND deleted_at IS NULL ORDER BY sort ASC, id ASC')
       .bind(opts.status)
       .all<PageRow>()
     return results ?? []
   }
-  const { results } = await db.prepare(sql).all<PageRow>()
+  const { results } = await db.prepare('SELECT * FROM pages WHERE deleted_at IS NULL ORDER BY sort ASC, id ASC').all<PageRow>()
   return results ?? []
 }
 
 export async function getPage(db: D1Database, slug: string): Promise<PageRow | null> {
-  return db.prepare('SELECT * FROM pages WHERE slug = ?').bind(slug).first<PageRow>()
+  // 回收站过滤：/about 与 /page/:slug 已删即 404（about 走 legacy settings 回退分支）
+  return db.prepare('SELECT * FROM pages WHERE slug = ? AND deleted_at IS NULL').bind(slug).first<PageRow>()
 }
 
 export async function getPageById(db: D1Database, id: number): Promise<PageRow | null> {
+  // 不含 deleted_at 过滤：后台编辑/恢复按 id 直取
   return db.prepare('SELECT * FROM pages WHERE id = ?').bind(id).first<PageRow>()
 }
 
@@ -421,7 +426,7 @@ export async function uniquePageSlug(db: D1Database, base: string, excludeId?: n
 /** sitemap 用的已发布页面（含更新时间） */
 export async function listSitemapPages(db: D1Database): Promise<{ slug: string; updated_at: number }[]> {
   const { results } = await db
-    .prepare("SELECT slug, updated_at FROM pages WHERE status = 'published'")
+    .prepare("SELECT slug, updated_at FROM pages WHERE status = 'published' AND deleted_at IS NULL")
     .all<{ slug: string; updated_at: number }>()
   return results ?? []
 }
@@ -485,7 +490,7 @@ export function weiboTopicList(row: Pick<WeiboRow, 'topics'>): string[] {
 /** 已发布微博的话题聚合（前台话题条用）：按出现次数倒序，取前 20 个 */
 export async function listWeiboTopics(db: D1Database): Promise<{ name: string; count: number }[]> {
   const { results } = await db
-    .prepare("SELECT topics FROM weibo WHERE status = 'published' LIMIT 1000")
+    .prepare("SELECT topics FROM weibo WHERE status = 'published' AND deleted_at IS NULL LIMIT 1000")
     .all<{ topics: string }>()
   const count = new Map<string, number>()
   for (const r of results ?? []) {
@@ -504,9 +509,9 @@ export interface ListWeiboResult {
   totalPages: number
 }
 
-/** listWeibo / locateWeiboPage 共用的过滤条件（status + 话题），保证深链定位与列表分页的口径一致 */
+/** listWeibo / locateWeiboPage 共用的过滤条件（status + 话题 + 回收站），保证深链定位与列表分页的口径一致 */
 function weiboConditions(opts: { status?: 'published' | 'draft' | 'all'; topic?: string }): { conds: string[]; binds: unknown[] } {
-  const conds: string[] = []
+  const conds: string[] = ['deleted_at IS NULL'] // 回收站过滤：微博页/首页入口卡/后台列表都不展示已删行
   const binds: unknown[] = []
   if (opts.status && opts.status !== 'all') {
     conds.push('status = ?')
@@ -578,7 +583,8 @@ export async function locateWeiboPage(db: D1Database, id: number, opts: { limit?
 }
 
 export async function getWeiboById(db: D1Database, id: number): Promise<WeiboRow | null> {
-  return db.prepare('SELECT * FROM weibo WHERE id = ?').bind(id).first<WeiboRow>()
+  // 回收站过滤：公开微博评论接口靠 status 应用层兜底，已删行必须查不到（后台编辑走列表页入口，不直取已删行）
+  return db.prepare('SELECT * FROM weibo WHERE id = ? AND deleted_at IS NULL').bind(id).first<WeiboRow>()
 }
 
 /** 批量取一组微博的已审核评论数：{weiboId: count} */
@@ -647,6 +653,10 @@ const SCHEMA_COLUMNS: { table: string; column: string; ddl: string }[] = [
   { table: 'comments', column: 'is_admin', ddl: 'ALTER TABLE comments ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0' },
   // 媒体体检查重指纹（src/audit.ts）：新上传在 saveUpload 时写入，存量由 hash-backfill 端点回填
   { table: 'uploads', column: 'hash', ddl: "ALTER TABLE uploads ADD COLUMN hash TEXT NOT NULL DEFAULT ''" },
+  // 回收站（src/trash.ts）：三表软删标记，NULL = 存活；所有业务查询必须带 deleted_at IS NULL（例外见 AGENTS.md）
+  { table: 'posts', column: 'deleted_at', ddl: 'ALTER TABLE posts ADD COLUMN deleted_at INTEGER' },
+  { table: 'weibo', column: 'deleted_at', ddl: 'ALTER TABLE weibo ADD COLUMN deleted_at INTEGER' },
+  { table: 'pages', column: 'deleted_at', ddl: 'ALTER TABLE pages ADD COLUMN deleted_at INTEGER' },
 ]
 const SCHEMA_TABLES = [
   // Telegram 相册缓冲（src/external.ts）：多选拆成的多条消息先落这里，几秒后合并成一条微博

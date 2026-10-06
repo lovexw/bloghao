@@ -52,6 +52,7 @@ import { SITE_MODE_VALUES, siteBase, toHomePost, type SiteMode } from './render'
 import { sanitizeHtml } from './sanitize'
 import { cleanupUnreferenced, backfillHashes, mergeDuplicate, runAudit } from './audit'
 import { imageExtOf, MAX_REMOTE_IMAGES, MAX_UPLOAD_BYTES, saveUpload, transferImage } from './store'
+import { listTrash, restorePostStatus, trashTable, type TrashTable } from './trash'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
@@ -183,12 +184,12 @@ api.get('/admin/stats', async (c) => {
   const db = c.env.DB
   const [pub, drafts, pending, uploads, recent, pendingLinks] = await Promise.all([
     db
-      .prepare("SELECT COUNT(*) AS n, COALESCE(SUM(views),0) AS v, COALESCE(SUM(likes),0) AS l FROM posts WHERE status = 'published'")
+      .prepare("SELECT COUNT(*) AS n, COALESCE(SUM(views),0) AS v, COALESCE(SUM(likes),0) AS l FROM posts WHERE status = 'published' AND deleted_at IS NULL")
       .first<{ n: number; v: number; l: number }>(),
-    db.prepare("SELECT COUNT(*) AS n FROM posts WHERE status = 'draft'").first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) AS n FROM posts WHERE status = 'draft' AND deleted_at IS NULL").first<{ n: number }>(),
     db.prepare("SELECT COUNT(*) AS n FROM comments WHERE status = 'pending'").first<{ n: number }>(),
     db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(size),0) AS s FROM uploads').first<{ n: number; s: number }>(),
-    db.prepare("SELECT * FROM posts WHERE status = 'published' ORDER BY published_at DESC LIMIT 5").all<PostRow>(),
+    db.prepare("SELECT * FROM posts WHERE status = 'published' AND deleted_at IS NULL ORDER BY published_at DESC LIMIT 5").all<PostRow>(),
     db.prepare("SELECT COUNT(*) AS n FROM friend_links WHERE status = 'pending'").first<{ n: number }>(),
   ])
   return c.json({
@@ -435,11 +436,8 @@ api.post('/admin/posts/:id/pin', async (c) => {
 api.delete('/admin/posts/:id', async (c) => {
   const id = parseId(c.req.param('id'))
   if (!id) return jsonError('文章不存在', 404)
-  await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM posts WHERE id = ?').bind(id),
-    c.env.DB.prepare('DELETE FROM comments WHERE post_id = ?').bind(id),
-    c.env.DB.prepare('DELETE FROM post_categories WHERE post_id = ?').bind(id),
-  ])
+  // 软删进回收站（src/trash.ts）：评论与分类关联保留，恢复时一并跟回；彻底删除才级联清掉
+  await c.env.DB.prepare('UPDATE posts SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').bind(Date.now(), id).run()
   return c.json({ ok: true })
 })
 
@@ -534,10 +532,11 @@ api.post('/admin/weibo/:id/pin', async (c) => {
   if (!existing) return jsonError('这条微博不存在', 404)
   if (body?.pinned && !existing.pinned) {
     if (existing.status !== 'published') return jsonError('草稿不能置顶，先发布吧')
-    // 条件更新原子占位：并发置顶时只有凑满名额的那次生效（count-then-update 有竞态窗口）
+    // 条件更新原子占位：并发置顶时只有凑满名额的那次生效（count-then-update 有竞态窗口）；
+    // 名额统计排除回收站行，已删微博不占坑
     const res = await c.env.DB.prepare(
       `UPDATE weibo SET pinned = 1, updated_at = ? WHERE id = ?
-       AND (SELECT COUNT(*) FROM weibo WHERE pinned = 1 AND id != ?) < ?`
+       AND (SELECT COUNT(*) FROM weibo WHERE pinned = 1 AND deleted_at IS NULL AND id != ?) < ?`
     )
       .bind(Date.now(), id, id, WEIBO_MAX_PINNED)
       .run()
@@ -553,11 +552,8 @@ api.post('/admin/weibo/:id/pin', async (c) => {
 api.delete('/admin/weibo/:id', async (c) => {
   const id = parseId(c.req.param('id'))
   if (!id) return jsonError('这条微博不存在', 404)
-  // 微博删除后其下的评论一并清除
-  await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM comments WHERE weibo_id = ?').bind(id),
-    c.env.DB.prepare('DELETE FROM weibo WHERE id = ?').bind(id),
-  ])
+  // 软删进回收站（src/trash.ts）：评论保留，恢复时一并跟回；彻底删除才级联清掉
+  await c.env.DB.prepare('UPDATE weibo SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').bind(Date.now(), id).run()
   return c.json({ ok: true })
 })
 
@@ -878,7 +874,8 @@ api.put('/admin/pages/:id', async (c) => {
 api.delete('/admin/pages/:id', async (c) => {
   const id = parseId(c.req.param('id'))
   if (!id) return jsonError('页面不存在', 404)
-  await c.env.DB.prepare('DELETE FROM pages WHERE id = ?').bind(id).run()
+  // 软删进回收站（src/trash.ts）；about 页删除后 /about 走 legacy settings 回退分支
+  await c.env.DB.prepare('UPDATE pages SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').bind(Date.now(), id).run()
   return c.json({ ok: true })
 })
 
@@ -893,6 +890,90 @@ api.post('/admin/pages/reorder', async (c) => {
   if (to < 0 || to >= items.length) return c.json({ ok: true })
   ;[items[idx], items[to]] = [items[to], items[idx]]
   await c.env.DB.batch(items.map((p, i) => c.env.DB.prepare('UPDATE pages SET sort = ? WHERE id = ?').bind(i, p.id)))
+  return c.json({ ok: true })
+})
+
+/* ---------------- 回收站（三表软删，机制与清理见 src/trash.ts） ---------------- */
+api.get('/admin/trash', async (c) => {
+  const typeParam = c.req.query('type')
+  const table = typeParam ? trashTable(typeParam) : null
+  if (typeParam && !table) return jsonError('未知的回收站类型')
+  return c.json(await listTrash(c.env.DB, { type: table, page: clampInt(c.req.query('page'), 1, 1000, 1) }))
+})
+
+api.post('/admin/trash/:type/:id/restore', async (c) => {
+  const table = trashTable(c.req.param('type'))
+  const id = parseId(c.req.param('id'))
+  if (!table || !id) return jsonError('内容不存在', 404)
+  if (table === 'posts') {
+    const row = await getPostById(c.env.DB, id)
+    if (!row || row.deleted_at == null) return jsonError('回收站里没有这条内容', 404)
+    // 过期的定时文恢复为草稿（restorePostStatus），防「恢复即撞发」
+    await c.env.DB
+      .prepare('UPDATE posts SET deleted_at = NULL, status = ? WHERE id = ?')
+      .bind(restorePostStatus(row.status, row.publish_at, Date.now()), id)
+      .run()
+  } else {
+    const res = await c.env.DB
+      .prepare(`UPDATE ${table} SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`)
+      .bind(id)
+      .run()
+    if ((res.meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
+  }
+  return c.json({ ok: true })
+})
+
+api.delete('/admin/trash/:type/:id', async (c) => {
+  const table = trashTable(c.req.param('type'))
+  const id = parseId(c.req.param('id'))
+  if (!table || !id) return jsonError('内容不存在', 404)
+  // 彻底删除只作用于已在回收站的行（deleted_at IS NOT NULL 防误删存活数据），batch 事务内级联清评论
+  if (table === 'posts') {
+    const res = await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM posts WHERE id = ? AND deleted_at IS NOT NULL').bind(id),
+      c.env.DB.prepare('DELETE FROM comments WHERE post_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM post_categories WHERE post_id = ?').bind(id),
+    ])
+    if ((res[0].meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
+  } else if (table === 'weibo') {
+    const res = await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM weibo WHERE id = ? AND deleted_at IS NOT NULL').bind(id),
+      c.env.DB.prepare('DELETE FROM comments WHERE weibo_id = ?').bind(id),
+    ])
+    if ((res[0].meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
+  } else {
+    const res = await c.env.DB.prepare('DELETE FROM pages WHERE id = ? AND deleted_at IS NOT NULL').bind(id).run()
+    if ((res.meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
+  }
+  return c.json({ ok: true })
+})
+
+/** 清空回收站（body 可选 {type} 定向清空一类）；级联子查询在一个 batch 事务内完成 */
+api.post('/admin/trash/purge', async (c) => {
+  const body = await c.req.json<{ type?: string }>().catch(() => null)
+  let table: TrashTable | null = null
+  if (body?.type) {
+    table = trashTable(body.type)
+    if (!table) return jsonError('未知的回收站类型')
+  }
+  const stmts: D1PreparedStatement[] = []
+  if (!table || table === 'posts') {
+    stmts.push(
+      c.env.DB.prepare('DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE deleted_at IS NOT NULL)'),
+      c.env.DB.prepare('DELETE FROM post_categories WHERE post_id IN (SELECT id FROM posts WHERE deleted_at IS NOT NULL)'),
+      c.env.DB.prepare('DELETE FROM posts WHERE deleted_at IS NOT NULL')
+    )
+  }
+  if (!table || table === 'weibo') {
+    stmts.push(
+      c.env.DB.prepare('DELETE FROM comments WHERE weibo_id IN (SELECT id FROM weibo WHERE deleted_at IS NOT NULL)'),
+      c.env.DB.prepare('DELETE FROM weibo WHERE deleted_at IS NOT NULL')
+    )
+  }
+  if (!table || table === 'pages') {
+    stmts.push(c.env.DB.prepare('DELETE FROM pages WHERE deleted_at IS NOT NULL'))
+  }
+  await c.env.DB.batch(stmts)
   return c.json({ ok: true })
 })
 
@@ -1467,12 +1548,12 @@ async function likeDelta(
 ): Promise<number> {
   await db
     .prepare(
-      `UPDATE ${table} SET likes = CASE WHEN likes + ? < 0 THEN 0 ELSE likes + ? END WHERE ${col} = ? AND status = 'published'`
+      `UPDATE ${table} SET likes = CASE WHEN likes + ? < 0 THEN 0 ELSE likes + ? END WHERE ${col} = ? AND status = 'published' AND deleted_at IS NULL`
     )
     .bind(delta, delta, key)
     .run()
   const row = await db
-    .prepare(`SELECT likes FROM ${table} WHERE ${col} = ? AND status = 'published'`)
+    .prepare(`SELECT likes FROM ${table} WHERE ${col} = ? AND status = 'published' AND deleted_at IS NULL`)
     .bind(key)
     .first<{ likes: number }>()
   return row?.likes ?? 0

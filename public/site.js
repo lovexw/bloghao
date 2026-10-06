@@ -972,7 +972,8 @@
             flashBtn(btn, (err && err.message) || '操作失败')
           })
       } else if (act === 'del') {
-        if (!confirm('确定删除这条微博？它的评论将一并删除，不可恢复。')) return
+        // 软删进回收站（后台可恢复，30 天后自动彻底清除）；前台无恢复入口，去后台「回收站」页操作
+        if (!confirm('确定删除这条微博？将移入后台回收站，30 天内可恢复。')) return
         btn.textContent = '删除中…'
         btn.disabled = true
         fetch('/api/admin/weibo/' + id, { method: 'DELETE' })

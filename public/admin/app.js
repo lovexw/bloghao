@@ -127,6 +127,7 @@ const I = {
   comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
   page: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 13h10M7 16.5h6"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2z"/></svg>',
   palette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9c0 2.2-1.6 3.4-3.5 3.4h-1.7a1.9 1.9 0 0 0-1.4 3.2c.5.6.3 2.4-2.4 2.4z"/><circle cx="7.6" cy="11.8" r="1"/><circle cx="10.4" cy="7.6" r="1"/><circle cx="15.2" cy="7.9" r="1"/></svg>',
   plug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v4M15 3v4"/><path d="M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0V7z"/><path d="M12 16v5"/></svg>',
@@ -152,6 +153,7 @@ const MENU = [
   { id: 'categories', href: '#/categories', label: '分类', icon: 'folder' },
   { id: 'links', href: '#/links', label: '友链', icon: 'link', badge: () => state.pendingLinks || 0 },
   { id: 'pages', href: '#/pages', label: '页面', icon: 'page' },
+  { id: 'trash', href: '#/trash', label: '回收站', icon: 'trash' },
   { type: 'group', label: '系统' },
   { id: 'appearance', href: '#/appearance', label: '皮肤', icon: 'palette' },
   { id: 'plugins', href: '#/plugins', label: '插件', icon: 'plug' },
@@ -638,10 +640,10 @@ async function viewPosts() {
       }
     })
     row.querySelector('[data-act=del]').addEventListener('click', async () => {
-      if (!(await confirmBox(`确定删除《${post.title}》？该操作不可恢复。`))) return
+      if (!(await confirmBox(`确定删除《${post.title}》？将移入回收站，30 天内可恢复。`))) return
       try {
         await api(`/admin/posts/${id}`, { method: 'DELETE' })
-        toast('已删除')
+        toast('已移入回收站')
         navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
@@ -867,10 +869,10 @@ async function viewWeibo() {
       }
     })
     row.querySelector('[data-act=del]').addEventListener('click', async () => {
-      if (!(await confirmBox('确定删除这条微博？该操作不可恢复。'))) return
+      if (!(await confirmBox('确定删除这条微博？将移入回收站，30 天内可恢复。'))) return
       try {
         await api(`/admin/weibo/${id}`, { method: 'DELETE' })
-        toast('已删除')
+        toast('已移入回收站')
         navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
@@ -1322,10 +1324,111 @@ async function viewPages() {
     })
     row.querySelector('[data-act=edit]').addEventListener('click', () => pageModal(page))
     row.querySelector('[data-act=del]').addEventListener('click', async () => {
-      if (!(await confirmBox(`删除页面「${page.title}」？删除后前台将无法访问。`))) return
+      if (!(await confirmBox(`删除页面「${page.title}」？将移入回收站，30 天内可恢复，期间前台无法访问。`))) return
       try {
         await api(`/admin/pages/${id}`, { method: 'DELETE' })
-        toast('已删除')
+        toast('已移入回收站')
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
+  })
+}
+
+/* ---------------- 回收站（文章 / 微博 / 页面软删统一管理，30 天后自动彻底清除） ---------------- */
+const TRASH_TYPE_LABEL = { post: '文章', weibo: '微博', page: '页面' }
+
+async function viewTrash() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || '')
+  const type = ['post', 'weibo', 'page'].includes(q.get('type')) ? q.get('type') : ''
+  const page = parseInt(q.get('page') || '1', 10)
+
+  let d
+  try {
+    d = await api(`/admin/trash?page=${page}${type ? `&type=${type}` : ''}`)
+  } catch (e) {
+    return handleApiErr(e)
+  }
+
+  const statusChip = (s) =>
+    s === 'published'
+      ? ''
+      : s === 'scheduled'
+        ? '<span class="chip chip-warn">定时</span>'
+        : '<span class="chip chip-gray">草稿</span>'
+  const rows = d.items
+    .map(
+      (it) => `<div class="post-row" data-type="${it.type}" data-id="${it.id}">
+      <div class="post-main">
+        <div class="post-title">${esc(it.label || '（无文字内容）')}<span class="chip">${TRASH_TYPE_LABEL[it.type] || it.type}</span>${statusChip(it.status)}</div>
+        <div class="post-meta"><span>删除于 ${fmtDateTime(it.deleted_at)}</span><span>·</span><span>30 天后自动彻底清除</span></div>
+      </div>
+      <div class="post-ops">
+        <button class="btn btn-ghost btn-sm" data-act="restore">恢复</button>
+        <button class="btn btn-ghost btn-sm btn-danger" data-act="purge">彻底删除</button>
+      </div>
+    </div>`
+    )
+    .join('')
+
+  await shellView(
+    'trash',
+    `<div class="page-head">
+      <div><div class="page-title">回收站</div><div class="page-sub">删除的文章 / 微博 / 页面在这里保留 30 天，到期自动彻底清除${d.total ? ` · 共 ${d.total} 条` : ''}</div></div>
+      ${d.total ? '<button class="btn btn-danger" id="trash-purge-all">清空回收站</button>' : ''}
+    </div>
+    <div class="toolbar">
+      <div class="tabs">
+        ${['', 'post', 'weibo', 'page']
+          .map((t) => `<button class="tab${t === type ? ' is-active' : ''}" data-tab="${t}">${t === '' ? '全部' : TRASH_TYPE_LABEL[t]}</button>`)
+          .join('')}
+      </div>
+    </div>
+    <div class="panel">${rows || '<div class="empty-box">回收站是空的</div>'}</div>
+    ${d.totalPages > 1 ? `<div class="pager-admin"><button class="btn btn-sm" id="pg-prev" ${page <= 1 ? 'disabled' : ''}>上一页</button><span>${d.page} / ${d.totalPages}</span><button class="btn btn-sm" id="pg-next" ${page >= d.totalPages ? 'disabled' : ''}>下一页</button></div>` : ''}`
+  )
+
+  const nav = (patch) => {
+    const p = new URLSearchParams({ page: String(page), ...(type ? { type } : {}), ...patch })
+    location.hash = '#/trash?' + p.toString()
+  }
+  $app.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => nav({ type: b.dataset.tab, page: 1 })))
+  const prev = document.getElementById('pg-prev')
+  const next = document.getElementById('pg-next')
+  if (prev) prev.addEventListener('click', () => nav({ page: page - 1 }))
+  if (next) next.addEventListener('click', () => nav({ page: page + 1 }))
+
+  const purgeAll = document.getElementById('trash-purge-all')
+  if (purgeAll)
+    purgeAll.addEventListener('click', async () => {
+      if (!(await confirmBox('清空回收站？所有项目将被彻底删除，无法恢复。'))) return
+      try {
+        await api('/admin/trash/purge', { method: 'POST', body: type ? { type } : {} })
+        toast('回收站已清空')
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
+
+  $app.querySelectorAll('.post-row').forEach((row) => {
+    const id = Number(row.dataset.id)
+    const t = row.dataset.type
+    row.querySelector('[data-act=restore]').addEventListener('click', async () => {
+      try {
+        await api(`/admin/trash/${t}/${id}/restore`, { method: 'POST' })
+        toast('已恢复，内容回到原处')
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
+      } catch (e) {
+        toast(e.message, true)
+      }
+    })
+    row.querySelector('[data-act=purge]').addEventListener('click', async () => {
+      if (!(await confirmBox(`彻底删除这条${TRASH_TYPE_LABEL[t] || '内容'}？${t !== 'page' ? '其下评论将一并删除，' : ''}该操作不可恢复。`))) return
+      try {
+        await api(`/admin/trash/${t}/${id}`, { method: 'DELETE' })
+        toast('已彻底删除')
         navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
       } catch (e) {
         toast(e.message, true)
@@ -2591,6 +2694,7 @@ async function navigate() {
     else if (name === 'links') await viewLinks()
     else if (name === 'categories') await viewCategories()
     else if (name === 'pages') await viewPages()
+    else if (name === 'trash') await viewTrash()
     else if (name === 'comments') await viewComments()
     else if (name === 'media') await viewMedia()
     else if (name === 'appearance') await viewAppearance()

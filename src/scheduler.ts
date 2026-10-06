@@ -30,7 +30,7 @@ export async function runScheduledPublish(env: Env): Promise<ScheduleResult> {
   try {
     const { results } = await env.DB.prepare(
       `SELECT id, slug, title, summary, publish_at FROM posts
-       WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= ?
+       WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= ? AND deleted_at IS NULL
        LIMIT 20`
     )
       .bind(Date.now())
@@ -41,7 +41,7 @@ export async function runScheduledPublish(env: Env): Promise<ScheduleResult> {
     for (const p of results ?? []) {
       try {
         const res = await env.DB.prepare(
-          "UPDATE posts SET status = 'published', published_at = ?, updated_at = ? WHERE id = ? AND status = 'scheduled'"
+          "UPDATE posts SET status = 'published', published_at = ?, updated_at = ? WHERE id = ? AND status = 'scheduled' AND deleted_at IS NULL"
         )
           .bind(p.publish_at, Date.now(), p.id)
           .run()

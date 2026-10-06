@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS posts (
   published_at INTEGER,
   publish_at   INTEGER,                -- 定时发布时间：到点由 Cron 翻成 published（src/scheduler.ts）
   created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
+  updated_at   INTEGER NOT NULL,
+  deleted_at   INTEGER                 -- 回收站：非 NULL = 已移入回收站（30 天后 cron 彻底清除，src/trash.ts）
 );
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts (status, pinned DESC, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_updated ON posts (updated_at DESC);
@@ -85,7 +86,8 @@ CREATE TABLE IF NOT EXISTS weibo (
   likes        INTEGER NOT NULL DEFAULT 0,
   published_at INTEGER,
   created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
+  updated_at   INTEGER NOT NULL,
+  deleted_at   INTEGER                 -- 回收站：非 NULL = 已移入回收站（30 天后 cron 彻底清除，src/trash.ts）
 );
 CREATE INDEX IF NOT EXISTS idx_weibo_status ON weibo (status, published_at DESC);
 
@@ -133,7 +135,8 @@ CREATE TABLE IF NOT EXISTS pages (
   show_in_nav INTEGER NOT NULL DEFAULT 0,             -- 1 = 出现在前台顶部导航
   sort        INTEGER NOT NULL DEFAULT 0,             -- 数字小的靠前（导航顺序）
   created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  deleted_at  INTEGER                                 -- 回收站：非 NULL = 已移入回收站（30 天后 cron 彻底清除，src/trash.ts）
 );
 
 -- Telegram 相册缓冲：一次多选会拆成多条消息（同一 media_group_id），

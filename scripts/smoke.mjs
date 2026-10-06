@@ -164,6 +164,8 @@ try {
   await check('GET', '/api/admin/export/wxr', 401)
   // 服务端插件（roadmap A5）：列表接口同样在鉴权保护之下
   await check('GET', '/api/admin/server-plugins', 401)
+  // 回收站（软删除）：管理接口在鉴权保护之下
+  await check('GET', '/api/admin/trash', 401)
 
   // 回归守卫：打点真的落进了 visit_log（waitUntil 异步写，稍等一拍再用 d1 查）——
   // 防止「接口 200 但 INSERT 静默失败」的假绿
@@ -358,6 +360,103 @@ try {
     const cleanup = await raw('DELETE', `/api/admin/posts/${pId}`, pCookie)
     results.push(['状态切换：清理临时文章', cleanup.status === 200])
     console.log(`  ${cleanup.status === 200 ? '✓' : '✗'} 状态切换：清理临时文章`)
+  }
+
+  // ── 回收站（软删除）链路：删除 → 前台/RSS/sitemap/后台列表全部不可见 → 回收站可见
+  // → 恢复复活 → 再删 → 彻底删除。防「软删行从某个公开面泄漏」的核心回归守卫 ──
+  console.log('\n▸ 回收站（软删除）链路')
+  const tCreate = await raw('POST', '/api/admin/posts', {
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({
+      title: '冒烟：回收站链路文章',
+      content: '<p>回收站链路正文</p>',
+      tags: ['冒烟回收站'],
+      status: 'published',
+    }),
+  })
+  const tCreated = await tCreate.json().catch(() => null)
+  const tPost = tCreated && tCreated.post
+  const tId = tPost && tPost.id
+  results.push(['回收站：建临时已发布文章', tCreate.status === 200 && !!tId])
+  console.log(`  ${tCreate.status === 200 && !!tId ? '✓' : '✗'} 回收站：建临时已发布文章（id ${tId}）`)
+
+  if (tId) {
+    const tCookie = { headers: { Cookie: cookie } }
+    const tSlug = tPost.slug
+    await check('GET', `/post/${tSlug}`, 200, '回收站链路正文')
+    // 软删：前台文章页/RSS/sitemap/首页与后台列表全部不可见，回收站可见
+    const tDel = await raw('DELETE', `/api/admin/posts/${tId}`, tCookie)
+    results.push(['回收站：删除（软删）', tDel.status === 200])
+    console.log(`  ${tDel.status === 200 ? '✓' : '✗'} 回收站：删除（软删）`)
+    await check('GET', `/post/${tSlug}`, 404)
+    await check('GET', '/rss.xml', 200, undefined, { notContains: tSlug })
+    await check('GET', '/sitemap.xml', 200, undefined, { notContains: tSlug })
+    await check('GET', '/', 200, undefined, { notContains: tSlug })
+    await check('GET', '/api/admin/posts?status=all', 200, undefined, { notContains: '回收站链路文章', headers: tCookie.headers })
+    await check('GET', '/api/admin/trash', 200, '回收站链路文章', tCookie)
+    // 恢复 → 文章复活
+    const tRestore = await raw('POST', `/api/admin/trash/post/${tId}/restore`, tCookie)
+    results.push(['回收站：恢复', tRestore.status === 200])
+    console.log(`  ${tRestore.status === 200 ? '✓' : '✗'} 回收站：恢复`)
+    await check('GET', `/post/${tSlug}`, 200, '回收站链路正文')
+    // 再删 → 彻底删除（级联评论）→ 回收站也不含，文章 404
+    await raw('DELETE', `/api/admin/posts/${tId}`, tCookie)
+    const tPurge = await raw('DELETE', `/api/admin/trash/post/${tId}`, tCookie)
+    results.push(['回收站：彻底删除', tPurge.status === 200])
+    console.log(`  ${tPurge.status === 200 ? '✓' : '✗'} 回收站：彻底删除`)
+    await check('GET', `/post/${tSlug}`, 404)
+    await check('GET', '/api/admin/trash', 200, undefined, { notContains: '回收站链路文章', headers: tCookie.headers })
+  }
+
+  // 回收站恢复语义守卫：过期的定时文（到点未被 cron 发出）恢复后必须转草稿，不能恢复即撞发
+  const sCreate = await raw('POST', '/api/admin/posts', {
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({
+      title: '冒烟：过期定时恢复转草稿',
+      content: '<p>定时守卫</p>',
+      status: 'scheduled',
+      publishAt: Date.now() - 3_600_000,
+    }),
+  })
+  const sCreated = await sCreate.json().catch(() => null)
+  const sId = sCreated && sCreated.post && sCreated.post.id
+  if (sId) {
+    const sCookie = { headers: { Cookie: cookie } }
+    await raw('DELETE', `/api/admin/posts/${sId}`, sCookie)
+    const sRestore = await raw('POST', `/api/admin/trash/post/${sId}/restore`, sCookie)
+    const sRow = await raw('GET', `/api/admin/posts/${sId}`, sCookie)
+    const sBody = await sRow.json().catch(() => null)
+    const staleOk = sRestore.status === 200 && sBody?.post?.status === 'draft'
+    results.push(['回收站：过期定时文恢复转草稿', staleOk])
+    console.log(`  ${staleOk ? '✓' : '✗'} 回收站：过期定时文恢复转草稿（status ${sBody?.post?.status}）`)
+    await raw('DELETE', `/api/admin/posts/${sId}`, sCookie)
+    await raw('DELETE', `/api/admin/trash/post/${sId}`, sCookie)
+  }
+
+  // 微博回收站链路：软删 → 前台微博页/公开评论接口不可见 → 回收站可见 → 恢复 → 彻底删除
+  const twCreate = await raw('POST', '/api/admin/weibo', {
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ content: '冒烟回收站临时微博', status: 'published' }),
+  })
+  const twCreated = await twCreate.json().catch(() => null)
+  const twId = twCreated && twCreated.weibo && twCreated.weibo.id
+  if (twId) {
+    const twCookie = { headers: { Cookie: cookie } }
+    const twDel = await raw('DELETE', `/api/admin/weibo/${twId}`, twCookie)
+    results.push(['回收站：微博软删', twDel.status === 200])
+    console.log(`  ${twDel.status === 200 ? '✓' : '✗'} 回收站：微博软删（id ${twId}）`)
+    await check('GET', '/weibo', 200, undefined, { notContains: '冒烟回收站临时微博' })
+    await check('GET', `/api/public/weibo/${twId}/comments`, 404)
+    await check('GET', '/api/admin/trash?type=weibo', 200, '冒烟回收站临时微博', twCookie)
+    const twRestore = await raw('POST', `/api/admin/trash/weibo/${twId}/restore`, twCookie)
+    results.push(['回收站：微博恢复', twRestore.status === 200])
+    console.log(`  ${twRestore.status === 200 ? '✓' : '✗'} 回收站：微博恢复`)
+    await check('GET', '/weibo', 200, '冒烟回收站临时微博')
+    await raw('DELETE', `/api/admin/weibo/${twId}`, twCookie)
+    const twPurge = await raw('DELETE', `/api/admin/trash/weibo/${twId}`, twCookie)
+    results.push(['回收站：微博彻底删除', twPurge.status === 200])
+    console.log(`  ${twPurge.status === 200 ? '✓' : '✗'} 回收站：微博彻底删除`)
+    await check('GET', '/api/admin/trash?type=weibo', 200, undefined, { notContains: '冒烟回收站临时微博', headers: twCookie.headers })
   }
 
 } finally {

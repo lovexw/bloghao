@@ -8,6 +8,7 @@ import { renderAbout, renderArchive, renderCategory, renderGuestbook, renderHome
 import { buildRss, buildSitemap } from './rss'
 import { siteBase } from './render'
 import { purgeVisits } from './stats'
+import { purgeTrash } from './trash'
 import type { Env, SessionUser } from './types'
 import { isDemo } from './utils'
 
@@ -59,7 +60,7 @@ app.get('/search', renderSearch)
 
 // 随机来一篇：从已发布文章里随机挑一篇跳过去
 app.get('/random', async (c) => {
-  const row = await c.env.DB.prepare("SELECT slug FROM posts WHERE status = 'published' ORDER BY RANDOM() LIMIT 1").first<{
+  const row = await c.env.DB.prepare("SELECT slug FROM posts WHERE status = 'published' AND deleted_at IS NULL ORDER BY RANDOM() LIMIT 1").first<{
     slug: string
   }>()
   if (!row) return renderNotFound(c)
@@ -166,6 +167,8 @@ export default {
           await scheduledBackup(controller, env)
           // 访客日志滚动清理：visit_log 是日志类数据不进备份，只在这里按保留期删
           await purgeVisits(env.DB).catch((e) => console.error('purgeVisits failed:', e))
+          // 回收站滚动清理：到期（30 天）的软删行彻底删除并级联评论（src/trash.ts）
+          await purgeTrash(env.DB).catch((e) => console.error('purgeTrash failed:', e))
         }
       })()
     )

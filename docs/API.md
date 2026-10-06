@@ -113,7 +113,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | GET | `/api/admin/posts/:id` | 详情（含 content、categoryId） |
 | PUT | `/api/admin/posts/:id` | 更新（autosave 用；已发布时间不会被草稿保存抹掉）。**缺键即保留**：Body 里没出现的字段（content/tags/categoryId/title 等）一律沿用旧值——列表页状态切换只发 `{status}` 不会误清正文；显式传空串/空数组/`null` 才是清空 |
 | POST | `/api/admin/posts/:id/pin` | Body `{pinned:true/false}` |
-| DELETE | `/api/admin/posts/:id` | 删除（连带评论与分类关联） |
+| DELETE | `/api/admin/posts/:id` | 删除：**移入回收站**（软删，30 天后由 cron 自动彻底清除；评论与分类关联保留，恢复时一并跟回；彻底删除见下方「回收站」） |
 | GET | `/api/admin/tags` | 全站标签聚合（编辑器补全用，见下方「标签」） |
 
 文章 Body 字段：
@@ -143,7 +143,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | POST | `/api/admin/weibo` | 新建（发布或存草稿） |
 | PUT | `/api/admin/weibo/:id` | 更新（转回草稿会自动取消置顶） |
 | POST | `/api/admin/weibo/:id/pin` | Body `{pinned:true/false}` |
-| DELETE | `/api/admin/weibo/:id` | 删除（连带其下评论） |
+| DELETE | `/api/admin/weibo/:id` | 删除：**移入回收站**（软删，30 天后自动彻底清除；其下评论保留，恢复时一并跟回；彻底删除见下方「回收站」） |
 
 微博 Body 字段：
 
@@ -193,7 +193,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | GET | `/api/admin/pages` | 列表（全部状态，按 sort 排序） |
 | POST | `/api/admin/pages` | Body `{title, slug?, content?, status?: "draft"\|"published", show_in_nav?}`；slug 留空按标题生成（字母/数字/中文/短横线），重名自动加 `-2` 后缀 |
 | PUT | `/api/admin/pages/:id` | 编辑；`status` / `show_in_nav` 未提供时沿用旧值 |
-| DELETE | `/api/admin/pages/:id` | 删除（前台立即 404） |
+| DELETE | `/api/admin/pages/:id` | 删除：**移入回收站**（软删，期间前台立即 404，30 天后自动彻底清除；彻底删除见下方「回收站」） |
 | POST | `/api/admin/pages/reorder` | Body `{id, dir: "up"\|"down"}`，上移 / 下移导航排序 |
 
 `title` ≤ 60 字，`content` 为 HTML、白名单净化后 ≤ 100KB。前台渲染在 `/page/:slug`（导航高亮 `p:<slug>`）；`slug='about'` 的页面（迁移自「关于我」）固定渲染在 `/about`，`/page/about` 301 回专属短链。
@@ -204,6 +204,16 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | GET | `/api/admin/tags` | 文章实际用到的标签 + 分类页预建标签（count 0），按使用次数排序，最多 200 个 |
 | POST | `/api/admin/tags` | Body `{name}`，预建标签（≤ 20 字，不可重名） |
 | DELETE | `/api/admin/tags/:name` | 删除标签，并从所有文章的 tags 中移除 |
+
+### 回收站（软删除）
+文章 / 微博 / 独立页面删除时统一打 `deleted_at` 毫秒时间戳标记（不真删），前台与后台各列表立即不可见；**保留 30 天**，每晚备份 cron 顺带把到期项彻底删除并级联清掉其下评论（到期前数据仍在每日备份里）。恢复 = 清除标记，内容原样回到删除前的状态（文章恢复后若定时时间已过则自动转为草稿，不会恢复即发布）。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/trash?type=post\|weibo\|page&page=1` | 列表（type 缺省 = 三类合并，按删除时间倒序，每页 20；元素 `{type, id, label, status, deleted_at}`，weibo 的 label 为正文前 120 字） |
+| POST | `/api/admin/trash/post\|weibo\|page/:id/restore` | 恢复（内容回到原列表；仅对已在回收站的行生效） |
+| DELETE | `/api/admin/trash/post\|weibo\|page/:id` | 彻底删除（**不可恢复**；文章/微博连带其下评论、文章连带分类关联一并删除；仅对已在回收站的行生效，误传存活 id 返回 404） |
+| POST | `/api/admin/trash/purge` | 清空回收站，Body 可选 `{type}` 定向清空一类（缺省全清） |
 
 ### 上传 / 媒体
 | 方法 | 路径 | 说明 |

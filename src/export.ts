@@ -101,11 +101,12 @@ function attachmentHeaders(filename: string, contentType: string): Headers {
 exportRoutes.get('/markdown', async (c) => {
   const db = c.env.DB
   const [postsRes, catRes, weiboRes] = await Promise.all([
-    db.prepare('SELECT * FROM posts ORDER BY id ASC LIMIT ?').bind(MAX_ROWS).all<PostRow>(),
+    // 回收站里的已删行不进导出包（导出是用户产物；备份仍是全表含回收站）
+    db.prepare('SELECT * FROM posts WHERE deleted_at IS NULL ORDER BY id ASC LIMIT ?').bind(MAX_ROWS).all<PostRow>(),
     db
       .prepare('SELECT pc.post_id, c.name AS name FROM post_categories pc JOIN categories c ON c.id = pc.category_id')
       .all<{ post_id: number; name: string }>(),
-    db.prepare('SELECT * FROM weibo ORDER BY id ASC LIMIT ?').bind(MAX_ROWS).all<WeiboRow>(),
+    db.prepare('SELECT * FROM weibo WHERE deleted_at IS NULL ORDER BY id ASC LIMIT ?').bind(MAX_ROWS).all<WeiboRow>(),
   ])
   const posts = postsRes.results ?? []
   const weibo = weiboRes.results ?? []
@@ -237,7 +238,7 @@ exportRoutes.get('/wxr', async (c) => {
   const db = c.env.DB
   const settings = await getSettings(db)
   const [postsRes, catRes] = await Promise.all([
-    db.prepare('SELECT * FROM posts ORDER BY id ASC LIMIT ?').bind(MAX_ROWS).all<PostRow>(),
+    db.prepare('SELECT * FROM posts WHERE deleted_at IS NULL ORDER BY id ASC LIMIT ?').bind(MAX_ROWS).all<PostRow>(),
     db
       .prepare('SELECT pc.post_id, c.name AS name FROM post_categories pc JOIN categories c ON c.id = pc.category_id')
       .all<{ post_id: number; name: string }>(),
