@@ -13,7 +13,7 @@ import { Hono } from 'hono'
 import { clientIp, rateLimit } from './auth'
 import { getPostById, uniqueSlug } from './db'
 import { sanitizeHtml } from './sanitize'
-import { MAX_UPLOAD_BYTES, saveUpload } from './store'
+import { transferImage } from './store'
 import type { Env, SessionUser } from './types'
 import { esc, excerpt, slugify } from './utils'
 
@@ -316,53 +316,7 @@ function renderHtml(blocks: Block[], srcMap: Map<string, string>): string {
 }
 
 /* ---------------- 图片转存 ---------------- */
-
-/** 从文件魔数识别图片真实类型；识别不出返回 null（HTML/SVG/其它一律拒收）。
- *  导出仅为回归测试：类型只认魔数，不信任源站 Content-Type / URL 的 wx_fmt */
-export function sniffImageExt(buf: ArrayBuffer): 'jpg' | 'png' | 'gif' | 'webp' | null {
-  const b = new Uint8Array(buf, 0, Math.min(16, buf.byteLength))
-  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg'
-  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png'
-  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'gif' // GIF87a / GIF89a
-  if (
-    b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && // RIFF
-    b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50 // WEBP
-  )
-    return 'webp'
-  return null
-}
-
-async function saveImage(
-  c: { env: Env },
-  url: string,
-  name: string
-): Promise<string | null> {
-  if (!/^https?:\/\//i.test(url)) return null
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': UA, Referer: 'https://mp.weixin.qq.com/' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    })
-    if (!res.ok) return null
-    // 先看声明长度再读体：超大响应直接放弃（有些服务器不回 Content-Length，兜底仍靠读后的字节数检查）
-    if (Number(res.headers.get('content-length') || 0) > MAX_UPLOAD_BYTES) return null
-    const buf = await res.arrayBuffer()
-    if (buf.byteLength === 0 || buf.byteLength > MAX_UPLOAD_BYTES) return null
-    // 类型只认文件魔数，不信任源站 Content-Type / URL 的 wx_fmt：
-    // 声明成图片但内容是 HTML/SVG 的响应一律拒收，存储的 Content-Type
-    // 由识别出的扩展名反推，保证 /images/ 回源时永远是安全的图片类型
-    const ext = sniffImageExt(buf)
-    if (!ext) return null
-    // 类型只认文件魔数，不信任源站 Content-Type / URL 的 wx_fmt：
-    // 声明成图片但内容是 HTML/SVG 的响应一律拒收，存储的 Content-Type
-    // 由识别出的扩展名反推，保证 /images/ 回源时永远是安全的图片类型
-    const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`
-    return saveUpload(c.env, buf, contentType, name, ext)
-  } catch {
-    return null
-  }
-}
+/* 抓取 → 魔数识别 → R2 落库的共用实现在 src/store.ts transferImage（粘贴净化同用） */
 
 /* ---------------- 路由 ---------------- */
 
@@ -429,7 +383,7 @@ collectRoutes.post('/wechat', async (c) => {
   const srcMap = new Map<string, string>()
   let saved = 0
   for (const src of imgUrls) {
-    const local = await saveImage(c, src, `公众号配图-${saved + 1}`)
+    const local = await transferImage(c.env, src, `公众号配图-${saved + 1}`)
     if (local) {
       srcMap.set(src, local)
       saved++
@@ -439,7 +393,7 @@ collectRoutes.post('/wechat', async (c) => {
   // 封面转存
   let cover = ''
   if (meta.cover && /^https?:\/\//i.test(meta.cover)) {
-    cover = (await saveImage(c, meta.cover, '公众号封面')) || ''
+    cover = (await transferImage(c.env, meta.cover, '公众号封面')) || ''
   }
 
   const content = sanitizeHtml(renderHtml(blocks, srcMap))

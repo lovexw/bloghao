@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { imagePostBlocks, parseImagePost, parseMeta, sniffImageExt } from '../src/collect.ts'
+import { imagePostBlocks, parseImagePost, parseMeta } from '../src/collect.ts'
+// 魔数识别与转存已下沉 store.ts（采集与粘贴净化共用）
+import { sniffImageExt } from '../src/store.ts'
 
 // ── 图片类型只认魔数（回归：曾信任源站 Content-Type / URL wx_fmt，
 //    可把 HTML/SVG 以图片身份转存进站点源，形成存储型 XSS）──

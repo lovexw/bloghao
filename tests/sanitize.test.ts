@@ -55,6 +55,23 @@ test('meta 无 data-og-image 仍被丢弃', () => {
   assert.equal(sanitizeHtml('<meta charset="utf-8">'), '')
 })
 
+// ── void 元素只丢弃标签本身（回归：微信剪贴板以 <meta charset='utf-8'> 开头，
+//    「丢弃到结束标签」的扫描找不到 </meta>，曾把其后整段粘贴内容吞光——
+//    编辑器里表现为「粘贴没反应」）──
+test('meta/link/base/input/embed 等 void 元素不吞后续内容', () => {
+  assert.equal(sanitizeHtml("<meta charset='utf-8'><p>正文</p>"), '<p>正文</p>')
+  assert.equal(sanitizeHtml('<meta charset="utf-8"/>尾'), '尾')
+  assert.equal(sanitizeHtml('<link rel="stylesheet" href="https://x.example/a.css"><p>hi</p>'), '<p>hi</p>')
+  assert.equal(sanitizeHtml('<base href="https://evil.example/">ok'), 'ok')
+  assert.equal(sanitizeHtml('<input type="text" onfocus="alert(1)"><p>hi</p>'), '<p>hi</p>')
+  assert.equal(sanitizeHtml('<embed src="x.swf">尾'), '尾')
+})
+
+test('非 void 的未闭合丢弃标签仍吞到结尾（script/style 语义不变）', () => {
+  assert.equal(sanitizeHtml('a<style>b'), 'a')
+  assert.equal(sanitizeHtml('a<iframe src="x"></iframe>b'), 'ab')
+})
+
 // ── 回归（2026-10 安全复查）：未终结的标签前缀 / 未闭合注释曾被原样透传 ——
 // 浏览器会把后续页面标记当成该 img 的属性（onerror 内联事件复活）或把整页吞进注释 ──
 test('未终结的标签前缀与未闭合注释被转义，正常文本里的 < 不误伤', () => {

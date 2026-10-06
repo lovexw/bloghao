@@ -50,7 +50,7 @@ import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes
 import { fireCommentCreated, firePostPublished, listServerPlugins } from './hooks'
 import { siteBase, toHomePost } from './render'
 import { sanitizeHtml } from './sanitize'
-import { imageExtOf, MAX_UPLOAD_BYTES, saveUpload } from './store'
+import { imageExtOf, MAX_REMOTE_IMAGES, MAX_UPLOAD_BYTES, saveUpload, transferImage } from './store'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
 import { THEMES } from './themes/registry'
 import type { CommentRow, Env, PostRow, SessionUser } from './types'
@@ -1227,11 +1227,37 @@ api.post('/admin/tools/md', async (c) => {
   return c.json({ html: mdToHtml(md) })
 })
 
+/** 粘贴净化配套：外链图（公众号 mmbiz.qpic.cn 等有防盗链/随时失效的风险）转存站内图床并改写 src。
+ *  转存上限与 collect 同口径（MAX_REMOTE_IMAGES）；单张失败保留原 src 不影响整篇——
+ *  但 http:// 的图在 https 站上是混合内容会被浏览器拦，兜底升级成 https:// 再交给浏览器 */
+async function rehostPasteImages(env: Env, html: string): Promise<{ html: string; transferred: number }> {
+  const srcs = [...new Set([...html.matchAll(/<img\b[^>]*\ssrc="(https?:\/\/[^"]+)"/gi)].map((m) => m[1]))]
+  if (!srcs.length) return { html, transferred: 0 }
+  const map = new Map<string, string>()
+  let transferred = 0
+  for (const src of srcs.slice(0, MAX_REMOTE_IMAGES)) {
+    const local = await transferImage(env, src, `粘贴配图-${transferred + 1}`)
+    if (local) {
+      map.set(src, local)
+      transferred++
+    }
+  }
+  const out = html.replace(/(<img\b[^>]*\ssrc=")([^"]+)(")/gi, (m, pre: string, src: string, post: string) => {
+    const local = map.get(src)
+    if (local) return pre + local + post
+    if (/^http:\/\//i.test(src)) return pre + `https://${src.slice(7)}` + post
+    return m
+  })
+  return { html: out, transferred }
+}
+
 api.post('/admin/tools/sanitize', async (c) => {
   const body = await c.req.json<{ html?: string }>().catch(() => null)
   const html = String(body?.html ?? '')
   if (new TextEncoder().encode(html).length > MAX_CONTENT_BYTES) return jsonError('内容过长')
-  return c.json({ html: sanitizeHtml(html) })
+  const clean = sanitizeHtml(html)
+  const r = await rehostPasteImages(c.env, clean)
+  return c.json({ html: r.html, transferred: r.transferred })
 })
 
 /* ---------------- 公开接口 ---------------- */

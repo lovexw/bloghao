@@ -1242,6 +1242,8 @@ export async function mountEditor(root, postId, opts = {}) {
         const d = await api('/admin/tools/sanitize', { method: 'POST', body: { html } })
         insertHTML(d.html || '')
         saveState.textContent = '粘贴完成'
+        // 外链图（公众号等）已自动转存站内图床，提示数量让等待有感知
+        if (d.transferred > 0) toast(`已转存 ${d.transferred} 张外链图片到站内图床`)
       } catch {
         insertHTML(esc(cd.getData('text/plain') || ''))
       }

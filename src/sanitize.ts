@@ -18,6 +18,11 @@ const DROP_WITH_CONTENT = new Set([
   'base', 'frame', 'frameset', 'applet', 'template', 'dialog', 'audio',
 ])
 
+/** 上面名单里的 void 元素：HTML 规范没有结束标签，「丢弃到结束标签」的扫描永远
+ *  找不到 `</meta>`，会把其后全部内容吞掉——微信剪贴板以 `<meta charset='utf-8'>`
+ *  开头，整段粘贴内容曾因此消失（编辑器表现为「粘贴没反应」） */
+const DROP_VOID = new Set(['meta', 'link', 'base', 'input', 'embed'])
+
 /** meta 例外：编辑器生成的 OG 分享卡图标记（<meta data-og-image="/images/...">），存进正文供前台输出 og:image */
 const OG_META_RE = /^\s*<meta[^>]*\bdata-og-image=(?:"[^"]+"|'[^']+'|[^\s>]+)[^>]*\/?>\s*$/i
 
@@ -193,7 +198,7 @@ export function sanitizeHtml(input: string): string {
           continue
         }
       }
-      if (!isClose && !selfClosed) {
+      if (!isClose && !selfClosed && !DROP_VOID.has(name)) {
         // 丢弃到对应结束标签为止；未闭合则丢弃其后全部内容（对 script/style 是正确行为）
         const rest = input.slice(last)
         const cm = new RegExp(`</${name}[\\s>]`, 'i').exec(rest)
