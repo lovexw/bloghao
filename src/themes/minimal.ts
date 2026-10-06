@@ -1,5 +1,5 @@
 import type { SettingsMap } from '../types'
-import type { PostSort } from '../db'
+import type { AboutData, ArchivesData, GuestbookData, HomeData, LinksData, PageData, PostData, WeiboData } from './registry'
 import {
   archiveListHtml,
   categoryLink,
@@ -19,18 +19,20 @@ import {
   weiboHomeEntry,
   weiboPager,
   weiboTopicBar,
-  type ArchiveYearGroup,
-  type CategoryLink,
-  type NavPage,
-  type FriendLinkView,
-  type HomePostView,
-  type OnThisDayItemView,
-  type TagCount,
-  type WeiboItemView,
 } from '../render'
 import css from './minimal.css'
 
 const id = 'minimal'
+
+/** 页脚公共件：八个页面只差链接组，结构统一在这里 */
+function foot(s: SettingsMap, links: string): string {
+  return `<footer class="mn-footer"><span>${esc(s.footerText || '')}</span><span>${links}</span></footer>`
+}
+const FOOT_LINKS = {
+  home: '<a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a>',
+  article: '<a href="/weibo">微博</a><a href="/admin">管理</a><a href="/rss.xml">RSS</a>',
+  about: '<a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a>',
+}
 
 /** 站点头像：设置过 avatarUrl 才展示（极简主题默认不占位） */
 function avatar(s: SettingsMap): string {
@@ -45,26 +47,7 @@ function searchForm(q: string | undefined): string {
 </form>`
 }
 
-export function home(d: {
-  settings: SettingsMap
-  posts: HomePostView[]
-  page: number
-  totalPages: number
-  total: number
-  tag?: string
-  q?: string
-  sort?: PostSort
-  seed?: number
-  categorySlug?: string
-  tags: TagCount[]
-  categories: CategoryLink[]
-  pages?: NavPage[]
-  navActive?: string
-  notice?: string
-  emptyText?: string
-  weibo?: { items: WeiboItemView[]; total: number } | null
-  onThisDay?: OnThisDayItemView[] | null
-}): string {
+export function home(d: HomeData): string {
   const s = d.settings
   const items = d.posts
     .map(
@@ -99,34 +82,11 @@ export function home(d: {
     totalPages: d.totalPages,
     base: homeListBase({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q }),
   })}
-  <footer class="mn-footer">
-    <span>${esc(s.footerText || '')}</span>
-    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
-  </footer>
+  ${foot(s, FOOT_LINKS.home)}
 </div>`
 }
 
-export function post(d: {
-  settings: SettingsMap
-  post: {
-    slug: string
-    title: string
-    contentHtml: string
-    summary: string
-    cover: string
-    tags: string[]
-    published_at: number | null
-    views: number
-    likes: number
-    readingMinutes: number
-  }
-  category: CategoryLink | null
-  categories: CategoryLink[]
-  pages?: NavPage[]
-  tags?: TagCount[]
-  comments: { html: string; count: number }
-  related: HomePostView[]
-}): string {
+export function post(d: PostData): string {
   const p = d.post
   const related = d.related.length
     ? `<aside class="mn-related"><h2>继续读</h2>${d.related
@@ -150,39 +110,16 @@ export function post(d: {
     ${related}
     ${d.comments.html}
   </article>
-  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/weibo">微博</a><a href="/admin">管理</a><a href="/rss.xml">RSS</a></span></footer>
+  ${foot(d.settings, FOOT_LINKS.article)}
 </div>`
 }
 
-export function about(d: {
-  settings: SettingsMap
-  contentHtml: string
-  categories: CategoryLink[]
-  pages?: NavPage[]
-  tags?: TagCount[]
-  navActive?: string
-}): string {
-  return `<div class="mn-wrap">
-  ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
-  <header class="mn-header"><a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a></header>
-  <article class="mn-article">
-    <h1 class="mn-title">关于我</h1>
-    <div class="rich">${d.contentHtml}</div>
-  </article>
-  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
-</div>`
+export function about(d: AboutData): string {
+  return page({ ...d, title: '关于我' })
 }
 
 /** 独立页面页（/page/:slug，slug='about' 时渲染 /about）：结构同关于我，标题由页面数据决定 */
-export function page(d: {
-  settings: SettingsMap
-  title: string
-  contentHtml: string
-  categories: CategoryLink[]
-  pages?: NavPage[]
-  tags?: TagCount[]
-  navActive?: string
-}): string {
+export function page(d: PageData): string {
   return `<div class="mn-wrap">
   ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <header class="mn-header"><a class="mn-logo" href="/">← ${esc(d.settings.siteName)}</a></header>
@@ -190,19 +127,12 @@ export function page(d: {
     <h1 class="mn-title">${esc(d.title)}</h1>
     <div class="rich">${d.contentHtml}</div>
   </article>
-  <footer class="mn-footer"><span>${esc(d.settings.footerText || '')}</span><span><a href="/">Home</a><a href="/weibo">微博</a><a href="/admin">管理</a></span></footer>
+  ${foot(d.settings, FOOT_LINKS.about)}
 </div>`
 }
 
 /** 文章归档页：全部文章按年份分组，日期外置的细线列表 */
-export function archives(d: {
-  settings: SettingsMap
-  categories: CategoryLink[]
-  pages?: NavPage[]
-  tags?: TagCount[]
-  total: number
-  groups: ArchiveYearGroup[]
-}): string {
+export function archives(d: ArchivesData): string {
   const s = d.settings
   return `<div class="mn-wrap">
   ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
@@ -213,22 +143,12 @@ export function archives(d: {
   <h1 class="mn-title mn-page-title">归档</h1>
   <p class="mn-intro">${d.total > 0 ? `共 ${d.total} 篇 · 按年份倒序` : '写下的每一篇都会收进这里'}</p>
   <main class="mn-archives">${archiveListHtml(d.groups) || '<p class="mn-empty">Nothing here yet. Start writing.</p>'}</main>
-  <footer class="mn-footer">
-    <span>${esc(s.footerText || '')}</span>
-    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
-  </footer>
+  ${foot(s, FOOT_LINKS.home)}
 </div>`
 }
 
 /** 留言板页：独立留言墙（复用 .cmt-* 结构与样式） */
-export function guestbook(d: {
-  settings: SettingsMap
-  categories: CategoryLink[]
-  pages?: NavPage[]
-  tags?: TagCount[]
-  html: string
-  count: number
-}): string {
+export function guestbook(d: GuestbookData): string {
   const s = d.settings
   return `<div class="mn-wrap">
   ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
@@ -239,28 +159,12 @@ export function guestbook(d: {
   <h1 class="mn-title mn-page-title">留言板</h1>
   <p class="mn-intro">${d.count > 0 ? `已有 ${d.count} 条留言 · 随便聊聊` : '想说点什么，就在这里写下来'}</p>
   <main>${d.html}</main>
-  <footer class="mn-footer">
-    <span>${esc(s.footerText || '')}</span>
-    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
-  </footer>
+  ${foot(s, FOOT_LINKS.home)}
 </div>`
 }
 
 /** 微博页：随手记时间线 */
-export function weibo(d: {
-  settings: SettingsMap
-  categories: CategoryLink[]
-  pages?: NavPage[]
-  tags?: TagCount[]
-  items: WeiboItemView[]
-  page: number
-  totalPages: number
-  total: number
-  allowComments: boolean
-  adminName?: string
-  topic?: string
-  topics?: { name: string; count: number }[]
-}): string {
+export function weibo(d: WeiboData): string {
   const s = d.settings
   const topicBar = weiboTopicBar(d.topics || [], d.topic)
   const composer = d.adminName ? weiboComposer({ adminName: d.adminName }) : ''
@@ -283,22 +187,12 @@ export function weibo(d: {
     ${cards || `<p class="wb-empty">${d.adminName ? 'Nothing here yet — post the first one above.' : 'Nothing here yet.'}</p>`}
   </main>
   ${weiboPager(d.page, d.totalPages, d.topic)}
-  <footer class="mn-footer">
-    <span>${esc(s.footerText || '')}</span>
-    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
-  </footer>
+  ${foot(s, FOOT_LINKS.home)}
 </div>`
 }
 
 /** 友情链接页：友链卡片 + 申请收录 */
-export function links(d: {
-  settings: SettingsMap
-  categories: CategoryLink[]
-  pages?: NavPage[]
-  tags?: TagCount[]
-  items: FriendLinkView[]
-  total: number
-}): string {
+export function links(d: LinksData): string {
   const s = d.settings
   return `<div class="mn-wrap">
   ${siteNav({ cls: 'mn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
@@ -310,10 +204,7 @@ export function links(d: {
     ${friendLinkCards(d.items) || '<p class="wb-empty">No links yet.</p>'}
   </main>
   ${friendLinkApply()}
-  <footer class="mn-footer">
-    <span>${esc(s.footerText || '')}</span>
-    <span><a href="/weibo">微博</a><a href="/rss.xml">RSS</a><a href="/admin">管理</a></span>
-  </footer>
+  ${foot(s, FOOT_LINKS.home)}
 </div>`
 }
 
