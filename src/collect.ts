@@ -258,6 +258,25 @@ interface Block {
 }
 
 /**
+ * 微信图媒体 ID：mmbiz 图 URL 的身份段（…/mmbiz_jpg/<ID>/…）。
+ * 公众号封面（msg_cdn_url）常是正文首图的衍生裁切——同一 ID、不同尺寸/格式段
+ * （mmbiz_jpg/ID/640 vs mmbiz_png/ID/0），字符串比对永远不等，只有 ID 能认出是同一张。
+ */
+export function mmbizAssetId(url: string): string {
+  const m = /mmbiz(?:_[a-z]+)?\/([A-Za-z0-9_-]+)\//i.exec(url)
+  return m ? m[1] : ''
+}
+
+/** 正文里去掉与封面同媒体的图块（只去第一张）；贴图不适用（其封面本就取自首图） */
+export function dropCoverDupBlock(blocks: Block[], cover: string): Block[] {
+  const id = mmbizAssetId(cover)
+  if (!id) return blocks
+  const idx = blocks.findIndex((b) => b.type === 'img' && b.src && mmbizAssetId(b.src) === id)
+  if (idx === -1) return blocks
+  return blocks.slice(0, idx).concat(blocks.slice(idx + 1))
+}
+
+/**
  * 把正文 HTML 拆成有序的段落/图片块。
  * 公众号正文是大量嵌套 <section>，按 </section>/<p> 切块；
  * 段内保留加粗/斜体（哨兵标记，最后还原），其余样式丢弃。
@@ -370,7 +389,8 @@ collectRoutes.post('/wechat', async (c) => {
     if (!meta.cover && imagePost.images[0]) meta.cover = imagePost.images[0]
   }
   // imagePost 为空时 articleBody 必非空（!articleBody && !imagePost 已提前返回）
-  const blocks: Block[] = imagePost ? imagePostBlocks(imagePost) : parseBlocks(articleBody!)
+  // 封面只留封面位：正文里与封面同媒体的图不再重收（贴图除外——其封面本就取自首图，图即内容）
+  const blocks: Block[] = imagePost ? imagePostBlocks(imagePost) : dropCoverDupBlock(parseBlocks(articleBody!), meta.cover)
 
   // 配图转存（按出现顺序，去重，限量）
   const imgUrls = [

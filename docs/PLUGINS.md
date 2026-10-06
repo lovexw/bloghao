@@ -71,6 +71,8 @@ window.BlogHao &&
 - **普通图文**：解析 `js_content` DOM，保留段内加粗/斜体；
 - **贴图（图片消息）**：页面没有 `js_content`，数据埋在内嵌 JS 里（`parseImagePost`）——图片列表取 `picture_page_info_list` 各条目顶层的 `cdn_url`（排除 `share_cover`/`watermark_info` 等嵌套图），全文取 `window.desc`/`content_noencode`（`\x0a` 反转义后按空行分段），草稿沿用原页面版式：图片在前、文字分段在后。
 
+公众号封面（`msg_cdn_url`）常是正文首图的**衍生裁切**（同一媒体 ID、不同尺寸/格式段，字符串比对不出来）。普通图文采集时会按媒体 ID（`mmbizAssetId`）识别这种情况，正文里去掉那张图——封面只放封面位，文章页不再一图两现；贴图不适用（其封面本就取自首图，图即内容）。
+
 服务端实现见 `src/collect.ts`（`POST /api/admin/collect/wechat`，需登录）。限制：每分钟 10 篇 / IP，单篇最多转存 30 张图，单次抓取（页面/图片）超时 15 秒，正文 ≤ 约 900KB；公众号**内嵌视频暂不支持**。
 
 面向使用者的完整说明见 [GUIDE.md](GUIDE.md) 第 6 节。

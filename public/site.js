@@ -528,6 +528,31 @@
       })
   })
 
+  /* ---------------- 文章分享（复制链接/系统分享/卡片图+二维码）：同款按需加载 ---------------- */
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.share-btn') : null
+    if (!btn) return
+    e.preventDefault()
+    if (btn.dataset.busy) return
+    btn.dataset.busy = '1'
+    import('/share-card.js')
+      .then(function (m) {
+        return m.openArticleShare(btn)
+      })
+      .catch(function () {
+        var b = btn.querySelector('.share-label')
+        if (b) {
+          b.textContent = '失败'
+          setTimeout(function () {
+            b.textContent = '分享'
+          }, 2000)
+        }
+      })
+      .finally(function () {
+        delete btn.dataset.busy
+      })
+  })
+
   /* ---------------- 前台发微博（管理员登录时微博页顶部的发布框，能力与后台发布器一致） ---------------- */
   var composerForm = document.querySelector('[data-wb-composer]')
   if (composerForm) {

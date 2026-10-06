@@ -118,7 +118,7 @@ img { max-width: 100%; height: auto; }
 }
 
 .pp-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.like-btn {
+.like-btn, .share-btn {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 14px; color: #6b665c;
   border: 1px solid var(--pp-line);
@@ -127,7 +127,7 @@ img { max-width: 100%; height: auto; }
   padding: 7px 18px;
   transition: all 0.2s ease;
 }
-.like-btn:hover { border-color: var(--pp-accent); color: var(--pp-accent); }
+.like-btn:hover, .share-btn:hover { border-color: var(--pp-accent); color: var(--pp-accent); }
 .like-btn.liked { background: var(--pp-accent); border-color: var(--pp-accent); color: #f7f4ee; }
 .like-btn.liked svg path { fill: currentColor; }
 

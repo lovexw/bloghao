@@ -110,6 +110,8 @@ export interface PostData {
   tags?: TagCount[]
   comments: { html: string; count: number }
   related: HomePostView[]
+  /** 分享按钮数据：canonical 绝对链接 + 该链接的 QR 矩阵位串（src/qrcode.ts 打包；qr 为空串表示超长未生成） */
+  share?: { url: string; qr: string }
 }
 
 export interface AboutData {

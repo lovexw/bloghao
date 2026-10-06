@@ -14,6 +14,7 @@ import {
   likesBtn,
   onThisDayCard,
   pagerHtml,
+  shareBtn,
   siteMode,
   siteNav,
   tagLink,
@@ -154,6 +155,7 @@ export function post(d: PostData): string {
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       留言 <b data-count>${d.comments.count}</b>
     </a>
+    ${d.share ? shareBtn(d.share.url, d.share.qr) : ''}
   </div>
   ${related}
   ${d.comments.html}

@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import type { ThemeModule } from '../src/themes/registry.ts'
 import type { AboutData, ArchivesData, GuestbookData, HomeData, LinksData, PageData, PostData, WeiboData } from '../src/themes/registry.ts'
 import type { HomePostView, WeiboItemView, ArchiveYearGroup, FriendLinkView, CategoryLink, TagCount } from '../src/render.ts'
+import { packMatrix, qrMatrix } from '../src/qrcode.ts'
 
 // 主题模块 import 了 .css（wrangler 部署走 Text rule）——测试环境先用 hook 顶替，再动态加载注册表
 register('./tests/css-loader.mjs', pathToFileURL(`${process.cwd()}/`))
@@ -151,6 +152,29 @@ for (const [themeId, theme] of Object.entries(THEMES as Record<string, ThemeModu
     assert.ok(html.includes('<p>正文</p>'))
     assert.ok(html.includes('like-btn'))
     assert.ok(html.includes('cmt-list'))
+    // 未传 share 不渲染分享按钮
+    assert.ok(!html.includes('share-btn'), `${themeId}.post 无 share 数据时不应渲染分享按钮`)
+  })
+
+  test(`${themeId}: post 渲染分享按钮（canonical 链接 + QR 矩阵位串无损下发）`, () => {
+    const d = postData()
+    d.share = { url: 'https://blog.xiaowuleyi.com/post/hello?a=1&b=2', qr: packMatrix(qrMatrix('https://blog.xiaowuleyi.com/post/hello')!) }
+    const html = theme.post(d)
+    checkPage(themeId, 'post+share', html)
+    assert.ok(html.includes('class="share-btn"'), '应渲染 share-btn')
+    assert.ok(html.includes('data-share-url="https://blog.xiaowuleyi.com/post/hello?a=1&amp;b=2"'), '链接应转义下发')
+    const m = / data-share-qr="([A-Za-z0-9+/=]+)"/.exec(html)
+    assert.ok(m, '应带 QR 位串')
+    // 位串还原回矩阵应与原矩阵一致（行主序、首字节边长）
+    const bin = Buffer.from(m![1], 'base64')
+    const origin = qrMatrix('https://blog.xiaowuleyi.com/post/hello')!
+    assert.equal(bin[0], origin.length)
+    let k = 0
+    for (let r = 0; r < origin.length; r++)
+      for (let c = 0; c < origin.length; c++) {
+        assert.equal((bin[1 + (k >> 3)] >> (7 - (k & 7))) & 1, origin[r][c] ? 1 : 0)
+        k++
+      }
   })
 
   test(`${themeId}: about 与 page 渲染（标题区分）`, () => {

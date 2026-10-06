@@ -14,6 +14,7 @@ import {
   likesBtn,
   onThisDayCard,
   pagerHtml,
+  shareBtn,
   siteMode,
   siteNav,
   tagLink,
@@ -141,6 +142,7 @@ export function post(d: PostData): string {
     <div class="rich">${p.contentHtml}</div>
     <div class="jrn-foot">
       ${likesBtn(p.slug, p.likes)}
+      ${d.share ? shareBtn(d.share.url, d.share.qr) : ''}
       <div class="jrn-tags">${p.tags.map((t) => `<a class="jrn-sticker" href="${tagLink(t)}">${esc(t)}</a>`).join('')}</div>
     </div>
   </article>

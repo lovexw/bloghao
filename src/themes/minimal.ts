@@ -12,6 +12,7 @@ import {
   likesBtn,
   onThisDayCard,
   pagerHtml,
+  shareBtn,
   siteMode,
   siteNav,
   tagLink,
@@ -108,6 +109,7 @@ export function post(d: PostData): string {
     <div class="rich">${p.contentHtml}</div>
     <div class="mn-foot">
       ${likesBtn(p.slug, p.likes)}
+      ${d.share ? shareBtn(d.share.url, d.share.qr) : ''}
       <div class="mn-tags">${d.category ? `<a href="${categoryLink(d.category)}">${esc(d.category.name)}</a>` : ''}${p.tags.map((t) => `<a href="${tagLink(t)}">${esc(t)}</a>`).join('')}</div>
     </div>
     ${related}

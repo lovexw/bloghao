@@ -149,7 +149,7 @@ img { max-width: 100%; height: auto; }
 .wx-back:hover { color: var(--wx-accent); border-color: var(--wx-accent); }
 .wx-back svg { flex: 0 0 auto; }
 
-.wx-title { font-size: 22px; font-weight: 600; line-height: 1.4; color: #111; }
+.wx-title { font-size: 22px; font-weight: 600; line-height: 1.4; color: #111; margin: 28px 0 0; }
 .wx-meta { display: flex; align-items: center; gap: 10px; margin: 16px 0 20px; }
 .wx-meta .wx-avatar { width: 38px; height: 38px; flex-basis: 38px; font-size: 18px; border-radius: 8px; }
 .wx-meta-avatar { display: flex; flex: 0 0 auto; }
@@ -250,7 +250,7 @@ a.wx-account:hover { opacity: 0.75; }
 .wx-tag { font-size: 13px; color: var(--wx-link); background: rgba(87, 107, 149, 0.08); padding: 4px 12px; border-radius: 999px; }
 
 .wx-actions { display: flex; justify-content: center; gap: 14px; margin: 28px 0 8px; }
-.wx-action, .like-btn {
+.wx-action, .like-btn, .share-btn {
   display: flex; align-items: center; gap: 6px;
   font-size: 14px; color: #666;
   border: 1px solid #e0e0e0;
@@ -259,7 +259,7 @@ a.wx-account:hover { opacity: 0.75; }
   padding: 8px 20px;
   transition: all 0.2s ease;
 }
-.wx-action:hover, .like-btn:hover { border-color: var(--wx-accent); color: var(--wx-accent); }
+.wx-action:hover, .like-btn:hover, .share-btn:hover { border-color: var(--wx-accent); color: var(--wx-accent); }
 .like-btn.liked { background: var(--wx-accent); border-color: var(--wx-accent); color: #fff; }
 .like-btn.liked svg path { fill: currentColor; }
 .like-btn b { font-weight: 500; }
@@ -549,8 +549,8 @@ a.wx-account:hover { opacity: 0.75; }
   .wx-post-title { font-size: 17.5px; }
   .wx-post-abs { font-size: 13.5px; }
   .wx-article { padding-top: 12px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
-  .wx-title { font-size: 21px; }
-  .wx-action, .like-btn { padding: 9px 22px; }
+  .wx-title { font-size: 21px; margin-top: 18px; }
+  .wx-action, .like-btn, .share-btn { padding: 9px 22px; }
   /* 输入框字号 ≥16px，避免 iOS Safari 聚焦时自动放大页面 */
   .cmt-input, .cmt-textarea, .wb-cmt-input, .wb-cmt-textarea, .wb-composer-textarea { font-size: 16px; }
   .rich table { display: block; width: max-content; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }

@@ -848,6 +848,20 @@ export function likesBtn(slug: string, likes: number): string {
 </button>`
 }
 
+/**
+ * 文章分享按钮：data-share-url 是 canonical 绝对链接，data-share-qr 是该链接的
+ * QR 矩阵位串（src/qrcode.ts packMatrix 产物，空串表示链接超长未生成码）。
+ * 交互在 site.js：点击按需加载 /share-card.js 弹出分享面板（复制链接/系统分享/卡片图）。
+ */
+export function shareBtn(url: string, qr: string): string {
+  return `<button class="share-btn" type="button" data-share-url="${esc(url)}"${
+    qr ? ` data-share-qr="${esc(qr)}"` : ''
+  } aria-label="分享本文">
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 14V3.5m0 0L8.5 7m3.5-3.5L15.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.5 10.5H7a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <span class="share-label">分享</span>
+</button>`
+}
+
 export function tagLink(name: string): string {
   return `/tag/${encodeURIComponent(name)}`
 }

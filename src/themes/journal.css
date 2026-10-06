@@ -670,7 +670,7 @@ img { max-width: 100%; height: auto; }
   margin: 42px 0 6px; padding-top: 20px;
   border-top: 2px dashed var(--jrn-line);
 }
-.like-btn {
+.like-btn, .share-btn {
   display: inline-flex; align-items: center; gap: 7px;
   font-size: 14px; color: var(--jrn-accent);
   background: var(--jrn-card);
@@ -679,7 +679,7 @@ img { max-width: 100%; height: auto; }
   padding: 8px 20px;
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
-.like-btn:hover { background: var(--jrn-accent); color: #fff; border-style: solid; }
+.like-btn:hover, .share-btn:hover { background: var(--jrn-accent); color: #fff; border-style: solid; }
 .like-btn.liked { background: var(--jrn-accent); color: #fff; border-style: solid; }
 .like-btn.liked svg path { fill: currentColor; }
 .jrn-tags { display: flex; flex-wrap: wrap; gap: 8px; }

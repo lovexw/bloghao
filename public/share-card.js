@@ -372,9 +372,10 @@ function renderCard(d, av, imgs) {
   return cv
 }
 
-/* ---------------- 弹窗（singleton，内联 <style> 一次注入，CSP 允许） ---------------- */
+/* ---------------- 弹窗（singleton，内联 <style> 一次注入，CSP 允许） ----------------
+ * 微博卡片与文章分享共用：文章模式由 openArticleShare 切换标题/按钮/网格布局 */
 let modal = null
-let state = null // { url, file, site, text }
+let state = null // { url, file, site, text, link?, title? }
 
 function ensureModal() {
   if (modal) return modal
@@ -394,6 +395,9 @@ function ensureModal() {
     '@keyframes sc-fade{from{opacity:0}}' +
     '.sc-tip{padding:8px 16px 0;text-align:center;font-size:12px;color:#a29a89}' +
     '.sc-foot{padding:12px 16px calc(14px + env(safe-area-inset-bottom));display:flex;gap:10px}' +
+    /* 文章模式四按钮两行排（复制链接/保存图片 + 分享给朋友/复制图片），微博模式仍是单行三键 */
+    '.sc-foot.is-grid{flex-wrap:wrap}' +
+    '.sc-foot.is-grid .sc-btn{flex:1 1 calc(50% - 5px)}' +
     '.sc-btn{flex:1;border:0;border-radius:10px;padding:11px 0;font-size:15px;cursor:pointer;font-family:inherit}' +
     '.sc-btn:disabled{opacity:.45;cursor:default}' +
     '.sc-btn-main{background:#2f2a24;color:#fff}' +
@@ -407,10 +411,11 @@ function ensureModal() {
   overlay.className = 'sc-overlay'
   overlay.innerHTML =
     '<div class="sc-panel" role="dialog" aria-label="分享卡片">' +
-    '<div class="sc-head"><span>分享卡片</span><button type="button" class="sc-close" aria-label="关闭">×</button></div>' +
+    '<div class="sc-head"><span class="sc-title">分享卡片</span><button type="button" class="sc-close" aria-label="关闭">×</button></div>' +
     '<div class="sc-body"><div class="sc-spin" aria-hidden="true"></div></div>' +
     '<p class="sc-tip">手机长按图片可保存或转发</p>' +
     '<div class="sc-foot">' +
+    '<button type="button" class="sc-btn sc-btn-alt" data-act="link" hidden>复制链接</button>' +
     '<button type="button" class="sc-btn sc-btn-alt" data-act="copy" hidden>复制图片</button>' +
     '<button type="button" class="sc-btn sc-btn-alt" data-act="share" hidden>分享给朋友</button>' +
     '<button type="button" class="sc-btn sc-btn-main" data-act="save" disabled>生成中…</button>' +
@@ -438,9 +443,12 @@ function ensureModal() {
   })
   overlay.querySelector('[data-act=share]').addEventListener('click', function () {
     if (!state) return
-    navigator
-      .share({ files: [state.file], title: state.site + '的微博', text: state.text })
-      .catch(function () {})
+    // 能带图带图（直发聊天/朋友圈，文章标题做文案）；带不动图时分享纯链接（文章）
+    if (state.file && navigator.canShare && navigator.canShare({ files: [state.file] })) {
+      navigator.share({ files: [state.file], title: state.title || state.site + '的微博', text: state.text }).catch(function () {})
+      return
+    }
+    if (state.link) navigator.share({ title: state.title || state.site, text: state.text, url: state.link }).catch(function () {})
   })
   // 复制图片：state.file 本身就是 PNG Blob，同步塞进 ClipboardItem 不破坏用户手势（Safari 硬性要求）
   overlay.querySelector('[data-act=copy]').addEventListener('click', function () {
@@ -465,8 +473,45 @@ function ensureModal() {
       note('复制失败')
     }
   })
+  // 复制链接（文章模式）：Clipboard API 优先，老浏览器退回 execCommand
+  overlay.querySelector('[data-act=link]').addEventListener('click', function () {
+    if (!state) return
+    const btn = this
+    const note = function (msg) {
+      btn.textContent = msg
+      setTimeout(function () {
+        btn.textContent = '复制链接'
+      }, 1600)
+    }
+    const fallbackCopy = function () {
+      const ta = document.createElement('textarea')
+      ta.value = state.link
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      let ok = false
+      try {
+        ok = document.execCommand('copy')
+      } catch (e) {}
+      ta.remove()
+      return ok
+    }
+    try {
+      navigator.clipboard.writeText(state.link).then(
+        function () {
+          note('已复制 ✓')
+        },
+        function () {
+          note(fallbackCopy() ? '已复制 ✓' : '复制失败')
+        }
+      )
+    } catch (e) {
+      note(fallbackCopy() ? '已复制 ✓' : '复制失败')
+    }
+  })
 
-  modal = { overlay: overlay, body: overlay.querySelector('.sc-body'), save: overlay.querySelector('[data-act=save]'), share: overlay.querySelector('[data-act=share]'), copy: overlay.querySelector('[data-act=copy]') }
+  modal = { overlay: overlay, body: overlay.querySelector('.sc-body'), save: overlay.querySelector('[data-act=save]'), share: overlay.querySelector('[data-act=share]'), copy: overlay.querySelector('[data-act=copy]'), link: overlay.querySelector('[data-act=link]'), title: overlay.querySelector('.sc-title'), tip: overlay.querySelector('.sc-tip'), foot: overlay.querySelector('.sc-foot') }
   return modal
 }
 
@@ -483,6 +528,10 @@ function close() {
 export async function openShareCard(card) {
   const d = collect(card)
   const m = ensureModal()
+  m.title.textContent = '分享卡片'
+  m.foot.classList.remove('is-grid')
+  m.link.hidden = true
+  m.tip.textContent = '手机长按图片可保存或转发'
   m.body.innerHTML = '<div class="sc-spin" aria-hidden="true"></div>'
   m.save.disabled = true
   m.save.textContent = '生成中…'
@@ -519,6 +568,278 @@ export async function openShareCard(card) {
       m.save.disabled = false
       m.save.textContent = '保存图片'
       m.share.hidden = !(navigator.canShare && navigator.canShare({ files: [file] }))
+      m.copy.hidden = !(navigator.clipboard && window.ClipboardItem)
+      resolve()
+    }, 'image/png')
+  })
+}
+
+/* ---------------- 文章分享卡片：标题/摘要/封面 + 二维码 ----------------
+ * 数据全部读文章页现成 DOM：og:title/og:image/og:site_name/meta description +
+ * 按钮 data-share-url（canonical 绝对链接）与 data-share-qr（服务端 qrcode.ts
+ * 生成的矩阵位串，base64：首字节边长 + 行主序位流）。与微博卡片同一暖纸视觉。 */
+
+/** 位串还原成布尔矩阵；缺码/坏串返回 null（卡片自动改为纯域名角标，不画码） */
+function unpackQr(packed) {
+  try {
+    const bin = atob(packed)
+    const side = bin.charCodeAt(0)
+    if (!side || side > 60 || bin.length < 1 + Math.ceil((side * side) / 8)) return null
+    const m = []
+    let k = 0
+    for (let r = 0; r < side; r++) {
+      const row = []
+      for (let c = 0; c < side; c++) {
+        row.push((bin.charCodeAt(1 + (k >> 3)) >> (7 - (k & 7))) & 1)
+        k++
+      }
+      m.push(row)
+    }
+    return m
+  } catch (e) {
+    return null
+  }
+}
+
+/** 在 (x,y) 画白底圆角托 + 码阵，返回占位边长（quiet 两模块） */
+function drawQr(ctx, qr, x, y, px, quiet) {
+  const side = qr.length
+  const box = (side + quiet * 2) * px
+  ctx.save()
+  ctx.fillStyle = '#fff'
+  rr(ctx, x, y, box, box, 10)
+  ctx.fill()
+  ctx.strokeStyle = LINE
+  ctx.lineWidth = 1
+  ctx.stroke()
+  ctx.fillStyle = '#1a1a1a'
+  for (let r = 0; r < side; r++)
+    for (let c = 0; c < side; c++) if (qr[r][c]) ctx.fillRect(x + (quiet + c) * px, y + (quiet + r) * px, px + 0.35, px + 0.35)
+  ctx.restore()
+  return box
+}
+
+function collectArticle(btn) {
+  const meta = function (sel) {
+    const el = document.querySelector(sel)
+    return el && el.content ? el.content.trim() : ''
+  }
+  const pick = function (sels) {
+    for (const s of sels) {
+      const el = document.querySelector(s)
+      if (el) return el
+    }
+    return null
+  }
+  const title = meta('meta[property="og:title"]') || document.title.replace(/ - .*$/, '')
+  const site = meta('meta[property="og:site_name"]') || title
+  const descEl = pick(['meta[name="description"]', 'meta[property="og:description"]'])
+  const coverEl = pick(['.wx-cover img', '.jrn-cover img', '.pp-cover img', '.md-cover img', '.mn-cover img'])
+  const avImg = pick(['.wx-avatar-img', '.mn-avatar', '.wb-avatar img', '.jrn-avatar img', '.pp-avatar img', '.md-avatar img'])
+  const dateEl = pick(['.wx-date', '.mn-meta time', '.jrn-meta time', '.pp-meta time', '.md-crumb time'])
+  const avSpan = pick(['.wx-avatar:not(.wx-avatar-img)', '.wb-avatar span'])
+  return {
+    url: btn.getAttribute('data-share-url') || (document.querySelector('link[rel=canonical]') && document.querySelector('link[rel=canonical]').href) || location.href,
+    title: title,
+    site: site,
+    letter: avSpan ? (avSpan.textContent.trim()[0] || site[0]) : site[0],
+    avatar: avImg && avImg.tagName === 'IMG' ? avImg.currentSrc || avImg.src : '',
+    desc: (descEl && descEl.content.trim()) || '',
+    cover: coverEl ? coverEl.currentSrc || coverEl.src : meta('meta[property="og:image"]'),
+    date: dateEl ? dateEl.textContent.trim() : '',
+    host: location.host,
+    qr: unpackQr(btn.getAttribute('data-share-qr') || ''),
+  }
+}
+
+/** 文章卡片主绘制：站头 → 标题 → 摘要 → 封面 → 分割线 → 日期/域名 + 二维码；超高自动压摘要行数/封面高 */
+function renderArticleCard(d, av, cover) {
+  const cv = document.createElement('canvas')
+  const ctx = cv.getContext('2d')
+  const F_NAME = F(600, 27)
+  const F_TITLE = F(600, 34)
+  const F_ABS = F(400, 23)
+  const F_DATE = F(400, 18)
+  const F_HOST = F(600, 21)
+  const F_CAP = F(400, 15)
+  const AV = 68
+  const LH_TITLE = 48
+  const LH_ABS = 38
+
+  const titleLines0 = d.title ? wrapLines(ctx, atoms([{ t: d.title }]), INNER) : []
+  const absLines0 = d.desc ? wrapLines(ctx, atoms([{ t: d.desc }]), INNER) : []
+  const qrSide = d.qr ? d.qr.length : 0
+  const QPX = 2.6 // 码模块逻辑边长：v4 码 33 模块 → 托底 ~100px
+  const QUIET = 2
+  const qrBox = qrSide ? Math.round((qrSide + QUIET * 2) * QPX) : 0
+  const footH = Math.max(qrBox ? qrBox + 24 : 0, 44)
+
+  let titleMax = 3
+  let absMax = 4
+  let coverH = Math.min(Math.round(INNER * 0.6), 300)
+  const totalH = function () {
+    const tl = Math.min(titleLines0.length, titleMax)
+    const al = Math.min(absLines0.length, absMax)
+    return (
+      PAD * 2 + CPAD * 2 + AV + (tl ? 22 + tl * LH_TITLE : 0) + (al ? 12 + al * LH_ABS : 0) +
+      (d.cover || cover ? 18 + coverH : 0) + 22 + 1 + 14 + footH
+    )
+  }
+  while (totalH() > MAX_H && coverH > 170) coverH -= 14
+  while (totalH() > MAX_H && absMax > 1) absMax--
+  while (totalH() > MAX_H && titleMax > 1) titleMax--
+  const H = totalH()
+
+  cv.width = W * S
+  cv.height = H * S
+  ctx.scale(S, S)
+  ctx.textBaseline = 'middle'
+
+  // 背景与浮卡（与微博卡片同一暖纸视觉）
+  const bg = ctx.createLinearGradient(0, 0, W, H)
+  bg.addColorStop(0, '#f7f4ec')
+  bg.addColorStop(1, '#efe9dc')
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, W, H)
+  const blob = function (x, y, r, color) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+    g.addColorStop(0, color)
+    g.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+  blob(W * 0.85, H * 0.08, 260, 'rgba(185,92,56,0.10)')
+  blob(W * 0.06, H * 0.92, 300, 'rgba(176,138,90,0.12)')
+  ctx.save()
+  ctx.shadowColor = 'rgba(70,55,30,0.16)'
+  ctx.shadowBlur = 34
+  ctx.shadowOffsetY = 12
+  ctx.fillStyle = CARD
+  rr(ctx, PAD, PAD, W - PAD * 2, H - PAD * 2, 28)
+  ctx.fill()
+  ctx.restore()
+
+  const x0 = PAD + CPAD
+  const y0 = PAD + CPAD
+
+  // 站头：头像 + 站名 + 站点简介（与微博卡片同款）
+  if (av) drawCover(ctx, av, x0, y0, AV, AV, 18)
+  else {
+    ctx.fillStyle = AVBG
+    rr(ctx, x0, y0, AV, AV, 18)
+    ctx.fill()
+    ctx.font = F(600, 32)
+    ctx.fillStyle = AVFG
+    ctx.textAlign = 'center'
+    ctx.fillText(d.letter || '博', x0 + AV / 2, y0 + AV / 2 + 2)
+    ctx.textAlign = 'left'
+  }
+  ctx.font = F_NAME
+  ctx.fillStyle = INK
+  ctx.fillText(d.site, x0 + AV + 18, y0 + AV / 2 + 2)
+  // 站名下不画简介：文章页 meta description 是正文摘要，标题下已出现，画两遍重复
+
+  let y = y0 + AV
+
+  // 标题
+  const titleLines = titleLines0.slice(0, titleMax)
+  const titleCut = titleLines0.length > titleMax
+  if (titleLines.length) {
+    y += 22 + LH_TITLE / 2
+    ctx.font = F_TITLE
+    for (let i = 0; i < titleLines.length; i++) {
+      drawSegLine(ctx, i === titleLines.length - 1 && (titleCut || (titleLines0.length === titleMax && absLines0.length > absMax) ? ellipsize(ctx, titleLines[i], INNER) : titleLines[i]), x0, y)
+      y += LH_TITLE
+    }
+    y -= LH_TITLE / 2
+  }
+
+  // 摘要（后台 summary / meta description，最多 absMax 行）
+  const absLines = absLines0.slice(0, absMax)
+  if (absLines.length) {
+    y += 12 + LH_ABS / 2
+    ctx.font = F_ABS
+    for (let i = 0; i < absLines.length; i++) {
+      drawSegLine(ctx, i === absLines.length - 1 && absLines0.length > absMax ? ellipsize(ctx, absLines[i], INNER) : absLines[i], x0, y)
+      y += LH_ABS
+    }
+    y -= LH_ABS / 2
+  }
+
+  // 封面
+  if (d.cover || cover) {
+    y += 18
+    if (cover) drawCover(ctx, cover, x0, y, INNER, coverH, 16)
+    else drawPlaceholder(ctx, x0, y, INNER, coverH, 16)
+    y += coverH
+  }
+
+  // 底栏：分割线 + 日期/域名居左，二维码居右（扫码直达本文）
+  y += 22
+  ctx.fillStyle = LINE
+  ctx.fillRect(x0, y, INNER, 1)
+  const footTop = y + 1 + 14
+  const footCy = footTop + (footH - (qrBox ? 24 : 0)) / 2
+  ctx.font = F_DATE
+  ctx.fillStyle = SUB
+  if (d.date) ctx.fillText(d.date, x0, footCy - 11)
+  ctx.font = F_HOST
+  ctx.fillStyle = HOST
+  ctx.fillText(d.host, x0, footCy + (d.date ? 13 : 0))
+  if (qrBox) {
+    const qx = x0 + INNER - qrBox
+    drawQr(ctx, d.qr, qx, footTop, QPX, QUIET)
+    ctx.font = F_CAP
+    ctx.fillStyle = SUB
+    ctx.textAlign = 'center'
+    ctx.fillText('扫码阅读', qx + qrBox / 2, footTop + qrBox + 12)
+    ctx.textAlign = 'left'
+  }
+
+  return cv
+}
+
+/** 入口：btn 为文章页 .share-btn（data-share-url / data-share-qr），生成失败抛错由 site.js 提示 */
+export async function openArticleShare(btn) {
+  const d = collectArticle(btn)
+  const m = ensureModal()
+  m.title.textContent = '分享文章'
+  m.foot.classList.add('is-grid')
+  m.link.hidden = false
+  m.tip.textContent = '手机长按图片可保存转发，扫码可打开本文'
+  m.body.innerHTML = '<div class="sc-spin" aria-hidden="true"></div>'
+  m.save.disabled = true
+  m.save.textContent = '生成中…'
+  m.share.hidden = true
+  m.copy.hidden = true
+  if (state) {
+    URL.revokeObjectURL(state.url)
+    state = null
+  }
+  document.body.style.overflow = 'hidden'
+
+  const loaded = await Promise.all([d.avatar ? loadImage(d.avatar) : Promise.resolve(null), d.cover ? loadImage(d.cover) : Promise.resolve(null)])
+
+  await new Promise(function (resolve, reject) {
+    let cv
+    try {
+      cv = renderArticleCard(d, loaded[0], loaded[1])
+    } catch (err) {
+      return reject(err)
+    }
+    cv.toBlob(function (blob) {
+      if (!blob) return reject(new Error('生成失败'))
+      const file = new File([blob], 'article-card-' + Date.now() + '.png', { type: 'image/png' })
+      const url = URL.createObjectURL(blob)
+      state = { url: url, file: file, site: d.site, title: d.title, text: (d.desc || d.title).slice(0, 100), link: d.url }
+      m.body.innerHTML = ''
+      const img = document.createElement('img')
+      img.src = url
+      img.alt = '文章分享卡片'
+      m.body.appendChild(img)
+      m.save.disabled = false
+      m.save.textContent = '保存图片'
+      m.share.hidden = !navigator.share
       m.copy.hidden = !(navigator.clipboard && window.ClipboardItem)
       resolve()
     }, 'image/png')

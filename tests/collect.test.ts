@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { imagePostBlocks, parseImagePost, parseMeta } from '../src/collect.ts'
+import { dropCoverDupBlock, imagePostBlocks, mmbizAssetId, parseImagePost, parseMeta } from '../src/collect.ts'
 // 魔数识别与转存已下沉 store.ts（采集与粘贴净化共用）
 import { sniffImageExt } from '../src/store.ts'
 
@@ -130,4 +130,40 @@ test('parseMeta 图文元信息：标题/作者/封面照旧', () => {
   const meta = parseMeta(IMAGE_POST_HTML)
   assert.equal(meta.cover, 'https://mmbiz.qpic.cn/mmbiz_jpg/COVER/0?wx_fmt=jpeg')
   assert.equal(parseMeta('var nickname = htmlDecode("测试号");').account, '测试号')
+})
+
+// ── 封面去重（回归：公众号封面常是正文首图的衍生裁切，同媒体 ID 不同尺寸/格式段，
+//    字符串比对认不出，导致封面图在文章页一图两现）──
+test('mmbizAssetId：同媒体不同格式/尺寸/CDN 前缀认成同一 ID，非微信图返回空', () => {
+  assert.equal(mmbizAssetId('https://mmbiz.qpic.cn/mmbiz_jpg/ABC123/640?wx_fmt=jpeg'), 'ABC123')
+  // 封面裁切：png 段 + 无尺寸参数；正文原图：jpg 段 + 640——ID 相同即同一张
+  assert.equal(mmbizAssetId('https://mmbiz.qpic.cn/mmbiz_png/ABC123/0?wx_fmt=png'), 'ABC123')
+  assert.equal(mmbizAssetId('https://szmmbiz.qpic.cn/mmbiz_jpg/ABC123/640?wx_fmt=jpeg&wxfrom=5'), 'ABC123')
+  assert.equal(mmbizAssetId('https://mmbiz.qpic.cn/mmbiz/ABC123/640'), 'ABC123')
+  assert.equal(mmbizAssetId('https://mmbiz.qpic.cn/mmbiz_gif/DEF-456_7/0'), 'DEF-456_7')
+  assert.equal(mmbizAssetId('https://mmbiz.qpic.cn/other/ABC123/640'), '')
+  assert.equal(mmbizAssetId('https://cdn.example.com/img/a.jpg'), '')
+  assert.equal(mmbizAssetId(''), '')
+})
+
+test('dropCoverDupBlock：正文里与封面同媒体的图块被去掉（只去第一张），其余原序保留', () => {
+  const cover = 'https://mmbiz.qpic.cn/mmbiz_png/COVERID/0?wx_fmt=png'
+  const blocks = [
+    { type: 'text' as const, text: '开篇两段闲聊。' },
+    { type: 'img' as const, src: 'https://mmbiz.qpic.cn/mmbiz_jpg/COVERID/640?wx_fmt=jpeg' }, // 封面的裁切源
+    { type: 'text' as const, text: '中间一段。' },
+    { type: 'img' as const, src: 'https://mmbiz.qpic.cn/mmbiz_jpg/OTHERID/640?wx_fmt=jpeg' },
+  ]
+  const kept = dropCoverDupBlock(blocks, cover)
+  assert.equal(kept.length, 3)
+  assert.equal(kept[0].type, 'text')
+  assert.ok(kept.every((b) => b.src !== 'https://mmbiz.qpic.cn/mmbiz_jpg/COVERID/640?wx_fmt=jpeg'))
+  // 无封面 / 非微信封面 / 无同媒体图：原样返回
+  assert.equal(dropCoverDupBlock(blocks, '').length, 4)
+  assert.equal(dropCoverDupBlock(blocks, 'https://cdn.example.com/c.jpg').length, 4)
+  assert.equal(dropCoverDupBlock(blocks, 'https://mmbiz.qpic.cn/mmbiz_jpg/NOPE/0').length, 4)
+  // 封面对应正文中间的图：去掉那张，前后文保留
+  const mid = dropCoverDupBlock(blocks, 'https://mmbiz.qpic.cn/mmbiz_png/OTHERID/0?wx_fmt=png')
+  assert.equal(mid.length, 3)
+  assert.equal(mid[2].src, undefined)
 })

@@ -42,6 +42,7 @@ import {
 import { extractOgImage, sanitizeHtml } from './sanitize'
 import { getTheme, THEMES } from './themes/registry'
 import type { Env, PostRow, SessionUser, SettingsMap } from './types'
+import { packMatrix, qrMatrix } from './qrcode'
 import { clampInt, esc, excerpt, isDemo, readingMinutes } from './utils'
 
 type C = Context<{ Bindings: Env; Variables: { user: SessionUser | null } }>
@@ -336,6 +337,11 @@ export async function renderPost(c: C): Promise<Response> {
   ])
   const categoryRow = categoryId ? await c.env.DB.prepare('SELECT name, slug FROM categories WHERE id = ?').bind(categoryId).first<{ name: string; slug: string }>() : null
 
+  // 分享按钮数据：canonical 绝对链接（后台站点链接优先，回退请求 origin）+ 链接的 QR 矩阵位串
+  const share = { url: `${siteBase(settings, url.origin)}/post/${row.slug}`, qr: '' }
+  const shareQr = qrMatrix(share.url)
+  if (shareQr) share.qr = packMatrix(shareQr)
+
   if (row.status === 'published' && shouldCountView(clientIp(c.req.raw), row.id)) {
     c.executionCtx.waitUntil(
       c.env.DB.prepare('UPDATE posts SET views = views + 1 WHERE id = ?').bind(row.id).run()
@@ -374,6 +380,7 @@ export async function renderPost(c: C): Promise<Response> {
     pages,
     comments: { html: commentsBlock, count: commentTotal },
     related: related.map((p) => toHomePost(p, parseTags(p))),
+    share,
   })
   c.header('Cache-Control', 'no-cache')
   // 分享卡图优先：编辑器生成的 OG 卡图 > 封面图
