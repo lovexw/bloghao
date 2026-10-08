@@ -1,6 +1,6 @@
 # 博客号 BlogHao
 
-> 「微信有公众号，你有博客号。」博客号 BlogHao 是一个完全跑在 Cloudflare（Workers + D1 + R2）上的开源轻写作博客系统：后端约 10 个 TypeScript 文件（hono），后台为原生 JS 单页应用，无构建链，改完即生效；免费额度即可长期运行，数据 100% 归你。MIT 开源。
+> 「微信有公众号，你有博客号。」博客号 BlogHao 是一个完全跑在 Cloudflare（Workers + D1 + R2）上的开源轻写作博客系统：后端 30 余个 TypeScript 文件（hono，每个都是可独立通读的小模块），后台为原生 JS 单页应用，无构建链，改完即生效；免费额度即可长期运行，数据 100% 归你。MIT 开源。
 
 本文件面向 AI 助手与智能体（Agent），也方便手搓代码的开发者快速定位：下面是全部开发文档的 Markdown 源文件直链，无需解析 GitHub 网页。
 
@@ -21,7 +21,7 @@
 
 - [部署教程](https://raw.githubusercontent.com/lovexw/bloghao/main/docs/DEPLOY.md)：从注册 Cloudflare 到部署 Worker、绑定自定义域名、自动部署与备份恢复
 - [使用手册](https://raw.githubusercontent.com/lovexw/bloghao/main/docs/GUIDE.md)：后台导览、写文章全流程、快捷键、评论与媒体管理、设置逐项说明
-- [主题开发](https://raw.githubusercontent.com/lovexw/bloghao/main/docs/THEMES.md)：一套主题 = 七个渲染函数 + 全局 CSS，三步注册新主题，公共积木与排版规范底线
+- [主题开发](https://raw.githubusercontent.com/lovexw/bloghao/main/docs/THEMES.md)：一套主题 = 八个必需渲染函数（+ 可选 member / rank 两个）+ 全局 CSS，三步注册新主题，公共积木与排版规范底线
 - [插件开发](https://raw.githubusercontent.com/lovexw/bloghao/main/docs/PLUGINS.md)：一个 JS 文件扩展编辑器，`window.BlogHao` 插件 API 与加载机制
 - [API 参考](https://raw.githubusercontent.com/lovexw/bloghao/main/docs/API.md)：全部公开 / 管理接口，HTML 净化白名单摘要也在这里，写自己的客户端
 - [微信排版规范](https://raw.githubusercontent.com/lovexw/bloghao/main/docs/wechat-typography-spec.md)：微信编辑器插件开发规范的落地对照表与体检规则

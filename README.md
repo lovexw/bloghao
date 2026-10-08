@@ -184,7 +184,7 @@ bloghao/
 | [docker-poc/README.md](docker-poc/README.md) | **Docker 自托管**：架构与适配层、本地直跑、图片存储二选一（本地盘 / R2）、加站点 |
 | [docker-poc/DEPLOY.md](docker-poc/DEPLOY.md) | 自托管服务器部署清单：选机、端口与反代、HTTPS 与缓存、验收与升级 |
 | [docs/wechat-typography-spec.md](docs/wechat-typography-spec.md) | 微信排版规范落地对照 + 体检规则表 |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | 开发方向备忘：已调研未启动的功能方向（会员体系等）与待拍板决策 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 开发方向备忘：已上线能力与近期计划（会员体系等已调研方向的拍板状态） |
 
 ## ❓ FAQ
 
@@ -222,12 +222,12 @@ npm run deploy    # schema 有更新时再执行一次 npx wrangler d1 execute D
 
 ## 🛣 路线图
 
+- [x] 编辑器 Markdown 快捷输入（`> ` 自动转引用等，已上线）
+- [x] 服务端插件钩子（发布 / 评论事件回调 + 页脚注入，已上线，见 [docs/PLUGINS.md](docs/PLUGINS.md)）
+- [x] WebP 自动转换（上传前压缩已上线）
 - [ ] 会员体系：游客注册 + 分级会员 + 专属文章付费墙（调研已完成，待拍板决策，详见 [docs/ROADMAP.md](docs/ROADMAP.md)）
 - [ ] 多作者协作
-- [ ] 编辑器 Markdown 快捷输入（`> ` 自动转引用等）
-- [ ] 服务端插件钩子（发布 / 评论事件回调）
 - [ ] 市场远程化：皮肤 / 插件目录改为远程数据源 + 更顺畅的安装体验（后台「皮肤 / 插件」页的精选目录与启停管理已就绪）
-- [ ] WebP 自动转换（上传前压缩已实现）
 
 ## 🤝 相关仓库
 
