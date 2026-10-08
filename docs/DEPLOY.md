@@ -238,5 +238,5 @@ A：项目名改 `wrangler.jsonc` 的 `name`；本地端口 `npm run dev -- --po
 
 - **改动发布**：修改 `website/public/` 后 push 到 GitHub，Pages 项目连着 `bloghao` 仓库（构建输出目录 `website/public`）会自动部署；也可手动 `cd website && npx wrangler pages deploy public`
 - **「博客号目录」**：数据在 `website/public/data/showcase.json`，访客通过官网入口向 [bloghao](https://github.com/lovexw/bloghao) 提 Issue 申请上榜，审核通过后把站点加进 JSON 即可
-- **在线示例**：官网指向的演示站（bloghao-blog.0471666.workers.dev）是引擎的另一套独立 Worker 部署，专供访客体验；作者实例 blog.xiaowuleyi.com 不作演示用
+- **在线示例**：官网指向的演示站（官方部署为 demo.bloghao.com，Worker 名 xwblog-demo）是引擎的另一套独立 Worker 部署，专供访客体验；作者实例 blog.xiaowuleyi.com 不作演示用
 - 官网与本博客 Worker 互不影响，部署 / 回滚都在 Workers & Pages 的 `bloghao` 项目里操作

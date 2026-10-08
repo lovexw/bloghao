@@ -184,6 +184,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; ba
 }
 .ticks b { color: var(--ink); }
 .split-cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.demo-note { font-size: 13.5px; color: var(--sub); margin-top: 14px; }
+.demo-note code { font-size: 12.5px; }
 .split-media { position: relative; }
 .split-media .shot-frame-float {
   position: absolute; right: -18px; bottom: -44px; width: 31%;
@@ -274,6 +276,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; ba
 }
 @media (max-width: 620px) {
   .nav-links { display: none; }
+  .nav-inner { gap: 14px; }
+  .nav-logo { white-space: nowrap; }
+  .nav-logo-en { display: none; }
+  .nav-demo { white-space: nowrap; }
   .hero { padding-top: 110px; }
   .grid-3, .theme-row { grid-template-columns: 1fr; }
   .section { padding: 60px 0; }
