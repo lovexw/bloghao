@@ -19,9 +19,11 @@ import { Readable } from 'node:stream'
 
 import xwblog from '../src/index'
 import { ensureSchema } from '../src/db'
+import { DEMO_RESET_CRON } from '../src/demo-content'
 import { createD1 } from './shims/d1'
 import { createR2Disk } from './shims/r2disk'
 import { createR2S3, signAuthorization } from './shims/r2s3'
+import { controlApp } from './control'
 // D1 的建表靠部署时 `wrangler d1 execute schema.sql`，ensureSchema 只管增量补列——
 // 租户库是全新文件，这里要自己先跑一遍 schema.sql（官方幂等设计，可重复执行），
 // 与演示站 src/demo.ts 的 ensureTables 同款思路
@@ -29,6 +31,8 @@ import SCHEMA_SQL from '../schema.sql'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 8787)
+/** '1'（默认）= 信任反代注入的访客 IP 头；'0' = Node 直接暴露公网，只认 socket 远端 */
+const TRUST_PROXY = (process.env.TRUST_PROXY ?? '1') !== '0'
 // 默认值按「打包产物在 docker-poc/dist/server.js」的层级推导：dist/../.. = 仓库根、
 // dist/.. = docker-poc/；Docker 里保持同样层级，仅 TENANTS_DIR 用环境变量指到挂载卷
 const PUBLIC_ROOT = path.resolve(process.env.PUBLIC_ROOT || path.resolve(__dirname, '../../public'))
@@ -42,6 +46,17 @@ interface Tenant {
 
 const HOST_RE = /^[a-z0-9][a-z0-9.-]*$/
 
+/** 控制面（多租户管理面板）：CONTROL_HOST + CONTROL_PASSWORD 都设置才启用，缺省整体 404 */
+export const CONTROL_HOST = (process.env.CONTROL_HOST || '').toLowerCase()
+const CONTROL_ENABLED = Boolean(CONTROL_HOST && process.env.CONTROL_PASSWORD)
+
+export interface TenantConfig {
+  demo?: boolean
+  storage?: string
+  /** 停用：路由摘除（一切请求 404），配置与数据保留，可重新启用 */
+  disabled?: boolean
+}
+
 interface R2SharedConfig {
   accountId: string
   bucket: string
@@ -53,12 +68,39 @@ interface R2SharedConfig {
  *  旧：{ "域名": { demo } } 平铺
  *  新：{ r2: { accountId, bucket, accessKeyId, secretAccessKey }, tenants: { "域名": { demo, storage: "local"|"r2" } } }
  *  新格式里多个租户共享一个 R2 桶，shim 用 <域名>/ 前缀做租户隔离 */
-function readTenantsConfig(): { r2?: R2SharedConfig; tenants: Record<string, { demo?: boolean; storage?: string }> } {
+function readTenantsConfig(): { r2?: R2SharedConfig; tenants: Record<string, TenantConfig> } {
   const raw = JSON.parse(fs.readFileSync(TENANTS_CONFIG, 'utf8'))
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.tenants) {
     return { r2: raw.r2, tenants: raw.tenants }
   }
   return { tenants: raw }
+}
+
+/** 原地截断写回 tenants.json：单文件 bind mount 换 inode 会让容器读不到新内容，
+ *  必须保持 inode（与 add-tenant.sh 的 cat > 覆盖同一约束）；运行中进程直写，
+ *  配置与内存租户表即同步演进，不再依赖重启 */
+function writeTenantsConfig(cfg: { r2?: R2SharedConfig; tenants: Record<string, TenantConfig> }): void {
+  const body = cfg.r2 ? { r2: cfg.r2, tenants: cfg.tenants } : cfg.tenants
+  fs.writeFileSync(TENANTS_CONFIG, JSON.stringify(body, null, 2) + '\n')
+}
+
+/** 初始化单个租户：blog.db（WAL）+ 图床存储 + schema，启动加载与控制面热开台共用 */
+async function createTenantFor(host: string, cfg: TenantConfig, r2Shared?: R2SharedConfig): Promise<Tenant> {
+  const dir = path.join(TENANTS_DIR, host)
+  fs.mkdirSync(dir, { recursive: true })
+  const { images, label } = createTenantImages(host, cfg, r2Shared)
+  const env: Record<string, unknown> = {
+    DB: createD1(path.join(dir, 'blog.db')),
+    IMAGES: images,
+    // 业务代码从不调用 ASSETS（静态资源在适配层直出），兜底防误用
+    ASSETS: { fetch: async () => new Response('ASSETS binding is handled by the self-host adapter', { status: 404 }) },
+  }
+  if (cfg.demo) env.DEMO_MODE = '1'
+  const db = env.DB as { exec: (sql: string) => Promise<unknown> }
+  await db.exec(SCHEMA_SQL)
+  await ensureSchema(env.DB as never)
+  console.log(`[tenant] ${host} 就绪（存储: ${label}，${cfg?.demo ? '演示种子' : '空库'}）→ ${dir}`)
+  return { host, env }
 }
 
 /** 按租户配置初始化存储：storage 缺省/"local" = 本地磁盘目录；"r2" = 共享桶 + 域名前缀 */
@@ -79,23 +121,10 @@ async function loadTenants(): Promise<Map<string, Tenant>> {
   let r2Used = false
   for (const [host, tc] of Object.entries(tenants)) {
     if (!HOST_RE.test(host)) throw new Error(`tenants.json 里的域名不合法: ${host}`)
-    const cfg = (tc ?? {}) as { demo?: boolean; storage?: string }
-    const dir = path.join(TENANTS_DIR, host)
-    fs.mkdirSync(dir, { recursive: true })
-    const { images, label } = createTenantImages(host, cfg, r2Shared)
+    const cfg = (tc ?? {}) as TenantConfig
+    if (cfg.disabled) continue // 停用租户不建库不进路由，启用时由控制面 createTenantFor 热加载
     if (cfg.storage === 'r2') r2Used = true
-    const env: Record<string, unknown> = {
-      DB: createD1(path.join(dir, 'blog.db')),
-      IMAGES: images,
-      // 业务代码从不调用 ASSETS（静态资源在适配层直出），兜底防误用
-      ASSETS: { fetch: async () => new Response('ASSETS binding is handled by the self-host adapter', { status: 404 }) },
-    }
-    if (cfg.demo) env.DEMO_MODE = '1'
-    const db = env.DB as { exec: (sql: string) => Promise<unknown> }
-    await db.exec(SCHEMA_SQL)
-    await ensureSchema(env.DB as never)
-    map.set(host, { host, env })
-    console.log(`[tenant] ${host} 就绪（存储: ${label}，${cfg?.demo ? '演示种子' : '空库'}）→ ${dir}`)
+    map.set(host, await createTenantFor(host, cfg, r2Shared))
   }
   // R2 自检：同一共享配置只探测一次（空前缀 LIST），凭据/桶名错误在启动时失败，好过首个请求 500
   if (r2Used && r2Shared) {
@@ -273,7 +302,40 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, tenan
   const host = hostHeader.split(':')[0].toLowerCase()
   const url = new URL(req.url || '/', `http://${hostHeader}`)
 
-  // 1) 静态资源（/admin/ SPA、插件、favicon 等；public/ 里没有的路径自然落空）
+  // 0) 反代（Caddy on_demand_tls ask）按需签证书探活：GET /api/health?domain=<域名>，
+  // Host 头是探活方自己（127.0.0.1），进不了租户路由；只在域名确已登记时放行 200，
+  // 未登记 404 = Caddy 拒签证书（防白嫖这台机的证书资源给任意域名签）。
+  // 必须排在控制面分流之前——探活控制面域名本身时会被控制面鉴权 303 截走，
+  // Caddy 就永远签不出它的证书
+  if (url.pathname === '/api/health' && url.searchParams.has('domain')) {
+    const asked = (url.searchParams.get('domain') || '').toLowerCase()
+    if (tenants.has(asked) || (CONTROL_ENABLED && asked === CONTROL_HOST)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, time: Date.now() }))
+    } else {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('unknown domain')
+    }
+    return
+  }
+
+  // 1) 控制面（多租户管理面板）：按 Host 整体分流，独立于一切租户路由与静态服务
+  if (CONTROL_ENABLED && host === CONTROL_HOST) {
+    await controlApp({
+      req,
+      res,
+      url,
+      host,
+      tenants,
+      readTenantsConfig,
+      writeTenantsConfig,
+      createTenantFor,
+      log: (msg: string) => console.log(`[control] ${msg}`),
+    })
+    return
+  }
+
+  // 2) 静态资源（/admin/ SPA、插件、favicon 等；public/ 里没有的路径自然落空）
   if (req.method === 'GET' || req.method === 'HEAD') {
     const hit = serveStatic(url.pathname, url.search)
     if (hit) {
@@ -285,9 +347,15 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, tenan
     }
   }
 
-  // 2) 租户路由：未登记域名直接 404，不落到任何租户
+  // 3) 租户路由：未登记域名直接 404，不落到任何租户
   const tenant = tenants.get(host)
   if (!tenant) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end(`未登记的站点域名：${host}\n请在 docker-poc/tenants.json 里登记后重启。`)
+    return
+  }
+  // 停用租户（配置保留、数据保留、路由摘除）：对外与未登记完全一致
+  if ((readTenantsConfig().tenants[host] as TenantConfig | undefined)?.disabled) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
     res.end(`未登记的站点域名：${host}\n请在 docker-poc/tenants.json 里登记后重启。`)
     return
@@ -299,6 +367,16 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, tenan
     if (HOP_BY_HOP.has(key) || value === undefined) continue
     if (Array.isArray(value)) value.forEach((v) => headers.append(key, v))
     else headers.set(key, value)
+  }
+  // 访客 IP 可信来源：默认 TRUST_PROXY=1 信任反代注入的头（CF-Connecting-IP / X-Forwarded-For）；
+  // Node 直接暴露公网时设 TRUST_PROXY=0——客户端可随意伪造上述头轮换 IP 绕过限流，
+  // 此时剥掉入站头、以 socket 远端地址注入 CF-Connecting-IP（auth.ts clientIp 优先读它，业务零改动）
+  if (!TRUST_PROXY) {
+    headers.delete('cf-connecting-ip')
+    headers.delete('x-forwarded-for')
+    headers.delete('x-real-ip')
+    const remote = (req.socket.remoteAddress || '').replace(/^::ffff:/, '')
+    if (remote) headers.set('cf-connecting-ip', remote)
   }
   const hasBody = req.method !== 'GET' && req.method !== 'HEAD'
   const proto = resolveScheme(headers, url.host)
@@ -314,11 +392,15 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse, tenan
 }
 
 let firedBackupDay = ''
+let firedDemoResetHour = ''
 const CRON_TICK_MS = 60_000
 
 /**
  * cron：与 wrangler triggers.crons 同口径——每分钟扫定时发布；
- * 北京时间 00:30（UTC 16:30）那一分钟换成备份 cron，备份/visit 清理/回收站滚动一起跑。
+ * 北京时间 00:30（UTC 16:30）那一分钟换成备份 cron，备份/visit 清理/回收站滚动一起跑；
+ * 演示租户的重置 cron（DEMO_RESET_CRON，每 2 小时的第 23 分钟）清库重灌种子数据——
+ * wrangler 按 UTC 评估 cron 表达式，这里用 UTC 时钟判断窗口，controller.cron 原样传给
+ * src/index.ts 的 scheduled 分发。
  */
 function startCron(tenants: Map<string, Tenant>) {
   const timer = setInterval(async () => {
@@ -329,7 +411,18 @@ function startCron(tenants: Map<string, Tenant>) {
       if (firedBackupDay === day) return // 同一天只触发一次，防 tick 漂移双发
       firedBackupDay = day
     }
-    const controller = { cron: backupWindow ? '30 16 * * *' : '* * * * *', scheduledTime: now.getTime() }
+    // demo 重置窗口：分钟位 23 + 偶数小时（'23 */2 * * *' 的 UTC 语义）；小时粒度记账防双发
+    const resetWindow =
+      !backupWindow && now.getUTCMinutes() === 23 && now.getUTCHours() % 2 === 0
+    const hourKey = now.toISOString().slice(0, 13)
+    if (resetWindow) {
+      if (firedDemoResetHour === hourKey) return
+      firedDemoResetHour = hourKey
+    }
+    const controller = {
+      cron: backupWindow ? '30 16 * * *' : resetWindow ? DEMO_RESET_CRON : '* * * * *',
+      scheduledTime: now.getTime(),
+    }
     for (const t of tenants.values()) {
       try {
         await xwblog.scheduled(controller as never, t.env as never, execCtx)

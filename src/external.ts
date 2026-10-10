@@ -14,6 +14,7 @@
 import { Hono } from 'hono'
 import { randomToken, rateLimit, safeEqual } from './auth'
 import { getSettings, getWeiboById, saveSettings, WEIBO_MAX_CHARS, WEIBO_MAX_IMAGES } from './db'
+import { fireWeiboPublished } from './hooks'
 import { siteBase } from './render'
 import { imageExtOf, MAX_UPLOAD_BYTES, saveUpload } from './store'
 import type { Env, SessionUser, SettingsMap, WeiboRow } from './types'
@@ -163,6 +164,10 @@ externalRoutes.post('/weibo', async (c) => {
   }
 
   const row = await insertWeibo(c.env.DB, content, kept, status)
+  // 广播微博发布事件（服务端插件钩子，见 src/hooks.ts）：开放 API 与 TG 机器人两条路共用
+  if (row.status === 'published') {
+    c.executionCtx.waitUntil(fireWeiboPublished(c.env, { id: row.id, content: row.content, images: kept, via: 'external' }))
+  }
   return c.json({
     ok: true,
     id: row.id,
@@ -506,6 +511,10 @@ telegramRoutes.post('/webhook', async (c) => {
   }
 
   const weibo = await insertWeibo(c.env.DB, content, images, status)
+  // 广播微博发布事件（服务端插件钩子，见 src/hooks.ts）；TG 上下文无 executionCtx 也可安全调用（fire 内部自吞错）
+  if (weibo.status === 'published') {
+    c.executionCtx.waitUntil(fireWeiboPublished(c.env, { id: weibo.id, content: weibo.content, images, via: 'telegram' }))
+  }
   const where = `${siteBase(settings, reqOrigin(c.req.url))}/weibo?wb=${weibo.id}#wb-${weibo.id}`
   await tgSend(
     botToken,

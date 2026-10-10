@@ -119,8 +119,17 @@ docker compose up --build      # 镜像约 70MB（node:26-alpine + server.js + p
 
 ## 加一个租户（新博客）
 
+```bash
+./add-tenant.sh blog1.example.com           # 登记 → 重启 → 健康检查，一条命令
+./add-tenant.sh try.example.com --demo      # 演示种子站（每 2 小时清库重灌）
+./add-tenant.sh blog1.example.com --remove  # 下线（数据目录保留）
+```
+
+DNS 用泛域名（`*.example.com` 一条 A 记录指向服务器）时无需再动 DNS；逐域名解析
+时先加 DNS 再跑脚本。脚本要求宿主机有 jq 或 node 之一（改 JSON 用）。手工方式：
+
 1. `tenants.json` 加一行 `"新域名": { "demo": false }`
-2. 重启进程（或未来做成热加载）
+2. 重启进程（重启 < 1s）
 3. 域名 DNS 指到这台服务器（Cloudflare 橙云代理即可）
 
 ## 进阶与边界
@@ -147,7 +156,9 @@ docker compose up --build      # 镜像约 70MB（node:26-alpine + server.js + p
 | `shims/r2disk.ts` | R2 → 磁盘目录（默认存储后端） |
 | `shims/r2s3.ts` | R2 S3 兼容接口适配层（租户选 `storage: "r2"` 时启用，SigV4 零依赖） |
 | `tenants.json` | 域名 → 租户配置（demo 种子开关） |
+| `add-tenant.sh` | 开台脚本：登记域名 → 重启 → 健康检查（`--demo` 演示种子 / `--remove` 下线） |
 | `smoke.sh` | 端到端冒烟 |
 | `entrypoint.sh` | 容器入口：修数据卷属主 → 降权 node 运行 |
 | `Dockerfile` / `docker-compose.yml` | 容器化（构建上下文 = 仓库根目录） |
 | `DEPLOY.md` | 上服务器排练清单（选型 / 步骤 / Cloudflare 配置 / 排练后事项） |
+| `DEPLOY-MICRO.md` | 1GB 小机（甲骨文 E2.1.Micro）部署清单：30~50 站、Caddy 泛域名、迁 R2 节奏 |

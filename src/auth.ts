@@ -1,4 +1,4 @@
-import type { SessionUser } from './types'
+import type { MemberSessionUser, SessionUser } from './types'
 
 const enc = new TextEncoder()
 const PBKDF2_ITERATIONS = 100_000 // Workers 上限即 10 万次
@@ -83,6 +83,62 @@ export async function destroySession(db: D1Database, req: Request): Promise<void
 /** 清理已过期会话（随每晚备份 cron 跑一次即可），防止 sessions 表无限增长 */
 export async function purgeExpiredSessions(db: D1Database): Promise<void> {
   await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(Date.now()).run()
+}
+
+/* ---------------- 会员会话（访客注册身份，与管理员 sessions 彻底分离，契约见 docs/DEVPLAN-2026-10-07.md 附录 A） ---------------- */
+
+export const MEMBER_SESSION_COOKIE = 'xw_member_session'
+
+export async function createMemberSession(db: D1Database, memberId: number): Promise<string> {
+  const token = randomToken(32)
+  await db
+    .prepare('INSERT INTO member_sessions (token, member_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
+    .bind(token, memberId, Date.now() + SESSION_TTL, Date.now())
+    .run()
+  return token
+}
+
+export function memberSessionCookie(token: string): string {
+  return `${MEMBER_SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}`
+}
+
+export function clearMemberSessionCookie(): string {
+  return `${MEMBER_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
+}
+
+/** 当前登录会员；banned 在查询层即视为未登录（封禁即刻失去会话能力，无需等后台清会话） */
+export async function getMemberUser(db: D1Database, req: Request): Promise<MemberSessionUser | null> {
+  const token = getCookie(req, MEMBER_SESSION_COOKIE)
+  if (!token) return null
+  return db
+    .prepare(
+      "SELECT m.id, m.username, m.display_name, m.avatar, m.tier, m.points FROM member_sessions s JOIN members m ON m.id = s.member_id WHERE s.token = ? AND s.expires_at > ? AND m.status = 'active'"
+    )
+    .bind(token, Date.now())
+    .first<MemberSessionUser>()
+}
+
+export async function destroyMemberSession(db: D1Database, req: Request): Promise<void> {
+  const token = getCookie(req, MEMBER_SESSION_COOKIE)
+  if (token) await db.prepare('DELETE FROM member_sessions WHERE token = ?').bind(token).run()
+}
+
+/** 后台拉黑时清空该会员全部会话（双保险：查询层已挡 banned，这里把 token 也删掉） */
+export async function destroyMemberSessionsByMember(db: D1Database, memberId: number): Promise<void> {
+  await db.prepare('DELETE FROM member_sessions WHERE member_id = ?').bind(memberId).run()
+}
+
+/** 改密码后踢掉其他设备：保留当前会话（改密码的人自己不能被登出去），其余全部失效 */
+export async function destroyOtherMemberSessions(db: D1Database, memberId: number, keepToken: string): Promise<void> {
+  await db
+    .prepare('DELETE FROM member_sessions WHERE member_id = ? AND token <> ?')
+    .bind(memberId, keepToken)
+    .run()
+}
+
+/** 清理过期会员会话（随每晚备份 cron，与 purgeExpiredSessions 并排） */
+export async function purgeExpiredMemberSessions(db: D1Database): Promise<void> {
+  await db.prepare('DELETE FROM member_sessions WHERE expires_at < ?').bind(Date.now()).run()
 }
 
 /**

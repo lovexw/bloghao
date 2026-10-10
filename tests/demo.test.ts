@@ -129,6 +129,15 @@ test('种子计划：评论树合法——父评论在前、时间不早于目�
   assert.ok(plan.comments.some((c) => c.postId > 0))
   assert.ok(plan.comments.some((c) => c.weiboId > 0))
   assert.ok(plan.comments.some((c) => c.postId === 0 && c.weiboId === 0))
+  // 会员评论：引用的会员必须存在，昵称与会员展示名一致（前台徽标演示）
+  assert.ok(plan.comments.some((c) => c.memberId > 0), '要有会员身份的评论（评论徽标演示）')
+  plan.comments.forEach((c, i) => {
+    if (c.memberId > 0) {
+      const m = plan.members[c.memberId - 1]
+      assert.ok(m, `评论 ${i + 1} 引用了不存在的会员 ${c.memberId}`)
+      assert.equal(c.nickname, m.displayName, `评论 ${i + 1} 昵称应与会员展示名一致`)
+    }
+  })
 })
 
 test('种子计划：友链有 approved 也有 pending（待审列表有内容），页面含 about', () => {
@@ -145,6 +154,40 @@ test('种子计划：settings 含 pagesSeeded 记账位（防 ensureSchema 重�
   assert.equal(plan.settings.pagesSeeded, '1')
   assert.ok(plan.settings.siteName && plan.settings.siteName !== DEFAULT_SETTINGS.siteName, '演示站有自己的人设')
   assert.equal(plan.settings.siteClosed, undefined, '演示站种子不预置闭站状态')
+  assert.equal(plan.settings.membersEnabled, '1', '会员体系开启：会员卡/积分/排行榜/付费墙都在体验范围内')
+})
+
+test('种子计划：会员专享与访问密码文各至少一篇且已发布（最新功能体验）', () => {
+  const plan = buildDemoPlan(NOW)
+  const locked = plan.posts.filter((p) => p.minTier === 'member' || p.minTier === 'coffee' || p.minTier === 'top')
+  assert.ok(locked.length >= 1, '要有会员付费墙演示文')
+  for (const p of locked) assert.equal(p.status, 'published', `付费墙演示文必须是已发布: ${p.slug}`)
+  const pw = plan.posts.filter((p) => p.password)
+  assert.ok(pw.length >= 1, '要有访问密码演示文')
+  for (const p of pw) {
+    assert.equal(p.status, 'published', `密码演示文必须是已发布: ${p.slug}`)
+    assert.ok(p.password!.length >= 8, '密码至少 8 位（与真实校验口径一致）')
+  }
+})
+
+test('种子计划：演示会员——账本合计 = 余额、档位合法、公示账号在列', () => {
+  const plan = buildDemoPlan(NOW)
+  assert.ok(plan.members.length >= 2, '公示账号之外还要有背景板会员（排行榜/徽标演示）')
+  assert.equal(new Set(plan.members.map((m) => m.username)).size, plan.members.length, '会员用户名不重复')
+  const demo = plan.members.find((m) => m.username === 'demo')
+  assert.ok(demo, '公示演示会员账号 demo 必须在列')
+  assert.equal(demo!.password, 'demo1234', '演示会员账号与密码必须公示口径一致')
+  assert.ok(plan.members.some((m) => m.tier !== 'normal'), '有非普通档位会员（档位徽标演示）')
+  for (const m of plan.members) {
+    assert.ok(['normal', 'coffee', 'top'].includes(m.tier), `档位非法: ${m.tier}`)
+    assert.ok(m.points > 0, `${m.username} 积分应大于 0（排行榜页要有内容）`)
+    const sum = m.log.reduce((s, r) => s + r.delta, 0)
+    assert.equal(sum, m.points, `${m.username} 积分账本合计必须等于余额`)
+    for (const r of m.log) {
+      assert.ok(['comment', 'dailyLogin', 'adminAdjust'].includes(r.reason), `积分 reason 非法: ${r.reason}`)
+      assert.ok(r.createdAt <= NOW, '积分账本不能落在未来')
+    }
+  }
 })
 
 test('种子计划：访客统计 60 天有脉搏——今天有数据、天数齐、规模合理', () => {

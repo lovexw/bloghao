@@ -34,6 +34,13 @@
       "description": "深夜星图蓝 + 等宽字体点缀的开发者日志风",
       "colors": ["#0f1115", "#58a6ff", "#161a22", "#1d232e", "#181d26"],
       "link": "https://blog.xiaowuleyi.com"
+    },
+    {
+      "id": "bitcoin",
+      "name": "比特币",
+      "description": "比特币橙 × 暖白纸面，描边分层、衬线大标题与等宽眉题的品牌 kit 风",
+      "colors": ["#faf9f6", "#f7931a", "#ffffff", "#fff3e0", "#f2f0ea"],
+      "link": "https://blog.xiaowuleyi.com"
     }
   ],
   "plugins": [
@@ -41,13 +48,13 @@
       "id": "wechat-collect",
       "name": "采集公众号文章",
       "description": "粘贴公众号链接，服务端抓正文、转存配图并生成草稿",
-      "link": "https://github.com/lovexw/bloghao/blob/main/docs/PLUGINS.md"
+      "link": "https://github.com/bloghao/bloghao/blob/main/docs/PLUGINS.md"
     },
     {
       "id": "hello-sign",
       "name": "文末小尾巴",
       "description": "在正文末尾插入一段「— 完 —」签名区，演示插件 API 用法",
-      "link": "https://github.com/lovexw/bloghao/blob/main/docs/PLUGINS.md"
+      "link": "https://github.com/bloghao/bloghao/blob/main/docs/PLUGINS.md"
     }
   ]
 }

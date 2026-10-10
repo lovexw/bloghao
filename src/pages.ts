@@ -1,7 +1,9 @@
 import type { Context } from 'hono'
-import { clientIp, getSessionUser } from './auth'
+import { clientIp, getCookie, getMemberUser, getSessionUser } from './auth'
+import { replaceEmoji } from './emoji'
 import {
   getCategoryBySlug,
+  getMemberById,
   getPage,
   getPostBySlug,
   getPostCategoryId,
@@ -15,6 +17,7 @@ import {
   listPages,
   listPosts,
   listPublishedTags,
+  listRankTop,
   listWeibo,
   listWeiboTopics,
   locateWeiboPage,
@@ -24,32 +27,42 @@ import {
   weiboCommentCountMap,
   weiboImageList,
   type PostSort,
+  type RankMemberRow,
 } from './db'
+import { searchPosts, searchWeibo } from './fts'
 import {
   articleJsonLd,
   archiveGroups,
   commentsHtml,
   HOME_SORTS,
+  memberAuthHtml,
+  memberCardHtml,
   page,
+  rankListHtml,
   siteBase,
   siteMode,
   toHomePost,
   stripCoverDuplicate,
   type CategoryLink,
   type NavPage,
+  type RankEntryView,
   type WeiboItemView,
 } from './render'
 import { extractOgImage, sanitizeHtml } from './sanitize'
+import { hasValidUnlock, isProtected, PP_COOKIE, PP_CSS, passwordFormHtml, protectedDescription } from './protect'
+import { canRead, normalizeMinTier } from './points'
 import { getTheme, THEMES } from './themes/registry'
+import type { MemberData, RankData } from './themes/registry'
 import type { Env, PostRow, SessionUser, SettingsMap } from './types'
 import { packMatrix, qrMatrix } from './qrcode'
-import { clampInt, esc, excerpt, isDemo, readingMinutes } from './utils'
+import { clampInt, esc, excerpt, isDemo, readingMinutes, teaserHtml } from './utils'
 
 type C = Context<{ Bindings: Env; Variables: { user: SessionUser | null } }>
 
-/** 演示站包装：所有公开页强制 noindex（内容是每两小时重置的种子数据，不该进搜索引擎索引）；生产模式原样透传 */
+/** 演示站包装：所有公开页强制 noindex（内容是每两小时重置的种子数据，不该进搜索引擎索引），
+ *  并公示「演示体验版」横幅（render.ts page() 顶部注入）；生产模式原样透传 */
 function pageOpts(c: C, o: Parameters<typeof page>[0]): Parameters<typeof page>[0] {
-  return isDemo(c.env) ? { ...o, noindex: true } : o
+  return isDemo(c.env) ? { ...o, noindex: true, demo: true } : o
 }
 
 const CSP =
@@ -120,6 +133,25 @@ function themePageHtml(theme: ReturnType<typeof getTheme>, d: Parameters<typeof 
 </div>`
 }
 
+/** 主题 member() 的运行时兜底：第三方主题未实现时渲染通用版（会员卡/表单 + 返回首页） */
+function themeMemberHtml(theme: ReturnType<typeof getTheme>, d: MemberData): string {
+  if (typeof theme.member === 'function') return theme.member(d)
+  return `<div style="max-width:520px;margin:0 auto;padding:32px 20px 60px;">
+  ${d.member ? memberCardHtml(d.member) : memberAuthHtml()}
+  <p style="margin-top:32px;"><a href="/">← 返回首页</a></p>
+</div>`
+}
+
+/** 主题 rank() 的运行时兜底：第三方主题未实现时渲染通用版（榜单列表 + 返回首页） */
+function themeRankHtml(theme: ReturnType<typeof getTheme>, d: RankData): string {
+  if (typeof theme.rank === 'function') return theme.rank(d)
+  return `<div style="max-width:640px;margin:0 auto;padding:32px 20px 60px;">
+  <h1 style="margin-bottom:18px;">排行榜</h1>
+  ${rankListHtml(d.entries) || '<p>还没有会员上榜。</p>'}
+  <p style="margin-top:32px;"><a href="/">← 返回首页</a></p>
+</div>`
+}
+
 export async function renderHome(c: C): Promise<Response> {
   return renderList(c, { mode: 'home' })
 }
@@ -160,17 +192,33 @@ async function renderList(
   const seed =
     sort === 'random' ? clampInt(url.searchParams.get('seed'), 1, 999999999, 0) || 1 + Math.floor(Math.random() * 999999998) : 0
 
-  // 搜索模式不分页，直接取前 50 条
-  const [r, tags, categories, pages, category, wb, wbFeedRaw, feedUser, otd] = await Promise.all([    listPosts(c.env.DB, {
-      status: 'published',
-      tag: opts.mode === 'home' ? tag : undefined,
-      q: opts.mode === 'search' ? q || undefined : undefined,
-      categorySlug: categorySlug || undefined,
-      page: opts.mode === 'search' ? 1 : pageNum,
-      limit: opts.mode === 'search' ? 50 : perPage,
-      sort,
-      seed,
-    }),
+  // 搜索模式不分页，直接取前 50 条；文章搜索走 FTS5（src/fts.ts，短词自动退回 LIKE 同口径）
+  const [
+    r,
+    tags,
+    categories,
+    pages,
+    category,
+    wb,
+    wbFeedRaw,
+    feedUser,
+    otd,
+    memberSession,
+    // 搜索页微博结果（ROADMAP B4）：微博此前不参与搜索，这里顺带纳入（短词兜底在 fts.ts 内部）
+    wbSearch,
+  ] = await Promise.all([
+    opts.mode === 'search' && q
+      ? searchPosts(c.env.DB, q, 50)
+      : listPosts(c.env.DB, {
+          status: 'published',
+          tag: opts.mode === 'home' ? tag : undefined,
+          q: opts.mode === 'search' ? q || undefined : undefined,
+          categorySlug: categorySlug || undefined,
+          page: opts.mode === 'search' ? 1 : pageNum,
+          limit: opts.mode === 'search' ? 50 : perPage,
+          sort,
+          seed,
+        }),
     navTags(c),
     navCategories(c),
     navPages(c),
@@ -186,6 +234,10 @@ async function renderList(
     opts.mode === 'home' && mode === 'weibo-blog' ? getSessionUser(c.env.DB, c.req.raw) : Promise.resolve(null),
     // 历史上的今天：仅首页第一页且未带筛选时查（有内部按天缓存）
     opts.mode === 'home' && pageNum === 1 && !tag && !q ? listOnThisDay(c.env.DB) : Promise.resolve(null),
+    // 会员会话（首页微博流的 memberName 用；未开启时省一次查询，无 Cookie 时是纯内存快路径）
+    membersEnabled(settings) ? getMemberUser(c.env.DB, c.req.raw) : Promise.resolve(null),
+    // 搜索页微博结果（ROADMAP B4）：长词走 weibo_fts、短词 LIKE 扫微博表，都在 fts.ts 内部定
+    opts.mode === 'search' && q ? searchWeibo(c.env.DB, q, 20) : Promise.resolve(null),
   ])
   if (opts.mode === 'category' && !category) return renderNotFound(c)
   // 页码跳转可能输入越界，回到最后一页重新取一次
@@ -222,8 +274,14 @@ async function renderList(
       }
     : null
 
-  // 首页微博流（微博+博客模式）：补评论数与管理员身份，卡片交互与 /weibo 页同款
-  let weiboFeed: { items: WeiboItemView[]; total: number; allowComments: boolean; adminName?: string } | null = null
+  // 首页微博流（微博+博客模式）：补评论数与登录身份（管理员优先、会员次之），卡片交互与 /weibo 页同款
+  let weiboFeed: {
+    items: WeiboItemView[]
+    total: number
+    allowComments: boolean
+    adminName?: string
+    memberName?: string
+  } | null = null
   if (wbFeedRaw) {
     const cmt = await weiboCommentCountMap(
       c.env.DB,
@@ -242,6 +300,29 @@ async function renderList(
       total: wbFeedRaw.total,
       allowComments: settings.allowComments === '1',
       adminName: feedUser ? (feedUser.display_name || feedUser.username || '').slice(0, 24) : undefined,
+      memberName:
+        !feedUser && memberSession ? (memberSession.display_name || memberSession.username || '').slice(0, 24) : undefined,
+    }
+  }
+
+  // 搜索页微博结果（ROADMAP B4）：行→视图同首页微博流口径（图列表/北京时间/评论数），只读卡片
+  let searchWeiboView: { items: WeiboItemView[]; total: number } | null = null
+  if (wbSearch && wbSearch.items.length) {
+    const cmt = await weiboCommentCountMap(
+      c.env.DB,
+      wbSearch.items.map((w) => w.id)
+    )
+    searchWeiboView = {
+      items: wbSearch.items.map((w) => ({
+        id: w.id,
+        content: w.content,
+        images: weiboImageList(w),
+        created_at: w.published_at ?? w.created_at,
+        likes: w.likes,
+        commentCount: cmt.get(w.id) || 0,
+        pinned: !!w.pinned,
+      })),
+      total: wbSearch.total,
     }
   }
 
@@ -249,13 +330,24 @@ async function renderList(
   let emptyText = ''
   let title = ''
   if (opts.mode === 'search') {
-    // 搜索框已移到刊头标签上方，这里只展示结果信息；结果封顶 50 条，超限要说清楚
-    notice = q
-      ? r.total > 50
-        ? `<p class="search-meta">找到 ${r.total} 篇与「${esc(q)}」相关的文章，仅显示前 50 条，试试更具体的关键词</p>`
-        : `<p class="search-meta">找到 ${r.total} 篇与「${esc(q)}」相关的文章</p>`
-      : '<p class="search-meta">输入关键词，回车或点「搜索」</p>'
-    emptyText = q ? `没有找到与「${esc(q)}」相关的文章，换个关键词试试。` : ''
+    // 搜索框已移到刊头标签上方，这里只展示结果信息；文章封顶 50 条、微博封顶 20 条，超限要说清楚
+    if (q) {
+      const weiboText = searchWeiboView ? `、${searchWeiboView.total} 条微博` : ''
+      const caps: string[] = []
+      if (r.total > 50) caps.push('文章仅显示前 50 条')
+      if (searchWeiboView && searchWeiboView.total > 20) caps.push('微博仅显示前 20 条')
+      const capText = caps.length ? `，${caps.join('、')}，试试更具体的关键词` : ''
+      notice = `<p class="search-meta">找到 ${r.total} 篇文章${weiboText}与「${esc(q)}」相关${capText}</p>`
+      emptyText =
+        r.total === 0
+          ? searchWeiboView
+            ? `没有找到与「${esc(q)}」相关的文章，换个关键词试试。`
+            : `没有找到与「${esc(q)}」相关的文章或微博，换个关键词试试。`
+          : ''
+    } else {
+      notice = '<p class="search-meta">输入关键词，回车或点「搜索」</p>'
+      emptyText = ''
+    }
     title = q ? `搜索：${q}` : '搜索'
   } else if (opts.mode === 'category' && category) {
     notice = `<p class="search-meta">分类「${esc(category.name)}」下共 ${r.total} 篇文章</p>`
@@ -291,6 +383,8 @@ async function renderList(
     notice,
     emptyText,
     weiboFeed,
+    // 搜索页微博结果（ROADMAP B4）：仅 /search 带关键词且有命中时非空
+    searchWeibo: searchWeiboView,
     // 纯博客模式：历史上的今天只保留文章条目（微博模块已隐藏）
     onThisDay: mode === 'blog' && otd ? otd.filter((i) => i.kind === 'post') : otd,
   })
@@ -324,7 +418,7 @@ export async function renderPost(c: C): Promise<Response> {
     if (!isPreview || !user) return renderNotFound(c)
   }
 
-  const [comments, related, categories, categoryId, user, tags, pages, commentTotal] = await Promise.all([
+  const [comments, related, categories, categoryId, user, tags, pages, commentTotal, member] = await Promise.all([
     listApprovedComments(c.env.DB, row.id),
     relatedPosts(c.env.DB, row),
     navCategories(c),
@@ -334,6 +428,8 @@ export async function renderPost(c: C): Promise<Response> {
     navPages(c),
     // 计数独立取（列表 LIMIT 500，超限后 length 会少报，JSON-LD commentCount 同口径）
     commentCount(c, row.id),
+    // 会员会话（付费墙可见判定用；membersEnabled 关闭时不查——关着的时候锁文对所有人生效）
+    membersEnabled(settings) ? getMemberUser(c.env.DB, c.req.raw) : Promise.resolve(null),
   ])
   const categoryRow = categoryId ? await c.env.DB.prepare('SELECT name, slug FROM categories WHERE id = ?').bind(categoryId).first<{ name: string; slug: string }>() : null
 
@@ -348,14 +444,31 @@ export async function renderPost(c: C): Promise<Response> {
     )
   }
 
+  // 访问密码墙（src/protect.ts，与会员付费墙的组合语义已对齐契约）：密码墙优先——
+  // 未解锁时一切止步于表单（正文连服务端都不处理）；解锁 Cookie 通过或管理员登录后，再走会员档判定。
+  // 评论区对密码文照常开放（与会员锁文同口径）；?pwerr=1 / ?pwerr=slow 是解锁失败 303 回跳的错误态
+  const pwerr = url.searchParams.get('pwerr')
+  const lockedError = pwerr === 'slow' ? 'slow' : pwerr ? 'wrong' : undefined
+  const pwLocked = !user && isProtected(row) && !(await hasValidUnlock(getCookie(c.req.raw, PP_COOKIE), row.id, row.password_hash || '', Date.now()))
+  // 付费墙（契约 A2）：locked 时服务端把正文截成试读段再下发——浏览器拿不到的才真正拿不到。
+  // 管理员（作者本人预览）不受限；membersEnabled 关闭时无会员会话，锁文对所有人只出试读段
+  const minTier = normalizeMinTier(row.min_tier)
+  const locked = !pwLocked && !user && !canRead(minTier, member?.tier)
+  // 密码墙时正文一个字节都不出：连 sanitize 都不做，fullHtml 留空（teaser 分支不会被走到）。
+  // 渲染路径传 origin：非白名单外链包 /go 中间页（存库/RSS/导出不传，保持原始 URL）
+  const fullHtml = pwLocked ? '' : replaceEmoji(stripCoverDuplicate(sanitizeHtml(row.content, { origin: url.origin }), row.cover))
   const commentsBlock = commentsHtml({
     comments,
     slug: row.slug,
     allowComments: settings.allowComments === '1' && row.status === 'published',
     count: commentTotal,
     isAdmin: !!user,
-    // 管理员登录：表单免填昵称，以作者身份发言
+    // 管理员登录：表单免填昵称，以作者身份发言；会员登录次之，以会员身份发言
     adminName: user ? (user.display_name || user.username || '').slice(0, 24) : undefined,
+    memberName:
+      !user && member ? (member.display_name || member.username || '').slice(0, 24) : undefined,
+    // 作者评论的头像位用站点头像（与微博卡同源），游客/会员评论不适用
+    adminAvatar: settings.avatarUrl || undefined,
     tip: settings.moderateComments === '1' && !user ? '提交后审核通过即展示' : undefined,
   })
 
@@ -364,8 +477,8 @@ export async function renderPost(c: C): Promise<Response> {
     post: {
       slug: row.slug,
       title: row.title,
-      // 封面图与正文首图重复时渲染正文去掉首图，避免一图两现
-      contentHtml: stripCoverDuplicate(sanitizeHtml(row.content), row.cover),
+      // 封面图与正文首图重复时渲染正文去掉首图，避免一图两现；密码墙出解锁表单，locked 只下发试读段
+      contentHtml: pwLocked ? passwordFormHtml(row.slug, { error: lockedError }) : locked ? teaserHtml(fullHtml) : fullHtml,
       summary: row.summary,
       cover: row.cover,
       tags: parseTags(row),
@@ -373,6 +486,8 @@ export async function renderPost(c: C): Promise<Response> {
       views: row.views,
       likes: row.likes,
       readingMinutes: readingMinutes(row.content),
+      minTier,
+      locked,
     },
     category: categoryRow ? { name: categoryRow.name, slug: categoryRow.slug } : null,
     categories,
@@ -383,8 +498,10 @@ export async function renderPost(c: C): Promise<Response> {
     share,
   })
   c.header('Cache-Control', 'no-cache')
-  // 分享卡图优先：编辑器生成的 OG 卡图 > 封面图
-  const ogImage = extractOgImage(sanitizeHtml(row.content)) || row.cover || undefined
+  // 分享卡图优先：编辑器生成的 OG 卡图 > 封面图；密码墙时不从正文提取（正文零参与）
+  const ogImage = pwLocked ? row.cover || undefined : extractOgImage(sanitizeHtml(row.content)) || row.cover || undefined
+  // 密码墙的描述走 protectedDescription：作者自填摘要照常公开，绝不把 excerpt(row.content) 泄进 meta / JSON-LD
+  const metaDescription = pwLocked ? protectedDescription(row.summary) : row.summary || excerpt(row.content, 120)
   const base = siteBase(settings, url.origin)
   // 结构化数据（roadmap A3）：schema.org BlogPosting，与 og:image / canonical 同口径；草稿预览（noindex）不出
   const jsonLd = isPreview
@@ -392,7 +509,7 @@ export async function renderPost(c: C): Promise<Response> {
     : articleJsonLd({
         settings,
         title: row.title,
-        description: row.summary || excerpt(row.content, 120),
+        description: metaDescription,
         image: ogImage,
         url: `${base}/post/${row.slug}`,
         base,
@@ -404,9 +521,9 @@ export async function renderPost(c: C): Promise<Response> {
   return c.html(
     page(pageOpts(c, {
       settings,
-      css: theme.css,
+      css: theme.css + (pwLocked ? PP_CSS : ''),
       title: row.title,
-      description: row.summary || excerpt(row.content, 120),
+      description: metaDescription,
       ogImage,
       path: `/post/${row.slug}`,
       origin: url.origin,
@@ -430,7 +547,7 @@ export async function renderAbout(c: C): Promise<Response> {
     const html = themePageHtml(theme, {
       settings,
       title: aboutRow.title,
-      contentHtml: sanitizeHtml(aboutRow.content),
+      contentHtml: replaceEmoji(sanitizeHtml(aboutRow.content, { origin: new URL(c.req.url).origin })),
       categories,
       tags,
       pages,
@@ -452,7 +569,7 @@ export async function renderAbout(c: C): Promise<Response> {
   const [categories, tags, pages] = await Promise.all([navCategories(c), navTags(c), navPages(c)])
   const html = theme.about({
     settings,
-    contentHtml: sanitizeHtml(settings.about || '<p>作者很懒，什么都没写。</p>'),
+    contentHtml: replaceEmoji(sanitizeHtml(settings.about || '<p>作者很懒，什么都没写。</p>', { origin: new URL(c.req.url).origin })),
     categories,
     tags,
     pages,
@@ -485,7 +602,7 @@ export async function renderPage(c: C): Promise<Response> {
   const html = themePageHtml(theme, {
     settings,
     title: row.title,
-    contentHtml: sanitizeHtml(row.content),
+    contentHtml: replaceEmoji(sanitizeHtml(row.content, { origin: new URL(c.req.url).origin })),
     categories,
     tags,
     pages,
@@ -543,7 +660,7 @@ export async function renderGuestbook(c: C): Promise<Response> {
   baseHeaders(c)
   const settings = await getSettings(c.env.DB)
   const theme = getTheme(settings.theme)
-  const [comments, categories, tags, pages, user, gbCount] = await Promise.all([
+  const [comments, categories, tags, pages, user, gbCount, member] = await Promise.all([
     listGuestbookComments(c.env.DB),
     navCategories(c),
     navTags(c),
@@ -551,6 +668,7 @@ export async function renderGuestbook(c: C): Promise<Response> {
     getSessionUser(c.env.DB, c.req.raw),
     // 留言总数独立取：列表 LIMIT 500，超限后 length 会少报
     c.env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE post_id = 0 AND weibo_id = 0 AND status = 'approved'").first<{ n: number }>(),
+    membersEnabled(settings) ? getMemberUser(c.env.DB, c.req.raw) : Promise.resolve(null),
   ])
   const html = theme.guestbook({
     settings,
@@ -564,8 +682,10 @@ export async function renderGuestbook(c: C): Promise<Response> {
       allowComments: settings.allowComments === '1',
       count: gbCount?.n ?? comments.length,
       isAdmin: !!user,
-      // 管理员登录：表单免填昵称，以作者身份发言
+      // 管理员登录：表单免填昵称，以作者身份发言；会员登录次之，以会员身份发言
       adminName: user ? (user.display_name || user.username || '').slice(0, 24) : undefined,
+      memberName: !user && member ? (member.display_name || member.username || '').slice(0, 24) : undefined,
+      adminAvatar: settings.avatarUrl || undefined,
       tip: settings.moderateComments === '1' && !user ? '提交后审核通过即展示' : undefined,
       guestbook: true,
       // 页头已有「留言板」大标题，留言区标题换成「全部留言」避免重复
@@ -607,7 +727,7 @@ export async function renderWeibo(c: C, asHome = false): Promise<Response> {
     const located = await locateWeiboPage(c.env.DB, Number(wbParam), { limit: perPage, topic: topic || undefined })
     if (located) pageNum = located
   }
-  const [r, categories, topics, user, tags, pages] = await Promise.all([
+  const [r, categories, topics, user, tags, pages, member] = await Promise.all([
     listWeibo(c.env.DB, {
       status: 'published',
       page: pageNum,
@@ -621,6 +741,7 @@ export async function renderWeibo(c: C, asHome = false): Promise<Response> {
     getSessionUser(c.env.DB, c.req.raw),
     navTags(c),
     navPages(c),
+    membersEnabled(settings) ? getMemberUser(c.env.DB, c.req.raw) : Promise.resolve(null),
   ])
   // 页码越界时回到最后一页重取一次
   if (r.page > r.totalPages && r.total > 0) {
@@ -652,8 +773,9 @@ export async function renderWeibo(c: C, asHome = false): Promise<Response> {
     totalPages: r.totalPages,
     total: r.total,
     allowComments: settings.allowComments === '1',
-    // 管理员登录：卡片内评论表单免填昵称，以作者身份发言
+    // 管理员登录：卡片内评论表单免填昵称，以作者身份发言；会员登录次之，以会员身份发言
     adminName: user ? (user.display_name || user.username || '').slice(0, 24) : undefined,
+    memberName: !user && member ? (member.display_name || member.username || '').slice(0, 24) : undefined,
     topic: topic || undefined,
     topics,
   })
@@ -698,6 +820,112 @@ export async function renderLinks(c: C): Promise<Response> {
       title: '友情链接',
       description: `${settings.siteName}的朋友站点，也欢迎申请收录`,
       path: '/links',
+      origin: new URL(c.req.url).origin,
+      body: html,
+    }))
+  )
+}
+
+/** 会员体系总开关（settings.membersEnabled）：'1' 开启；关闭时 /member 与 /rank 随公开页口径 404。
+ *  默认关闭（键不存在视为关），站长在后台「设置」里打开——避免新部署站凭空多出两个空页面 */
+function membersEnabled(settings: { membersEnabled?: string }): boolean {
+  return settings.membersEnabled === '1'
+}
+
+/** 榜单行 → 视图条目：rank 服务端排好（1 起），isMe 标记当前访客本人行（契约 A1） */
+function toRankEntry(m: RankMemberRow, rank: number, sessionId: number | null): RankEntryView {
+  return {
+    rank,
+    nickname: (m.display_name || m.username).slice(0, 24),
+    tier: m.tier,
+    points: m.points,
+    avatarUrl: m.avatar || undefined,
+    isMe: sessionId !== null && sessionId === m.id,
+  }
+}
+
+/** 排行榜取数口径（/rank 页与首页挂件共用）：rankTopN 兜底 1-50 */
+async function rankEntries(c: C, settings: SettingsMap, sessionId: number | null): Promise<RankEntryView[]> {
+  const limit = clampInt(settings.rankTopN, 1, 50, 10)
+  const rows = await listRankTop(c.env.DB, limit)
+  return rows.map((m, i) => toRankEntry(m, i + 1, sessionId))
+}
+
+/** 会员中心页（/member）：未登录渲染登录/注册双表单，已登录渲染会员中心卡 */
+export async function renderMember(c: C): Promise<Response> {
+  baseHeaders(c)
+  const settings = await getSettings(c.env.DB)
+  if (!membersEnabled(settings)) return renderNotFound(c)
+  const theme = getTheme(settings.theme)
+  const [categories, tags, pages, session] = await Promise.all([
+    navCategories(c),
+    navTags(c),
+    navPages(c),
+    getMemberUser(c.env.DB, c.req.raw),
+  ])
+  let member: MemberData['member'] = null
+  if (session) {
+    // 会话只有昵称/积分口径，email 等自见字段回表补齐（getMemberUser 已挡 banned）
+    const row = await getMemberById(c.env.DB, session.id)
+    if (row) {
+      member = {
+        nickname: (row.display_name || row.username).slice(0, 24),
+        tier: row.tier,
+        points: row.points,
+        email: row.email,
+        avatarUrl: row.avatar || undefined,
+        qq: row.qq,
+        createdAt: row.created_at,
+        displayNameChangedAt: row.display_name_changed_at,
+      }
+    }
+  }
+  const html = themeMemberHtml(theme, { settings, categories, tags, pages, navActive: 'member', member })
+  c.header('Cache-Control', 'no-cache')
+  return c.html(
+    page(pageOpts(c, {
+      settings,
+      css: theme.css,
+      title: '会员中心',
+      description: `${settings.siteName}的会员中心，登录注册、攒积分、解锁会员专属内容`,
+      path: '/member',
+      origin: new URL(c.req.url).origin,
+      body: html,
+    }))
+  )
+}
+
+/** 排行榜页（/rank）：会员积分总榜（总榜起步，周榜/天榜待定）；登录访客本人行 isMe 高亮 */
+export async function renderRank(c: C): Promise<Response> {
+  baseHeaders(c)
+  const settings = await getSettings(c.env.DB)
+  if (!membersEnabled(settings)) return renderNotFound(c)
+  const theme = getTheme(settings.theme)
+  const [categories, tags, pages, session] = await Promise.all([
+    navCategories(c),
+    navTags(c),
+    navPages(c),
+    getMemberUser(c.env.DB, c.req.raw),
+  ])
+  const entries = await rankEntries(c, settings, session?.id ?? null)
+  const html = themeRankHtml(theme, {
+    settings,
+    categories,
+    tags,
+    pages,
+    navActive: 'rank',
+    entries,
+    total: entries.length,
+    me: entries.find((e) => e.isMe) ?? null,
+  })
+  c.header('Cache-Control', 'no-cache')
+  return c.html(
+    page(pageOpts(c, {
+      settings,
+      css: theme.css,
+      title: '排行榜',
+      description: `${settings.siteName}的会员积分排行榜，留言、常回来，积分自然涨`,
+      path: '/rank',
       origin: new URL(c.req.url).origin,
       body: html,
     }))

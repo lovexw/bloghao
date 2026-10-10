@@ -151,17 +151,21 @@ export function createR2Disk(root: string) {
       }
     },
 
-    async list(opts?: { prefix?: string; limit?: number }) {
+    async list(opts?: { prefix?: string; limit?: number; cursor?: string }) {
       const prefix = opts?.prefix ?? ''
       const limit = opts?.limit ?? 1000
       const keys = listAllKeys(root).filter((k) => k.startsWith(prefix))
-      const page = keys.slice(0, limit)
+      // cursor round-trip（demo.ts wipeBucket 分页删光）：磁盘实现无并发写，offset 即安全
+      const start = Number(opts?.cursor) || 0
+      const page = keys.slice(start, start + limit)
+      const next = start + page.length
       return {
         objects: page.map((k) => {
           const st = fs.statSync(path.resolve(root, k))
           return { key: k, size: st.size, uploaded: st.mtime }
         }),
-        truncated: keys.length > page.length,
+        truncated: next < keys.length,
+        cursor: next < keys.length ? String(next) : undefined,
       }
     },
   }

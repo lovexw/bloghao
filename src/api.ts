@@ -1,25 +1,36 @@
 import { type Context, Hono } from 'hono'
 import { runBackup } from './backup'
 import {
+  clearMemberSessionCookie,
   clearSessionCookie,
   clientIp,
+  createMemberSession,
   createSession,
+  destroyMemberSession,
+  destroyMemberSessionsByMember,
+  destroyOtherMemberSessions,
   destroySession,
   getCookie,
+  getMemberUser,
   getSessionUser,
   hashPassword,
+  MEMBER_SESSION_COOKIE,
   rateLimit,
   safeEqual,
   SESSION_COOKIE,
   sessionCookie,
+  memberSessionCookie,
 } from './auth'
 import {
   countUsers,
   createCategory,
   categoryNameMap,
+  createMember,
   DEFAULT_SETTINGS,
   getCategoryById,
   getFriendLinkById,
+  getMemberById,
+  getMemberByUsername,
   getPostById,
   getPostBySlug,
   getPostCategoryId,
@@ -27,6 +38,7 @@ import {
   getWeiboById,
   listCategories,
   listFriendLinks,
+  listMembersAdmin,
   listPages,
   getPageById,
   uniquePageSlug,
@@ -38,25 +50,32 @@ import {
   seedWelcomePost,
   setPostCategory,
   uniqueSlug,
+  updateMemberAdmin,
+  updateMemberNickname,
+  updateMemberQQ,
   weiboCommentCountMap,
   weiboImageList,
   weiboTopicList,
   WEIBO_MAX_CHARS,
 } from './db'
 import { mdToHtml } from './markdown'
+import { EMOJI_BASE, WECHAT_EMOJI } from './emoji'
+import { awardCommentPoints, awardPoints, normalizeMinTier } from './points'
 import { collectRoutes } from './collect'
 import { exportRoutes } from './export'
 import { adminExternalRoutes, externalRoutes, notifyAdminComment, telegramRoutes } from './external'
-import { fireCommentCreated, firePostPublished, listServerPlugins } from './hooks'
+import { fireCommentCreated, firePostPublished, fireWeiboPublished, listBufferChannels, listServerPlugins } from './hooks'
 import { SITE_MODE_VALUES, siteBase, toHomePost, type SiteMode } from './render'
 import { sanitizeHtml } from './sanitize'
 import { cleanupUnreferenced, backfillHashes, mergeDuplicate, runAudit } from './audit'
-import { imageExtOf, MAX_REMOTE_IMAGES, MAX_UPLOAD_BYTES, saveUpload, transferImage } from './store'
+import { imageExtOf, MAX_REMOTE_IMAGES, MAX_UPLOAD_BYTES, saveUpload, sniffImageExt, transferImage } from './store'
+import { hashPostPassword } from './protect'
 import { listTrash, restorePostStatus, trashTable, type TrashTable } from './trash'
 import { classifyBrowser, classifyDevice, cleanPath, cleanRef, cleanTitle, cleanVid, getVisitStats, recordVisit } from './stats'
+import { fetchLinkMeta } from './linkmeta'
 import { THEMES } from './themes/registry'
-import type { CommentRow, Env, PostRow, SessionUser } from './types'
-import { clampInt, cleanDisabledPlugins, cleanSlug, excerpt, extractWeiboTopics, isDemo, jsonItemLikePattern, normalizeLinkUrl, slugify } from './utils'
+import type { CommentRow, Env, MemberRow, MemberTier, PostRow, SessionUser } from './types'
+import { clampInt, cleanDisabledPlugins, cleanNickname, cleanSlug, excerpt, extractWeiboTopics, fmtDateCN, isDemo, isValidQQ, jsonItemLikePattern, nicknameCooldown, normalizeLinkUrl, slugify } from './utils'
 
 type AppEnv = { Bindings: Env; Variables: { user: SessionUser } }
 
@@ -163,12 +182,230 @@ api.post('/auth/logout', async (c) => {
   return c.json({ ok: true })
 })
 
+/* ---------------- 会员（访客注册/登录，契约见 docs/DEVPLAN-2026-10-07.md 附录 A） ---------------- */
+
+/** 对外视图裁剪：公开口径只有昵称/档位/积分；self = 本人视角（另给 email/username/createdAt），管理口径走 listMembersAdmin 原始行 */
+function memberView(m: MemberRow, self = false) {
+  const v: Record<string, unknown> = {
+    nickname: (m.display_name || m.username).slice(0, 24),
+    tier: m.tier,
+    points: m.points,
+  }
+  if (m.avatar) v.avatarUrl = m.avatar
+  if (self) {
+    v.username = m.username
+    v.email = m.email
+    v.qq = m.qq
+    v.createdAt = m.created_at
+    v.displayNameChangedAt = m.display_name_changed_at ?? null
+  }
+  return v
+}
+
+api.post('/member/register', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  if (settings.membersEnabled !== '1') return jsonError('会员功能未开放', 404)
+  const ip = clientIp(c.req.raw)
+  if (!rateLimit(`mreg:${ip}`, 5, 10 * 60_000)) return jsonError('注册太频繁，请稍后再试', 429)
+  const body = await c.req.json<{ username?: string; password?: string; email?: string; nickname?: string; link?: string }>().catch(() => null)
+  // 蜜罐字段 link：正常用户看不到、机器人会填 —— 静默丢弃（同 publicComment 口径）
+  if (body?.link) return c.json({ ok: true })
+  const username = String(body?.username || '').trim()
+  const password = String(body?.password || '')
+  const email = String(body?.email || '').trim().slice(0, 100)
+  // 昵称选填（中英文均可，仅展示不做唯一约束）；注册时填写不占用 30 天修改窗口
+  const nickname = cleanNickname(body?.nickname)
+  if (!/^[a-zA-Z0-9_-]{2,24}$/.test(username)) return jsonError('用户名需为 2-24 位字母、数字、_ 或 -')
+  if (password.length < 8 || password.length > 64) return jsonError('密码长度需为 8-64 位')
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError('邮箱格式不正确')
+  if (await getMemberByUsername(c.env.DB, username)) return jsonError('用户名已被占用')
+  const { hash, salt } = await hashPassword(password)
+  let memberId: number
+  try {
+    memberId = await createMember(c.env.DB, { username, hash, salt, email, displayName: nickname })
+  } catch {
+    return jsonError('用户名已被占用') // 并发注册撞 UNIQUE 约束的兜底
+  }
+  const token = await createMemberSession(c.env.DB, memberId)
+  c.header('Set-Cookie', memberSessionCookie(token))
+  await awardPoints(c.env.DB, memberId, 'dailyLogin')
+  const row = await getMemberById(c.env.DB, memberId)
+  return c.json({ ok: true, member: row ? memberView(row, true) : null })
+})
+
+api.post('/member/login', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  if (settings.membersEnabled !== '1') return jsonError('会员功能未开放', 404)
+  const ip = clientIp(c.req.raw)
+  if (!rateLimit(`mlogin:${ip}`, 10, 10 * 60_000)) return jsonError('尝试次数过多，请 10 分钟后再试', 429)
+  const body = await c.req.json<{ username?: string; password?: string }>().catch(() => null)
+  const username = String(body?.username || '').trim()
+  const password = String(body?.password || '')
+  const m = await getMemberByUsername(c.env.DB, username)
+  if (m) {
+    const { hash } = await hashPassword(password, m.salt)
+    if (safeEqual(hash, m.password_hash)) {
+      // 先验口令再报封禁：不向未持有口令的人泄露账号状态（契约 A5：403 {error:'banned'}）
+      if (m.status === 'banned') return jsonError('banned', 403)
+      const token = await createMemberSession(c.env.DB, m.id)
+      c.header('Set-Cookie', memberSessionCookie(token))
+      await awardPoints(c.env.DB, m.id, 'dailyLogin')
+      await c.env.DB.prepare('UPDATE members SET last_login_at = ? WHERE id = ?').bind(Date.now(), m.id).run()
+      return c.json({ ok: true, member: memberView(m, true) })
+    }
+  } else {
+    // 用户不存在也跑一次等开销哈希：响应耗时对齐，防时序侧信道枚举用户名（同 /auth/login 口径）
+    await hashPassword(password, 'timing-equalizer-salt-0000')
+  }
+  return jsonError('用户名或密码错误', 401)
+})
+
+api.post('/member/logout', async (c) => {
+  await destroyMemberSession(c.env.DB, c.req.raw)
+  c.header('Set-Cookie', clearMemberSessionCookie())
+  return c.json({ ok: true })
+})
+
+api.get('/member/me', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  if (settings.membersEnabled !== '1') return jsonError('会员功能未开放', 404)
+  const session = await getMemberUser(c.env.DB, c.req.raw)
+  if (!session) return c.json({ member: null })
+  const row = await getMemberById(c.env.DB, session.id)
+  return c.json({ member: row ? memberView(row, true) : null })
+})
+
+/* 会员个人资料（/member 页会员卡，契约见 docs/DEVPLAN-2026-10-07.md）：改昵称（30 天一次）与改密码 */
+
+/** 抓取 QQ 头像并转存进站内图床，返回站内地址；失败返回 null（调用方容忍只存 qq 号，
+ *  会员中心「重试头像」重跑同一请求补抓）。q1 主端点、q2 备用镜像，s=140 档（100 略糊、
+ *  640 浪费流量）；只认文件魔数（同 collect 转存口径），落库统一走 saveUpload（EXIF 剥离同款兜底） */
+async function fetchQQAvatar(env: Env, qq: string): Promise<string | null> {
+  for (const host of ['q1.qlogo.cn', 'q2.qlogo.cn']) {
+    try {
+      const res = await fetch(`https://${host}/g?b=qq&nk=${encodeURIComponent(qq)}&s=140`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', Referer: 'https://q.qlogo.cn/' },
+        signal: AbortSignal.timeout(6_000),
+      })
+      if (!res.ok) continue
+      if (Number(res.headers.get('content-length') || 0) > 1024 * 1024) continue
+      const buf = await res.arrayBuffer()
+      if (buf.byteLength === 0 || buf.byteLength > 1024 * 1024) continue
+      const ext = sniffImageExt(buf)
+      if (!ext || ext === 'gif') continue // 头像只收 jpg/png/webp
+      return await saveUpload(env, buf, `image/${ext === 'jpg' ? 'jpeg' : ext}`, `qq-${qq}.${ext}`, ext)
+    } catch {
+      /* 单镜像失败换下一个，最终失败由调用方容忍 */
+    }
+  }
+  return null
+}
+
+api.post('/member/profile', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  if (settings.membersEnabled !== '1') return jsonError('会员功能未开放', 404)
+  const session = await getMemberUser(c.env.DB, c.req.raw)
+  if (!session) return jsonError('请先登录', 401)
+  const body = await c.req.json<{ nickname?: string; qq?: string }>().catch(() => null)
+  const hasNickname = !!body && typeof body.nickname === 'string'
+  const nickname = hasNickname ? cleanNickname(body?.nickname) : ''
+  // qq 只在显式携带时处理：带键即意图（绑定/重试头像），不带键不碰
+  const qq = body && typeof body.qq === 'string' ? body.qq.trim() : undefined
+  if (!hasNickname && qq === undefined) return jsonError('没有要修改的内容')
+  if (hasNickname && !nickname) return jsonError('昵称不能为空')
+  const res: Record<string, unknown> = { ok: true }
+  const now = Date.now()
+
+  if (hasNickname) {
+    const row = await getMemberById(c.env.DB, session.id)
+    if (!row) return jsonError('请先登录', 401)
+    const cd = nicknameCooldown(row.display_name_changed_at)
+    if (!cd.allowed) return jsonError(`昵称每 30 天只能修改一次，${fmtDateCN(cd.nextAt)}后可再改`, 403)
+    // 条件更新把窗口判定下沉进 SQL：并发双开同时过上面的前置检查时，只有一动能落库
+    if (!(await updateMemberNickname(c.env.DB, session.id, nickname, now))) {
+      return jsonError(`昵称每 30 天只能修改一次，${fmtDateCN(nicknameCooldown(now).nextAt)}后可再改`, 403)
+    }
+    res.nickname = nickname
+    res.displayNameChangedAt = now
+  }
+
+  if (qq !== undefined) {
+    // 评论头像（C2）：qq 号仅作头像抓取记账位，任何公开出参不携带；绑过再绑 = 幂等重试头像
+    if (!isValidQQ(qq)) return jsonError('QQ 号格式不对（5-11 位数字，不以 0 开头）')
+    if (!rateLimit(`qqbind:${session.id}`, 10, 60_000)) return jsonError('操作太频繁，请稍后再试', 429)
+    const avatarUrl = await fetchQQAvatar(c.env, qq)
+    await updateMemberQQ(c.env.DB, session.id, qq, avatarUrl, now)
+    res.qq = qq
+    if (avatarUrl) res.avatarUrl = avatarUrl
+    else res.avatarFailed = true
+  }
+
+  return c.json(res)
+})
+
+api.post('/member/password', async (c) => {
+  const settings = await getSettings(c.env.DB)
+  if (settings.membersEnabled !== '1') return jsonError('会员功能未开放', 404)
+  const session = await getMemberUser(c.env.DB, c.req.raw)
+  if (!session) return jsonError('请先登录', 401)
+  // PBKDF2 是慢操作：按 IP 限流防滥用（口径同 /member/login）
+  if (!rateLimit(`mpwd:${clientIp(c.req.raw)}`, 10, 10 * 60_000)) return jsonError('尝试次数过多，请 10 分钟后再试', 429)
+  const body = await c.req.json<{ currentPassword?: string; newPassword?: string }>().catch(() => null)
+  const current = String(body?.currentPassword || '')
+  const next = String(body?.newPassword || '')
+  if (next.length < 8 || next.length > 64) return jsonError('新密码长度需为 8-64 位')
+  const row = await getMemberById(c.env.DB, session.id)
+  if (!row) return jsonError('请先登录', 401)
+  const { hash } = await hashPassword(current, row.salt)
+  if (!safeEqual(hash, row.password_hash)) return jsonError('当前密码不正确')
+  const { hash: newHash, salt: newSalt } = await hashPassword(next)
+  await c.env.DB
+    .prepare('UPDATE members SET password_hash = ?, salt = ?, updated_at = ? WHERE id = ?')
+    .bind(newHash, newSalt, Date.now(), row.id)
+    .run()
+  // 改密即其他设备全部下线（当前会话保留——改密码的人自己不能被登出去）
+  const token = getCookie(c.req.raw, MEMBER_SESSION_COOKIE) || ''
+  await destroyOtherMemberSessions(c.env.DB, row.id, token)
+  return c.json({ ok: true })
+})
+
 /* ---------------- 需要登录的 /admin/* ---------------- */
+/* 注意：本中间件必须注册在所有 /admin/* 路由之前（hono 按注册顺序执行，路由先命中即终止链条） */
 api.use('/admin/*', async (c, next) => {
   const user = await getSessionUser(c.env.DB, c.req.raw)
   if (!user) return jsonError('请先登录', 401)
   c.set('user', user)
   await next()
+})
+
+/* 后台会员管理（PUT 缺键即保留，同 posts PUT 语义） */
+
+const MEMBER_TIERS: MemberTier[] = ['normal', 'coffee', 'top']
+
+api.get('/admin/members', async (c) => {
+  const page = clampInt(c.req.query('page'), 1, 1_000_000, 1)
+  const q = (c.req.query('q') || '').trim().slice(0, 50)
+  return c.json(await listMembersAdmin(c.env.DB, q, page))
+})
+
+api.put('/admin/members/:id', async (c) => {
+  const id = parseId(c.req.param('id'))
+  if (!id) return jsonError('会员不存在', 404)
+  const body = await c.req.json<{ tier?: string; status?: string }>().catch(() => null)
+  if (!body || typeof body !== 'object') return jsonError('请求格式错误')
+  const patch: { tier?: string; status?: string } = {}
+  if ('tier' in body) {
+    if (!MEMBER_TIERS.includes(body.tier as MemberTier)) return jsonError('未知档位')
+    patch.tier = body.tier
+  }
+  if ('status' in body) {
+    if (body.status !== 'active' && body.status !== 'banned') return jsonError('未知状态')
+    patch.status = body.status
+  }
+  if (!(await updateMemberAdmin(c.env.DB, id, patch))) return jsonError('会员不存在', 404)
+  // 拉黑即踢下线（getMemberUser 查询层已挡 banned，这里把会话 token 一并清掉）
+  if (patch.status === 'banned') await destroyMemberSessionsByMember(c.env.DB, id)
+  return c.json({ ok: true })
 })
 
 /* 采集插件（公众号文章 → 草稿），见 src/collect.ts */
@@ -253,6 +490,8 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
     status: 'status' in b,
     pinned: 'pinned' in b,
     categoryId: 'categoryId' in b,
+    minTier: 'minTier' in b,
+    password: 'password' in b,
   }
   const tags = Array.isArray(b.tags)
     ? b.tags
@@ -277,12 +516,22 @@ async function readPostPayload(c: { req: { json: () => Promise<unknown> } }) {
     slug: cleanSlug(String(b.slug ?? '')),
     categoryId,
     publishAt,
+    // 可见档位（契约 DEVPLAN 附录 A A7）：脏值归一为 all
+    minTier: normalizeMinTier(typeof b.minTier === 'string' ? b.minTier : null),
+    // 访问密码（src/protect.ts）：仅在键存在时参与写入；空串 = 解除加密，缺键 = 保持现状。
+    // 明文只在本次请求内存在，落库前即转 PBKDF2，响应里永远只有 hasPassword 布尔
+    password: String(b.password ?? '').slice(0, 64),
     has,
   }
 }
 
 // 服务端插件列表（后台「插件」页展示与启停，见 src/hooks.ts）
 api.get('/admin/server-plugins', (c) => c.json({ plugins: listServerPlugins() }))
+
+/** 后台文章出参：password_hash 永不出接口（明文不可逆，哈希也不该喂给前端），只给 hasPassword 布尔 */
+function postAdminView(row: PostRow & { tagList?: string[]; categoryId?: number | null }) {
+  return { ...row, password_hash: undefined, hasPassword: !!row.password_hash }
+}
 
 api.get('/admin/posts', async (c) => {
   const statusParam = c.req.query('status')
@@ -296,7 +545,7 @@ api.get('/admin/posts', async (c) => {
   const catNames = await categoryNameMap(c.env.DB, r.items.map((p) => p.id))
   return c.json({
     items: r.items.map((p) => ({
-      ...p,
+      ...postAdminView(p),
       content: undefined,
       tagList: parseTags(p),
       categoryName: catNames.get(p.id) || '',
@@ -311,19 +560,26 @@ api.post('/admin/posts', async (c) => {
   const p = await readPostPayload(c)
   if (!p) return jsonError('请求格式错误')
   if ('tooBig' in p) return jsonError('正文过长（上限约 1MB）')
+  // 定时发布必须带时间（编辑器有校验，这里拦 API 直调）——否则 publish_at 落 NULL，
+  // scheduler 只扫有时间的行，该文会无提示地永远卡在 scheduled
+  if (p.status === 'scheduled' && p.publishAt == null) return jsonError('定时发布必须填写发布时间')
   const title = p.title || '无标题'
   const base = p.slug || slugify(title)
   const slug = await uniqueSlug(c.env.DB, base)
   const now = Date.now()
+  // 访问密码：随创建一并写入（空 = 不加密）
+  const passwordHash = p.password ? await hashPostPassword(p.password) : ''
   const res = await c.env.DB.prepare(
-    `INSERT INTO posts (slug, title, content, summary, cover, tags, status, pinned, author_id, published_at, publish_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO posts (slug, title, content, summary, cover, tags, status, pinned, author_id, published_at, publish_at, min_tier, password_hash, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       slug,
       title,
       sanitizeHtml(p.content),
-      p.summary || excerpt(p.content, 80),
+      // 密码文的自动摘要留空：summary 列是对外导读面（RSS description / meta / 公开列表），
+      // 不能拿加密正文截前 80 字泄出去；作者手填的摘要照常保留（作者主动公开的导读）
+      p.summary || (passwordHash ? '' : excerpt(p.content, 80)),
       p.cover,
       JSON.stringify(p.tags),
       p.status,
@@ -331,6 +587,8 @@ api.post('/admin/posts', async (c) => {
       c.get('user').id,
       p.status === 'published' ? now : null,
       p.status === 'scheduled' ? (p.publishAt ?? null) : null,
+      p.minTier,
+      passwordHash,
       now,
       now
     )
@@ -343,11 +601,41 @@ api.post('/admin/posts', async (c) => {
   // 广播发布事件（服务端插件钩子，见 src/hooks.ts）：新建即发布也算跃迁
   if (p.status === 'published' && row) {
     c.executionCtx.waitUntil(
-      firePostPublished(c.env, { slug: row.slug, title: row.title, summary: row.summary, via: 'admin' })
+      firePostPublished(c.env, {
+        slug: row.slug,
+        title: row.title,
+        summary: row.summary,
+        via: 'admin',
+        // 加密/会员锁文标志：广场同步插件据此跳过（防泄漏清单同口径）
+        locked: !!row.password_hash || (!!row.min_tier && row.min_tier !== 'all'),
+      })
     )
   }
   const categoryId = row ? await getPostCategoryId(c.env.DB, row.id) : null
-  return c.json({ ok: true, post: row ? { ...row, tagList: parseTags(row), categoryId } : null })
+  return c.json({ ok: true, post: row ? { ...postAdminView(row), tagList: parseTags(row), categoryId } : null })
+})
+
+/** 站内文章选择器（编辑器「插入站内文章」）：轻出参——只给标题/slug/摘要/封面/时间，
+ *  无正文无口令；q 走 likePattern 模糊匹配标题（与后台列表搜索同口径） */
+api.get('/admin/posts/lookup', async (c) => {
+  const q = (c.req.query('q') || '').trim().slice(0, 50)
+  const page = clampInt(c.req.query('page'), 1, 1000, 1)
+  const r = await listPosts(c.env.DB, { status: 'published', q: q || undefined, page, limit: 8 })
+  return c.json({
+    items: r.items.map((p) => ({
+      id: p.id,
+      slug: p.slug,
+      title: p.title,
+      summary: (p.summary || '').slice(0, 80),
+      cover: p.cover || '',
+      published_at: p.published_at,
+      hasPassword: !!p.password_hash,
+      minTier: normalizeMinTier(p.min_tier),
+    })),
+    total: r.total,
+    page: r.page,
+    totalPages: r.totalPages,
+  })
 })
 
 api.get('/admin/posts/:id', async (c) => {
@@ -356,7 +644,7 @@ api.get('/admin/posts/:id', async (c) => {
   const row = await getPostById(c.env.DB, id)
   if (!row) return jsonError('文章不存在', 404)
   const categoryId = await getPostCategoryId(c.env.DB, row.id)
-  return c.json({ post: { ...row, tagList: parseTags(row), categoryId } })
+  return c.json({ post: { ...postAdminView(row), tagList: parseTags(row), categoryId } })
 })
 
 api.put('/admin/posts/:id', async (c) => {
@@ -371,19 +659,27 @@ api.put('/admin/posts/:id', async (c) => {
   const title = p.has.title ? p.title || '无标题' : existing.title
   const slug = p.has.slug && p.slug && p.slug !== existing.slug ? await uniqueSlug(c.env.DB, p.slug, id) : existing.slug
   const content = p.has.content ? sanitizeHtml(p.content) : existing.content
-  const summary = p.has.summary ? p.summary || (p.status === 'published' ? excerpt(content, 80) : '') : existing.summary
+  // status 先解析（部分更新语义：缺键沿用库里状态），summary 兜底按解析后的状态算，别用 payload 默认值。
+  // 密码文的自动摘要同样留空（同 POST 创建口径）：summary 是公开导读面，加密正文不出前 80 字
+  const status = p.has.status ? p.status : existing.status
+  const willLock = p.has.password ? !!p.password : !!existing.password_hash
+  const summary = p.has.summary ? p.summary || (willLock ? '' : status === 'published' ? excerpt(content, 80) : '') : existing.summary
   const cover = p.has.cover ? p.cover : existing.cover
   const tags = p.has.tags ? JSON.stringify(p.tags) : existing.tags
-  const status = p.has.status ? p.status : existing.status
   const pinned = p.has.pinned ? p.pinned : existing.pinned
+  const minTier = p.has.minTier ? p.minTier : normalizeMinTier(existing.min_tier)
   // 草稿也保留已有 published_at：采集插件会把原文发布时间写入草稿，
   // 自动保存不能把它抹掉；发布时若草稿已有时间则沿用。
   // publish_at 只在 scheduled 状态下有意义：定时保存写入目标时间，
   // 转发布/草稿时清空；scheduled 但没给时间则保留旧值（自动保存场景）
   const publishedAt = status === 'published' ? (existing.published_at ?? Date.now()) : existing.published_at
   const publishAt = status === 'scheduled' ? (p.publishAt ?? existing.publish_at ?? null) : null
+  // scheduled 但新旧都没有时间：拒绝而不是落 NULL 卡死在定时态（编辑器有校验，这里拦 API 直调）
+  if (status === 'scheduled' && publishAt == null) return jsonError('定时发布必须填写发布时间')
+  // 访问密码：键存在才参与（空串解除、非空设置/更换），缺键保持原值——自动安全永远不误清
+  const passwordHash = p.has.password ? (p.password ? await hashPostPassword(p.password) : '') : existing.password_hash || ''
   await c.env.DB.prepare(
-    `UPDATE posts SET slug = ?, title = ?, content = ?, summary = ?, cover = ?, tags = ?, status = ?, pinned = ?, published_at = ?, publish_at = ?, updated_at = ? WHERE id = ?`
+    `UPDATE posts SET slug = ?, title = ?, content = ?, summary = ?, cover = ?, tags = ?, status = ?, pinned = ?, published_at = ?, publish_at = ?, min_tier = ?, password_hash = ?, updated_at = ? WHERE id = ?`
   )
     .bind(
       slug,
@@ -396,6 +692,8 @@ api.put('/admin/posts/:id', async (c) => {
       pinned,
       publishedAt,
       publishAt,
+      minTier,
+      passwordHash,
       Date.now(),
       id
     )
@@ -412,10 +710,17 @@ api.put('/admin/posts/:id', async (c) => {
   // 广播发布事件：只在草稿/定时 → 已发布的跃迁时触发，重复编辑已发布文章不重推
   if (status === 'published' && existing.status !== 'published' && row) {
     c.executionCtx.waitUntil(
-      firePostPublished(c.env, { slug: row.slug, title: row.title, summary: row.summary, via: 'admin' })
+      firePostPublished(c.env, {
+        slug: row.slug,
+        title: row.title,
+        summary: row.summary,
+        via: 'admin',
+        // 加密/会员锁文标志：广场同步插件据此跳过（防泄漏清单同口径）
+        locked: !!row.password_hash || (!!row.min_tier && row.min_tier !== 'all'),
+      })
     )
   }
-  return c.json({ ok: true, post: row ? { ...row, tagList: parseTags(row), categoryId } : null })
+  return c.json({ ok: true, post: row ? { ...postAdminView(row), tagList: parseTags(row), categoryId } : null })
 })
 
 api.post('/admin/posts/:id/pin', async (c) => {
@@ -501,6 +806,10 @@ api.post('/admin/weibo', async (c) => {
     .bind(p.content, JSON.stringify(p.images), JSON.stringify(p.topics), p.status, p.status === 'published' ? now : null, now, now)
     .run()
   const row = await getWeiboById(c.env.DB, Number(res.meta.last_row_id))
+  // 广播微博发布事件（服务端插件钩子，见 src/hooks.ts）：新建即发布才算
+  if (p.status === 'published' && row) {
+    c.executionCtx.waitUntil(fireWeiboPublished(c.env, { id: row.id, content: row.content, images: weiboImageList(row), via: 'admin' }))
+  }
   return c.json({ ok: true, weibo: row ? { ...row, imageList: weiboImageList(row), topicList: weiboTopicList(row) } : null })
 })
 
@@ -521,6 +830,10 @@ api.put('/admin/weibo/:id', async (c) => {
     .bind(p.content, JSON.stringify(p.images), JSON.stringify(p.topics), p.status, pinned, publishedAt, Date.now(), id)
     .run()
   const row = await getWeiboById(c.env.DB, id)
+  // 广播微博发布事件（服务端插件钩子，见 src/hooks.ts）：仅草稿 → 发布的跃迁，编辑已发布微博不触发
+  if (p.status === 'published' && row && existing.status !== 'published') {
+    c.executionCtx.waitUntil(fireWeiboPublished(c.env, { id: row.id, content: row.content, images: weiboImageList(row), via: 'draft' }))
+  }
   return c.json({ ok: true, weibo: row ? { ...row, imageList: weiboImageList(row), topicList: weiboTopicList(row) } : null })
 })
 
@@ -557,17 +870,22 @@ api.delete('/admin/weibo/:id', async (c) => {
   return c.json({ ok: true })
 })
 
+/** 服务端插件「微博同步 Buffer」的渠道拉取：设置页一键填充渠道 ID（src/hooks.ts listBufferChannels） */
+api.post('/admin/buffer/channels', async (c) => {
+  const body = await c.req.json<{ token?: string }>().catch(() => null)
+  // token 缺省时用已保存的（打码占位符提交 = 保持原值，与 SECRET_SETTINGS 同口径）
+  const saved = (await getSettings(c.env.DB)).bufferAccessToken || ''
+  const token = (body?.token || '').trim()
+  const using = token || (saved && saved !== SECRET_MASK ? saved : '')
+  if (!using) return jsonError('先填写 Buffer API Key，再拉取渠道')
+  const r = await listBufferChannels(using)
+  if (!r.ok) return jsonError(r.error, 502)
+  return c.json({ ok: true, channels: r.channels })
+})
+
 /* ---------------- 友情链接管理 ---------------- */
-const LINK_ICON_MIMES: Record<string, string> = {
-  'image/x-icon': 'ico',
-  'image/vnd.microsoft.icon': 'ico',
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-}
 const LINK_ICON_MAX_BYTES = 300 * 1024
-const ICON_FETCH_UA = 'Mozilla/5.0 (compatible; BlogHaoBot/1.0; +https://github.com/lovexw/bloghao)'
+const ICON_FETCH_UA = 'Mozilla/5.0 (compatible; BlogHaoBot/1.0; +https://github.com/bloghao/bloghao)'
 
 /** 校验友链图标地址：只收站内 /images/ 与 http(s) 外链，防 javascript: 注入 */
 function normalizeLinkIcon(input: unknown): string {
@@ -598,12 +916,13 @@ async function storeLinkIcon(env: Env, iconUrl: string, host: string): Promise<s
       headers: { 'user-agent': ICON_FETCH_UA },
     })
     if (!res.ok) return ''
-    const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
-    // hasOwnProperty 挡原型链（同 upload 的 IMAGE_MIMES 口径）：继承属性 truthy 会穿透成非法扩展名
-    const ext = Object.prototype.hasOwnProperty.call(LINK_ICON_MIMES, mime) ? LINK_ICON_MIMES[mime] : ''
-    if (!ext) return ''
     const buf = await res.arrayBuffer()
     if (!buf.byteLength || buf.byteLength > LINK_ICON_MAX_BYTES) return ''
+    // 只认文件魔数、不信任源站 Content-Type（同 collect 转存口径）：favicon 常是 ICO（sniffImageExt 不认），单独判魔数
+    const h = new Uint8Array(buf, 0, Math.min(4, buf.byteLength))
+    const ext = h[0] === 0 && h[1] === 0 && h[2] === 1 && h[3] === 0 ? 'ico' : sniffImageExt(buf)
+    if (!ext) return ''
+    const mime = ext === 'ico' ? 'image/x-icon' : `image/${ext === 'jpg' ? 'jpeg' : ext}`
     const key = `u/fav/${host.replace(/[^a-z0-9.-]/gi, '')}.${ext}`
     await env.IMAGES.put(key, buf, {
       httpMetadata: { contentType: mime, cacheControl: 'public, max-age=604800' },
@@ -832,7 +1151,7 @@ api.post('/admin/pages', async (c) => {
     .catch(() => null)
   const title = String(body?.title ?? '').trim().slice(0, 60)
   if (!title) return jsonError('页面标题不能为空')
-  // slug 留空由标题生成（posts 同款 slugify），中文标题回退随机 slug
+  // slug 留空由标题生成（posts 同款 slugify），中文标题回退 dateSlug（北京日期 + 随机位）
   const base = cleanSlug(String(body?.slug ?? '')) || slugify(title)
   const slug = await uniquePageSlug(c.env.DB, base.slice(0, 80))
   const content = sanitizeHtml(String(body?.content ?? '').slice(0, 100_000))
@@ -945,7 +1264,10 @@ api.delete('/admin/trash/:type/:id', async (c) => {
       c.env.DB.prepare(`DELETE FROM post_categories WHERE post_id = ? ${cascade}`).bind(id),
       c.env.DB.prepare('DELETE FROM posts WHERE id = ? AND deleted_at IS NOT NULL').bind(id),
     ])
-    if ((res[2].meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
+    // 用 < 1 而非 !== 1：DELETE 触发器（FTS 索引同步，db.ts SCHEMA_TRIGGERS）会让 meta.changes
+    // 把触发器内的 FTS 删除命令也计进去，单行删除的 changes 可能是 1 也可能是 2+（D1 实测为 2）；
+    // 0 行匹配时触发器不运行、changes 恒为 0，所以「< 1 = 什么都没删」在两种计数口径下都成立
+    if ((res[2].meta.changes ?? 0) < 1) return jsonError('回收站里没有这条内容', 404)
   } else if (table === 'weibo') {
     const res = await c.env.DB.batch([
       c.env.DB.prepare(
@@ -953,7 +1275,8 @@ api.delete('/admin/trash/:type/:id', async (c) => {
       ).bind(id),
       c.env.DB.prepare('DELETE FROM weibo WHERE id = ? AND deleted_at IS NOT NULL').bind(id),
     ])
-    if ((res[1].meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
+    // 同 posts：< 1 口径（weibo_fts 删除触发器会把 changes 计成 2）
+    if ((res[1].meta.changes ?? 0) < 1) return jsonError('回收站里没有这条内容', 404)
   } else {
     const res = await c.env.DB.prepare('DELETE FROM pages WHERE id = ? AND deleted_at IS NOT NULL').bind(id).run()
     if ((res.meta.changes ?? 0) !== 1) return jsonError('回收站里没有这条内容', 404)
@@ -991,9 +1314,9 @@ api.post('/admin/trash/purge', async (c) => {
 })
 
 api.get('/admin/tags', async (c) => {
-  // 文章里实际用到的标签（含草稿）+ 分类页预建的标签（count 为 0）
+  // 文章里实际用到的标签（含草稿，不含回收站）+ 分类页预建的标签（count 为 0）
   const [postsRes, extraRes] = await Promise.all([
-    c.env.DB.prepare('SELECT tags FROM posts LIMIT 2000').all<{ tags: string }>(),
+    c.env.DB.prepare('SELECT tags FROM posts WHERE deleted_at IS NULL LIMIT 2000').all<{ tags: string }>(),
     c.env.DB.prepare('SELECT name FROM tags').all<{ name: string }>(),
   ])
   const count = new Map<string, number>()
@@ -1203,8 +1526,17 @@ api.put('/admin/comments/:id', async (c) => {
   const id = parseId(c.req.param('id'))
   if (!id) return jsonError('评论不存在', 404)
   const body = await c.req.json<{ status?: string }>().catch(() => null)
-  const status = body?.status === 'pending' ? 'pending' : 'approved'
+  // status 白名单：拼错值/空 body 不得隐式过审（同 theme/siteMode 枚举口径）
+  if (body?.status !== 'approved' && body?.status !== 'pending') return jsonError('status 只允许 approved / pending')
+  // 先查后改：目标不存在回 404（同 pin/restore 口径），顺带带出 member_id 供计分
+  const target = await c.env.DB.prepare('SELECT member_id FROM comments WHERE id = ?').bind(id).first<{ member_id: number | null }>()
+  if (!target) return jsonError('评论不存在', 404)
+  const status = body.status
+  // 会员评论过审才计积分（awardCommentPoints 按 ref_id 去重，反复 通过↔待审 不重复记）
   await c.env.DB.prepare('UPDATE comments SET status = ? WHERE id = ?').bind(status, id).run()
+  if (status === 'approved' && target.member_id) {
+    c.executionCtx.waitUntil(awardCommentPoints(c.env.DB, target.member_id, id))
+  }
   return c.json({ ok: true })
 })
 
@@ -1219,8 +1551,20 @@ api.delete('/admin/comments/:id', async (c) => {
 /* ---------------- 设置 ---------------- */
 // 敏感项只写不读：GET 一律打码返回（明文只在生成 Token / 保存后不再回显）；
 // PUT 收到打码占位符视为「保持原值」，这样前端整表提交不会把占位符写进库
-const SECRET_SETTINGS = ['externalToken', 'telegramBotToken', 'telegramWebhookSecret']
+const SECRET_SETTINGS = ['externalToken', 'telegramBotToken', 'telegramWebhookSecret', 'bufferAccessToken', 'plazaToken']
 const SECRET_MASK = '••••••••'
+// 布尔开关统一收口：'1'/'true' → '1'，其余一律 '0'（新增布尔键加进表即可，别再抄判断分支）
+const BOOL_SETTINGS = [
+  'allowComments',
+  'moderateComments',
+  'notifyNewComment',
+  'rssFullText',
+  'backupEnabled',
+  'statsEnabled',
+  'siteGrayscale',
+  'siteClosed',
+  'membersEnabled',
+]
 
 api.get('/admin/settings', async (c) => {
   const settings = await getSettings(c.env.DB)
@@ -1260,10 +1604,6 @@ api.put('/admin/settings', async (c) => {
       patch[key] = u.startsWith('/images/') || /^https?:\/\//i.test(u) ? u : ''
       continue
     }
-    if (key === 'allowComments' || key === 'moderateComments') {
-      patch[key] = v === '1' || v === 'true' ? '1' : '0'
-      continue
-    }
     if (key === 'pluginsDisabled') {
       const cleaned = cleanDisabledPlugins(v)
       if (cleaned === null) return jsonError('插件 ID 只能包含字母、数字、_ 或 -')
@@ -1291,16 +1631,17 @@ api.put('/admin/settings', async (c) => {
       patch[key] = v.slice(0, 5000)
       continue
     }
-    if (key === 'notifyNewComment' || key === 'rssFullText' || key === 'backupEnabled' || key === 'statsEnabled') {
-      patch[key] = v === '1' || v === 'true' ? '1' : '0'
-      continue
-    }
-    if (key === 'siteGrayscale' || key === 'siteClosed') {
-      patch[key] = v === '1' || v === 'true' ? '1' : '0'
-      continue
-    }
     if (key === 'siteClosedMessage') {
       patch[key] = v.slice(0, 1000)
+      continue
+    }
+    if (BOOL_SETTINGS.includes(key)) {
+      patch[key] = v === '1' || v === 'true' ? '1' : '0'
+      continue
+    }
+    if (key === 'rankTopN') {
+      // 排行榜展示条数：1-50，脏值回退 10
+      patch[key] = String(clampInt(v, 1, 50, 10))
       continue
     }
     patch[key] = v.slice(0, 500)
@@ -1363,6 +1704,19 @@ api.post('/admin/tools/md', async (c) => {
   return c.json({ html: mdToHtml(md) })
 })
 
+/** 链接卡元数据抓取（编辑器「插入链接」卡片风格）：只抓 http(s) 公网页面，
+ *  抓不到/解析不到返回空字段，编辑器据已有字段组卡（title 缺失时用域名兜底）。
+ *  用户输入的 URL 按用户输入频控；fetch 本身限长限时（src/linkmeta.ts） */
+api.post('/admin/tools/linkmeta', async (c) => {
+  const body = await c.req.json<{ url?: string }>().catch(() => null)
+  const url = String(body?.url ?? '').trim().slice(0, 2048)
+  if (!url) return jsonError('请填写链接地址')
+  const ip = clientIp(c.req.raw)
+  if (!rateLimit(`linkmeta:${ip}`, 10, 60_000)) return jsonError('操作太频繁，请稍后再试', 429)
+  const meta = await fetchLinkMeta(url)
+  return c.json({ meta })
+})
+
 /** 粘贴净化配套：外链图（公众号 mmbiz.qpic.cn 等有防盗链/随时失效的风险）转存站内图床并改写 src。
  *  转存上限与 collect 同口径（MAX_REMOTE_IMAGES）；单张失败保留原 src 不影响整篇——
  *  但 http:// 的图在 https 站上是混合内容会被浏览器拦，兜底升级成 https:// 再交给浏览器 */
@@ -1397,6 +1751,14 @@ api.post('/admin/tools/sanitize', async (c) => {
 })
 
 /* ---------------- 公开接口 ---------------- */
+
+/* 微信表情映射表（src/emoji.ts 单一来源）：编辑器/发布器面板与 site.js 客户端渲染共用，
+ * 静态数据 + 一天浏览器缓存；闭站时 503——编辑器面板降级为空、文本码插入渲染不受影响 */
+api.get('/public/emoji', (c) => {
+  c.header('Cache-Control', 'public, max-age=86400')
+  return c.json({ base: EMOJI_BASE, codes: WECHAT_EMOJI })
+})
+
 api.get('/public/posts', async (c) => {
   const tag = c.req.query('tag') || undefined
   const r = await listPosts(c.env.DB, {
@@ -1425,6 +1787,8 @@ type CommentBody = {
   website?: string
   parentId?: number
   link?: string
+  /** 游客选填 QQ（评论头像 C2 扩展）：仅头像抓取记账位，任何公开出参不携带 */
+  qq?: string
 }
 
 async function publicComment(
@@ -1445,9 +1809,12 @@ async function publicComment(
   const settings = await getSettings(db)
   const user = await getSessionUser(db, c.req.raw)
   if (!user && settings.allowComments !== '1') return jsonError(o.closedMessage, 403)
+  // 会员身份（与管理员互斥取一路；banned 已在 getMemberUser 查询层视为未登录）
+  const member = user ? null : await getMemberUser(db, c.req.raw)
   const ip = clientIp(c.req.raw)
-  // 管理员发言不受留言频率限制
-  if (!user && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError(o.freqMessage, 429)
+  // 管理员发言不受留言频率限制；会员是登录身份，放宽到 10 条/10 分钟（仍防滥用），游客维持 5 条
+  if (!user && !member && !rateLimit(`cmt:${ip}`, 5, 10 * 60_000)) return jsonError(o.freqMessage, 429)
+  if (member && !rateLimit(`mcmt:${member.id}`, 10, 10 * 60_000)) return jsonError(o.freqMessage, 429)
   const body = await c.req.json<CommentBody>().catch(() => null)
   // 蜜罐字段：正常用户不会填写，机器人会 —— 静默丢弃
   if (body?.link) return c.json({ ok: true })
@@ -1485,13 +1852,46 @@ async function publicComment(
   }
 
   if (parentId) return jsonError(`只有作者可以回复${o.noun}`, 403)
+  const pending = settings.moderateComments === '1'
+  if (member) {
+    // 会员发言：身份来自会话，表单昵称/邮箱/网站字段一律忽略（契约 A5）；先审后展口径与游客一致
+    const nickname = (member.display_name || member.username).slice(0, 24)
+    const ins = await db
+      .prepare(
+        'INSERT INTO comments (post_id, weibo_id, parent_id, member_id, is_admin, nickname, content, status, ip, created_at) VALUES (?, ?, 0, ?, 0, ?, ?, ?, ?, ?)'
+      )
+      .bind(t.postId, t.weiboId, member.id, nickname, content, pending ? 'pending' : 'approved', ip, now)
+      .run()
+    // 新留言推送 TG 与插件广播（与游客同路，见下方游客分支注释）
+    const base = siteBase(settings, new URL(c.req.url).origin)
+    c.executionCtx.waitUntil(
+      notifyAdminComment(c.env, { kind: o.kind, context: t.context, nickname, content, pending, siteBase: base, path: t.path })
+    )
+    c.executionCtx.waitUntil(
+      fireCommentCreated(c.env, { kind: o.kind, context: t.context, nickname, content, url: base + t.path, pending })
+    )
+    // 评论积分：过审才计（awardCommentPoints 内按 ref_id 去重，反复切换状态不重复记）
+    const commentId = Number(ins.meta.last_row_id)
+    if (!pending && commentId) c.executionCtx.waitUntil(awardCommentPoints(db, member.id, commentId))
+    return c.json({ ok: true, pending })
+  }
   const nickname = String(body?.nickname || '').trim().slice(0, 24)
   if (!nickname) return jsonError(`昵称和${o.noun}内容不能为空`)
-  const pending = settings.moderateComments === '1'
+  // 游客 QQ 头像（评论头像 C2 扩展）：选填，格式不对按「没填」处理——选填字段不拦评论。
+  // 先查同号历史头像直接复用（抓取次数 = 唯一 QQ 数，且被评论限流再压一层），未命中才出站抓取；
+  // qq 本体只落库内部列，任何公开出参不携带，头像一律站内转存同源输出
+  const qqRaw = String(body?.qq || '').trim()
+  const guestQQ = qqRaw && isValidQQ(qqRaw) ? qqRaw : ''
+  const guestAvatar = guestQQ
+    ? (await db
+        .prepare("SELECT avatar FROM comments WHERE qq = ? AND avatar != '' ORDER BY created_at DESC LIMIT 1")
+        .bind(guestQQ)
+        .first<{ avatar: string }>())?.avatar || (await fetchQQAvatar(c.env, guestQQ)) || ''
+    : ''
   if (o.withContact) {
     await db
       .prepare(
-        'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, email, website, content, status, ip, created_at) VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, email, website, qq, avatar, content, status, ip, created_at) VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
       .bind(
         t.postId,
@@ -1499,6 +1899,8 @@ async function publicComment(
         nickname,
         String(body?.email || '').slice(0, 100),
         String(body?.website || '').slice(0, 200),
+        guestQQ,
+        guestAvatar,
         content,
         pending ? 'pending' : 'approved',
         ip,
@@ -1508,9 +1910,9 @@ async function publicComment(
   } else {
     await db
       .prepare(
-        'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, content, status, ip, created_at) VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?)'
+        'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, qq, avatar, content, status, ip, created_at) VALUES (?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .bind(t.postId, t.weiboId, nickname, content, pending ? 'pending' : 'approved', ip, now)
+      .bind(t.postId, t.weiboId, nickname, guestQQ, guestAvatar, content, pending ? 'pending' : 'approved', ip, now)
       .run()
   }
   // 新留言推送到 Telegram（异步，不阻塞回复；开关在后台「设置 → 外部发布」）
@@ -1592,11 +1994,11 @@ api.get('/public/weibo/:id/comments', async (c) => {
   const settings = await getSettings(c.env.DB)
   const { results } = await c.env.DB
     .prepare(
-      "SELECT id, parent_id, is_admin, nickname, content, created_at FROM comments WHERE weibo_id = ? AND status = 'approved' ORDER BY created_at ASC LIMIT 200"
+      "SELECT cm.id, cm.parent_id, cm.is_admin, cm.nickname, cm.content, cm.created_at, cm.avatar, m.display_name AS member_name, m.tier AS member_tier, m.avatar AS member_avatar FROM comments cm LEFT JOIN members m ON m.id = cm.member_id WHERE cm.weibo_id = ? AND cm.status = 'approved' ORDER BY cm.created_at ASC LIMIT 200"
     )
     .bind(id)
     .all()
-  return c.json({ comments: results ?? [], allowComments: settings.allowComments === '1' })
+  return c.json({ comments: results ?? [], allowComments: settings.allowComments === '1', adminAvatar: settings.avatarUrl || '' })
 })
 
 api.post('/public/weibo/:id/comments', async (c) => {

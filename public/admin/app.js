@@ -1,5 +1,6 @@
 /* 博客号后台 SPA（原生 ES Module，无构建依赖） */
-import { flushEditorSave, mountEditor, disposeEditor } from './editor.js'
+import { flushEditorSave, mountEditor, disposeEditor, pickFiles, compressImage } from './editor.js'
+import { loadEmoji, emojiGridHtml, insertToken } from './emoji.js'
 
 const $app = document.getElementById('app')
 const $toastSlot = document.getElementById('toast-slot')
@@ -16,6 +17,8 @@ let wbEditing = null
 
 /* 文章列表搜索防抖：模块级，路由切换时清掉，防遗留回调把用户「拽回」文章页 */
 let postsSearchTimer = null
+/* 会员列表搜索防抖：同上 */
+let membersSearchTimer = null
 /* 搜索框是否处于焦点中：重渲染后据此恢复焦点与光标 */
 let searchFocused = false
 /* 当前路由名（'editor' 等）：判断「离开编辑器」用 */
@@ -125,6 +128,7 @@ const I = {
   link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l11-11-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg>',
   comment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 11.5c0 4.1-4 7.5-9 7.5-1 0-2-.1-2.9-.4L4 20l1.2-3.2C3.8 15.4 3 13.5 3 11.5 3 7.4 7 4 12 4s9 3.4 9 7.5z"/></svg>',
+  member: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20c1.4-3.4 4.3-5 7.5-5s6.1 1.6 7.5 5"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
   page: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 13h10M7 16.5h6"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/></svg>',
@@ -154,6 +158,7 @@ const MENU = [
   { id: 'links', href: '#/links', label: '友链', icon: 'link', badge: () => state.pendingLinks || 0 },
   { id: 'pages', href: '#/pages', label: '页面', icon: 'page' },
   { id: 'trash', href: '#/trash', label: '回收站', icon: 'trash' },
+  { id: 'members', href: '#/members', label: '会员', icon: 'member' },
   { type: 'group', label: '系统' },
   { id: 'appearance', href: '#/appearance', label: '皮肤', icon: 'palette' },
   { id: 'plugins', href: '#/plugins', label: '插件', icon: 'plug' },
@@ -175,7 +180,7 @@ function authView(mode) {
   const isSetup = mode === 'setup'
   // 演示站：登录页公示账号密码并自动填充（数据每 2 小时重置，随便玩）
   const demoBox = !isSetup && state.demo
-    ? `<div class="auth-demo">🎓 这是<b>演示站</b>，数据每 2 小时自动重置，随便看、随便改。<br>账号 <code>demo</code> · 密码 <code>demo1234</code>（已自动填好）</div>`
+    ? `<div class="auth-demo">🎓 这是<b>演示体验版</b>（非最新正式版，仅供测试体验），数据每 2 小时自动清空重置，随便看、随便改。<br>账号 <code>demo</code> · 密码 <code>demo1234</code>（已自动填好）</div>`
     : ''
   $app.innerHTML = `<div class="auth-wrap"><div class="auth-card">
     <div class="auth-logo">
@@ -250,13 +255,15 @@ async function shellView(active, contentHTML) {
   if (!state.user) return
   // 路由已切走（或已登出）时放弃本次渲染，防慢响应把旧页面盖回来
   if (active !== pendingRoute) return
-  const sideMini = localStorage.getItem('admin-side') === 'mini'
+  // 隐私加固浏览器（Safari 锁定模式等）访问 localStorage 即抛 SecurityError：偏好存取吞异常，降级默认值
+  const prefGet = (k) => { try { return localStorage.getItem(k) } catch { return null } }
+  const sideMini = prefGet('admin-side') === 'mini'
   // 移动端底部栏只放高频项，其余收进「更多」抽屉；不在栏内的待审数聚合成红点
   const barItems = MOBILE_TAB_IDS.map((id) => MENU.find((m) => m.id === id)).filter(Boolean)
   const moreDot = MENU.reduce((sum, m) => (m.badge && !MOBILE_TAB_IDS.includes(m.id) ? sum + m.badge() : sum), 0)
   $app.innerHTML = `<div class="shell${sideMini ? ' side-mini' : ''}">
     <aside class="sidebar">
-      <div class="side-logo"><img src="/favicon.svg" alt=""><span>博客号</span>${state.demo ? '<span class="demo-badge" title="演示站：数据每 2 小时重置">演示</span>' : ''}<button class="side-fold" id="btn-side-fold" title="${sideMini ? '展开侧栏' : '收起侧栏'}">${I.fold}</button></div>
+      <div class="side-logo"><img src="/favicon.svg" alt=""><span>博客号</span>${state.demo ? '<span class="demo-badge" title="演示体验版：非最新正式版，数据每 2 小时重置">演示</span>' : ''}<button class="side-fold" id="btn-side-fold" title="${sideMini ? '展开侧栏' : '收起侧栏'}">${I.fold}</button></div>
       <nav class="side-nav">${sideNavHtml(active)}</nav>
       <nav class="tab-bar">
         ${barItems.map((m) => sideItemHtml(m, active)).join('')}
@@ -278,7 +285,7 @@ async function shellView(active, contentHTML) {
   </div>`
   document.getElementById('btn-side-fold').addEventListener('click', (e) => {
     const mini = $app.querySelector('.shell').classList.toggle('side-mini')
-    localStorage.setItem('admin-side', mini ? 'mini' : 'full')
+    try { localStorage.setItem('admin-side', mini ? 'mini' : 'full') } catch { /* 锁定模式下不记住偏好 */ }
     e.currentTarget.title = mini ? '展开侧栏' : '收起侧栏'
   })
   document.getElementById('btn-logout').addEventListener('click', async () => {
@@ -550,6 +557,7 @@ async function viewPosts() {
         <div class="post-title"><a href="#/editor/${p.id}">${esc(p.title)}</a>
           ${chip}
           ${p.pinned ? '<span class="chip chip-warn">置顶</span>' : ''}
+          ${p.hasPassword ? '<span class="chip chip-gray">🔒 加密</span>' : ''}
         </div>
         <div class="post-meta">
           <span>${p.slug}</span><span>·</span><span>${p.views} 阅读</span><span>·</span><span>${p.likes} 赞</span>
@@ -599,6 +607,7 @@ async function viewPosts() {
   searchEl.addEventListener('focus', () => (searchFocused = true))
   searchEl.addEventListener('blur', () => (searchFocused = false))
   searchEl.addEventListener('input', () => {
+    if (searchEl.isComposing) return // 中文输入法组词中的 input 不触发搜索（组词结束会有一次 isComposing=false 的 input）
     clearTimeout(postsSearchTimer)
     postsSearchTimer = setTimeout(() => nav({ q: searchEl.value.trim(), page: 1 }), 400)
   })
@@ -711,6 +720,7 @@ async function viewWeibo() {
       <div class="wb-imgs" id="wb-imgs"></div>
       <div class="wb-composer-foot">
         <button class="btn btn-ghost btn-sm" id="wb-add-img" type="button">${I.image} 加图（${images.length}/${WB_MAX_IMAGES}）</button>
+        <button class="btn btn-ghost btn-sm" id="wb-emoji" type="button">😊 表情</button>
         <span class="wb-count" id="wb-count">${(wbEditing?.content || '').length} / ${WB_MAX_CHARS}</span>
         <span class="spacer"></span>
         ${wbEditing
@@ -726,6 +736,20 @@ async function viewWeibo() {
   const addImgBtn = document.getElementById('wb-add-img')
   const countEl = document.getElementById('wb-count')
   const composer = $app.querySelector('.wb-composer')
+
+  // 微信表情面板：点击插入文本码（[微笑]）到发布框光标处，可连续选；渲染层才把码转成图
+  document.getElementById('wb-emoji')?.addEventListener('click', async () => {
+    await loadEmoji()
+    const m = modal(
+      `<div class="modal-head"><span>微信表情</span><button class="modal-close" data-close>×</button></div>
+      <div class="modal-body wxq-modal-body">${emojiGridHtml()}</div>`
+    )
+    m.mask.addEventListener('click', (e) => {
+      const cell = e.target.closest('[data-wxq]')
+      if (!cell) return
+      insertToken(contentEl, `[${cell.getAttribute('data-wxq')}]`)
+    })
+  })
 
   function renderImgs() {
     const box = document.getElementById('wb-imgs')
@@ -744,6 +768,7 @@ async function viewWeibo() {
   }
 
   /** 加图统一入口：文件选择 / 粘贴 / 拖拽共用，自动过滤非图片并尊重 9 图上限 */
+  let wbUploading = 0 // 在途上传计数：发布/存草稿前必须归零（同前台发布器 cpUploading 口径），防半截图发出
   async function addImageFiles(fileList) {
     const all = [...(fileList || [])]
     const imgs = all.filter((f) => /^image\//.test(f.type))
@@ -756,6 +781,7 @@ async function viewWeibo() {
     if (imgs.length > room) toast(`最多 ${WB_MAX_IMAGES} 张图，多出的 ${imgs.length - room} 张已忽略`, true)
     const label = addImgBtn.textContent
     for (const f of imgs.slice(0, room)) {
+      wbUploading++
       try {
         addImgBtn.textContent = `上传中 ${f.name.slice(0, 12)}…`
         const r = await uploadFile(await compressImage(f), null)
@@ -763,6 +789,8 @@ async function viewWeibo() {
         renderImgs()
       } catch (e) {
         toast(e.message, true)
+      } finally {
+        wbUploading--
       }
     }
     addImgBtn.textContent = label
@@ -770,12 +798,7 @@ async function viewWeibo() {
   }
 
   function pickImages() {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif'
-    input.multiple = true
-    input.onchange = () => addImageFiles(input.files)
-    input.click()
+    pickFiles('image/jpeg,image/png,image/webp,image/gif', true, (files) => addImageFiles(files))
   }
 
   // 粘贴图片：光标在发布器内 ⌘/Ctrl+V 即上传（纯文本粘贴不受影响）
@@ -804,6 +827,8 @@ async function viewWeibo() {
   async function saveWeibo(status) {
     const content = contentEl.value.trim()
     if (!content && !images.length) return toast('写点什么，或者配张图吧', true)
+    // 二道防线：上传未完就点发布，微博会以缺图状态发出（图片还在闭包里推）
+    if (wbUploading > 0) return toast('还有图片在上传中，稍等一下', true)
     // 请求期间禁用全部按钮：连击会重复发微博
     const btns = ['wb-save', 'wb-publish', 'wb-draft'].map((id) => document.getElementById(id)).filter(Boolean)
     btns.forEach((b) => (b.disabled = true))
@@ -1241,6 +1266,8 @@ async function viewCategories() {
         </div>
         <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="cat-edit-save">保存</button></div>`)
       m.mask.querySelector('#cat-edit-save').addEventListener('click', async () => {
+        const saveBtn = m.mask.querySelector('#cat-edit-save')
+        saveBtn.disabled = true
         try {
           await api(`/admin/categories/${id}`, {
             method: 'PUT',
@@ -1254,6 +1281,8 @@ async function viewCategories() {
           navigate()
         } catch (e) {
           toast(e.message, true)
+        } finally {
+          saveBtn.disabled = false // 弹窗已关时改的是游离节点，无副作用
         }
       })
     })
@@ -1445,6 +1474,118 @@ async function viewTrash() {
         toast(e2.message, true)
       }
     })
+  })
+}
+
+/** 会员管理页：列表 / 搜用户名邮箱 / 改档位 / 封禁解封（API 形状见 DEVPLAN-2026-10-07 附录 A5） */
+const MEMBER_TIER_LABEL = { normal: '普通会员', coffee: '咖啡会员', top: '顶级会员' }
+
+async function viewMembers() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || '')
+  const page = parseInt(q.get('page') || '1', 10)
+  const kw = (q.get('q') || '').trim()
+
+  let d
+  try {
+    d = await api(`/admin/members?page=${page}${kw ? `&q=${encodeURIComponent(kw)}` : ''}`)
+  } catch (e) {
+    return handleApiErr(e)
+  }
+
+  const tierChip = (t) =>
+    t === 'top'
+      ? '<span class="chip chip-warn">顶级会员</span>'
+      : t === 'coffee'
+        ? '<span class="chip chip-green">咖啡会员</span>'
+        : '<span class="chip chip-gray">普通会员</span>'
+  const rows = d.items
+    .map(
+      (m) => `<div class="post-row" data-id="${m.id}">
+      <div class="post-main">
+        <div class="post-title">${esc(m.username)}${tierChip(m.tier)}${m.status === 'banned' ? '<span class="chip chip-gray">已封禁</span>' : ''}</div>
+        <div class="post-meta"><span>积分 ${m.points}</span>${m.email ? `<span>·</span><span>${esc(m.email)}</span>` : ''}<span>·</span><span>注册于 ${fmtDateTime(m.created_at)}</span></div>
+      </div>
+      <div class="post-ops">
+        <button class="btn btn-ghost btn-sm" data-act="tier">改档位</button>
+        <button class="btn btn-ghost btn-sm${m.status === 'banned' ? '' : ' btn-danger'}" data-act="ban">${m.status === 'banned' ? '解除封禁' : '封禁'}</button>
+      </div>
+    </div>`
+    )
+    .join('')
+
+  await shellView(
+    'members',
+    `<div class="page-head">
+      <div><div class="page-title">会员</div><div class="page-sub">站内注册的会员 · 评论与每日登录攒积分${d.total ? ` · 共 ${d.total} 位` : ''}</div></div>
+    </div>
+    <div class="toolbar">
+      <input class="input" id="mb-search" placeholder="搜索用户名 / 邮箱…" value="${esc(kw)}">
+    </div>
+    <div class="panel">${rows || '<div class="empty-box">还没有会员</div>'}</div>
+    ${d.totalPages > 1 ? `<div class="pager-admin"><button class="btn btn-sm" id="pg-prev" ${page <= 1 ? 'disabled' : ''}>上一页</button><span>${d.page} / ${d.totalPages}</span><button class="btn btn-sm" id="pg-next" ${page >= d.totalPages ? 'disabled' : ''}>下一页</button></div>` : ''}`
+  )
+
+  const nav = (patch) => {
+    const p = new URLSearchParams({ page: String(page), ...(kw ? { q: kw } : {}), ...patch })
+    location.hash = '#/members?' + p.toString()
+  }
+  const searchEl = document.getElementById('mb-search')
+  searchEl.addEventListener('input', () => {
+    if (searchEl.isComposing) return // 同文章搜索：组词中不打断输入
+    clearTimeout(membersSearchTimer)
+    membersSearchTimer = setTimeout(() => nav({ q: searchEl.value.trim(), page: 1 }), 400)
+  })
+  const prev = document.getElementById('pg-prev')
+  const next = document.getElementById('pg-next')
+  if (prev) prev.addEventListener('click', () => nav({ page: page - 1 }))
+  if (next) next.addEventListener('click', () => nav({ page: page + 1 }))
+
+  $app.querySelectorAll('.post-row').forEach((row) => {
+    const id = Number(row.dataset.id)
+    const member = d.items.find((x) => x.id === id)
+    row.querySelector('[data-act=tier]').addEventListener('click', () => memberTierModal(member))
+    row.querySelector('[data-act=ban]').addEventListener('click', async (e) => {
+      const btn = e.currentTarget
+      if (btn.disabled) return
+      const banned = member.status === 'banned'
+      if (!banned && !(await confirmBox(`封禁会员「${member.username}」？封禁后其将无法登录与评论，积分与档案保留，可随时解封。`))) return
+      btn.disabled = true
+      try {
+        await api(`/admin/members/${id}`, { method: 'PUT', body: { status: banned ? 'active' : 'banned' } })
+        toast(banned ? '已解除封禁' : '已封禁')
+        navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
+      } catch (e2) {
+        btn.disabled = false
+        toast(e2.message, true)
+      }
+    })
+  })
+}
+
+/** 会员档位调整弹窗：PUT /admin/members/:id 缺键即保留，这里只发 tier */
+function memberTierModal(member) {
+  const m = modal(`<div class="modal-head"><span>调整档位 — ${esc(member.username)}</span><button class="modal-close" data-close>×</button></div>
+    <div class="modal-body">
+      <label class="auth-field"><label>会员档位</label>
+        <select class="input" id="mb-tier">
+          ${['normal', 'coffee', 'top'].map((t) => `<option value="${t}"${member.tier === t ? ' selected' : ''}>${MEMBER_TIER_LABEL[t]}</option>`).join('')}
+        </select>
+      </label>
+      <div style="font-size:12px;color:var(--sub);margin-top:8px;">咖啡会员可读「咖啡会员及以上」的专属文章，顶级会员可读全部会员内容；档位不影响积分累计。</div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="mb-tier-save">保存</button></div>`)
+  m.mask.querySelector('#mb-tier-save').addEventListener('click', async () => {
+    const btn = m.mask.querySelector('#mb-tier-save')
+    btn.disabled = true
+    try {
+      await api(`/admin/members/${member.id}`, { method: 'PUT', body: { tier: m.mask.querySelector('#mb-tier').value } })
+      toast('档位已更新')
+      m.close()
+      navigate() // 操作后重渲染当前路由（经 navigate 守卫，用户已切页时不拽回）
+    } catch (e) {
+      toast(e.message, true)
+      btn.disabled = false
+    }
   })
 }
 
@@ -1672,20 +1813,16 @@ async function viewMedia() {
 
   document.getElementById('media-audit').addEventListener('click', openMediaAudit)
   document.getElementById('media-upload').addEventListener('click', () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm'
-    input.onchange = async () => {
-      if (!input.files[0]) return
+    pickFiles('image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm', false, async (files) => {
+      if (!files[0]) return
       try {
-        await uploadFile(await compressImage(input.files[0]), null)
+        await uploadFile(await compressImage(files[0]), null)
         toast('上传成功')
         navigate()
       } catch (e) {
         toast(e.message, true)
       }
-    }
-    input.click()
+    })
   })
   $app.querySelectorAll('.media-item').forEach((item) => {
     item.addEventListener('click', async () => {
@@ -2307,6 +2444,16 @@ async function viewSettings() {
     </div>
 
     <div class="panel" style="padding:20px;">
+      <div class="form-section"><h3>会员</h3><div class="sec-desc">游客注册成站内会员：登录评论带身份、攒积分上排行榜；文章可按档位控制「谁能看」</div>
+        <div class="switch-row">
+          <div><div class="switch-label">开启会员体系</div><div class="switch-sub">开启后前台出现「会员」「排行榜」导航入口与 /member /rank 页；编辑器可设文章档位。关闭时这两个页面 404，已设档位的文章仍按档位生效</div></div>
+          <label class="switch"><input type="checkbox" id="st-membersEnabled" ${s.membersEnabled === '1' ? 'checked' : ''}><span class="track"></span></label>
+        </div>
+        <div class="form-item" style="max-width:180px;"><label>排行榜展示条数</label><input class="input" id="st-rankTopN" type="number" min="1" max="50" value="${esc(s.rankTopN || '10')}"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding:20px;">
       <div class="form-section"><h3>访客统计</h3><div class="sec-desc">在后台「统计」页展示浏览量、访客数、来源与设备分布；只记匿名访客号与来源域名，不存 IP 和原始 UA，日志保留 180 天</div>
         <div class="switch-row">
           <div><div class="switch-label">开启访客统计采集</div><div class="switch-sub">关闭后前台页面不再上报访问数据（已有数据保留不再新增，统计页仍可看历史）</div></div>
@@ -2359,6 +2506,27 @@ async function viewSettings() {
         <div class="form-item">
           <label>页脚自定义代码（页脚自定义代码插件：注入每一页页脚的 HTML，挂件 / 徽章 / 备案图标；受 CSP 保护，外部脚本不会执行）</label>
           <textarea class="textarea" id="st-footerHtmlCode" rows="3" maxlength="5000" placeholder="<div style=&quot;text-align:center&quot;>🌙 已运行 <b>365</b> 天</div>">${esc(s.footerHtmlCode || '')}</textarea>
+        </div>
+        <div class="form-item">
+          <label>Buffer API Key（微博同步 Buffer 插件：buffer.com 注册并连上 X 等社交账号后，在 publish.buffer.com/settings/api 生成；免费档 3 渠道够用）</label>
+          <input class="input" id="st-bufferAccessToken" placeholder="pli…" autocomplete="off" value="${esc(s.bufferAccessToken || '')}">
+        </div>
+        <div class="form-item">
+          <label>Buffer 渠道 ID（同步目标；先填 API Key 再点右侧「拉取渠道」选择即可）</label>
+          <div class="fav-row">
+            <input class="input" id="st-bufferChannelId" style="flex:1;min-width:200px;font-family:ui-monospace,monospace;" placeholder="如 6ac89…" value="${esc(s.bufferChannelId || '')}">
+            <button class="btn btn-sm" id="btn-buffer-channels" type="button">拉取渠道</button>
+          </div>
+          <div class="sec-desc" id="buffer-channels-status" style="margin-top:6px;">同步时机：微博「发布」时自动推一条到所选渠道（X 免费档 280 字符，超出自动截断；#话题# 会转成 X 的话题格式）</div>
+        </div>
+        <div class="form-item">
+          <label>广场地址（广场同步插件：文章与微博发布时同步到官网广场 bloghao.com/plaza；一般不用改，自建 hub 才填自己的地址）</label>
+          <input class="input" id="st-plazaEndpoint" placeholder="https://plaza.bloghao.com" value="${esc(s.plazaEndpoint || '')}">
+        </div>
+        <div class="form-item">
+          <label>广场站点 Token（在广场 hub 注册站点后发放，见 docs/PLAZA.md；未填 = 不同步）</label>
+          <input class="input" id="st-plazaToken" placeholder="32 位注册 Token" autocomplete="off" value="${esc(s.plazaToken || '')}">
+          <div class="sec-desc" style="margin-top:6px;">同步时机：文章 / 微博「发布」时自动推一条（编辑重发不重推）；加密文与会员专属文不会上广场。启停在「插件」页</div>
         </div>
       </div>
     </div>
@@ -2413,21 +2581,17 @@ async function viewSettings() {
   }
 
   document.getElementById('btn-avatar-upload').addEventListener('click', () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif'
-    input.onchange = async () => {
-      if (!input.files[0]) return
+    pickFiles('image/jpeg,image/png,image/webp,image/gif', false, async (files) => {
+      if (!files[0]) return
       try {
-        const d = await uploadFile(await compressImage(input.files[0]))
+        const d = await uploadFile(await compressImage(files[0]))
         document.getElementById('st-avatarUrl').value = d.url
         renderAvatarSlot(d.url)
         toast('头像已上传，记得点「保存全部」生效')
       } catch (e) {
         toast(e.message, true)
       }
-    }
-    input.click()
+    })
   })
   document.getElementById('btn-avatar-clear').addEventListener('click', () => {
     document.getElementById('st-avatarUrl').value = ''
@@ -2436,21 +2600,17 @@ async function viewSettings() {
   })
 
   document.getElementById('btn-fav-upload').addEventListener('click', () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/png,image/jpeg,image/webp,image/x-icon,image/vnd.microsoft.icon,.ico,.png'
-    input.onchange = async () => {
-      if (!input.files[0]) return
+    pickFiles('image/png,image/jpeg,image/webp,image/x-icon,image/vnd.microsoft.icon,.ico,.png', false, async (files) => {
+      if (!files[0]) return
       try {
-        const d = await uploadFile(await compressImage(input.files[0]))
+        const d = await uploadFile(await compressImage(files[0]))
         document.getElementById('st-faviconUrl').value = d.url
         renderFavSlot(d.url)
         toast('图标已上传，记得点「保存全部」生效')
       } catch (e) {
         toast(e.message, true)
       }
-    }
-    input.click()
+    })
   })
   document.getElementById('btn-fav-clear').addEventListener('click', () => {
     document.getElementById('st-faviconUrl').value = ''
@@ -2464,21 +2624,17 @@ async function viewSettings() {
       : '<span class="fav-empty">未设置，使用内置卡图</span>'
   }
   document.getElementById('btn-og-upload').addEventListener('click', () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/png,image/jpeg,image/webp'
-    input.onchange = async () => {
-      if (!input.files[0]) return
+    pickFiles('image/png,image/jpeg,image/webp', false, async (files) => {
+      if (!files[0]) return
       try {
-        const d = await uploadFile(await compressImage(input.files[0]))
+        const d = await uploadFile(await compressImage(files[0]))
         document.getElementById('st-ogImageDefault').value = d.url
         renderOgSlot(d.url)
         toast('卡图已上传，记得点「保存全部」生效')
       } catch (e) {
         toast(e.message, true)
       }
-    }
-    input.click()
+    })
   })
   document.getElementById('btn-og-clear').addEventListener('click', () => {
     document.getElementById('st-ogImageDefault').value = ''
@@ -2518,6 +2674,8 @@ async function viewSettings() {
       allowComments: g('st-allowComments').checked ? '1' : '0',
       moderateComments: g('st-moderateComments').checked ? '1' : '0',
       postsPerPage: g('st-postsPerPage').value || '10',
+      membersEnabled: g('st-membersEnabled').checked ? '1' : '0',
+      rankTopN: g('st-rankTopN').value || '10',
       siteGrayscale: g('st-siteGrayscale').checked ? '1' : '0',
       siteClosed: g('st-siteClosed').checked ? '1' : '0',
       siteClosedMessage: g('st-siteClosedMessage').value.trim(),
@@ -2526,6 +2684,10 @@ async function viewSettings() {
       tgChannelChatId: g('st-tgChannelChatId').value.trim(),
       commentWebhookUrl: g('st-commentWebhookUrl').value.trim(),
       footerHtmlCode: g('st-footerHtmlCode').value,
+      bufferAccessToken: g('st-bufferAccessToken').value.trim(),
+      plazaEndpoint: g('st-plazaEndpoint').value.trim(),
+      plazaToken: g('st-plazaToken').value.trim(),
+      bufferChannelId: g('st-bufferChannelId').value.trim(),
       notifyNewComment: g('st-notifyNewComment').checked ? '1' : '0',
       rssFullText: g('st-rssFullText').checked ? '1' : '0',
       backupEnabled: g('st-backupEnabled').checked ? '1' : '0',
@@ -2551,6 +2713,8 @@ async function viewSettings() {
     const oldP = document.getElementById('pw-old').value
     const newP = document.getElementById('pw-new').value
     if (!oldP || newP.length < 8) return toast('新密码至少 8 位', true)
+    const btn = document.getElementById('btn-pw')
+    btn.disabled = true // 连击会发两次 PUT，第二次旧密码已错报「修改失败」盖住成功提示
     try {
       await api('/admin/password', { method: 'PUT', body: { oldPassword: oldP, newPassword: newP } })
       toast('密码已修改')
@@ -2558,6 +2722,8 @@ async function viewSettings() {
       document.getElementById('pw-new').value = ''
     } catch (e) {
       toast(e.message, true)
+    } finally {
+      btn.disabled = false
     }
   })
 
@@ -2565,6 +2731,8 @@ async function viewSettings() {
   tokenInput.addEventListener('click', () => tokenInput.select()) // 事件绑定（CSP 禁内联脚本）
   document.getElementById('btn-token-gen').addEventListener('click', async () => {
     if (tokenInput.value && !(await confirmBox('重新生成后旧 Token 立即失效，已配置的外部工具需要更换新 Token。确定？'))) return
+    const btn = document.getElementById('btn-token-gen')
+    btn.disabled = true // 连击会生成两个 Token，后者使前者失效
     try {
       const d = await api('/admin/external/token', { method: 'POST' })
       tokenInput.value = d.token
@@ -2572,6 +2740,8 @@ async function viewSettings() {
       toast('Token 已生成并保存，同步给外部工具即可使用')
     } catch (e) {
       toast(e.message, true)
+    } finally {
+      btn.disabled = false
     }
   })
   document.getElementById('btn-token-copy').addEventListener('click', () => {
@@ -2603,6 +2773,31 @@ async function viewSettings() {
     btn.textContent = '保存并一键设置 Webhook'
   })
 
+  document.getElementById('btn-buffer-channels').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-buffer-channels')
+    const statusEl = document.getElementById('buffer-channels-status')
+    const token = document.getElementById('st-bufferAccessToken').value.trim()
+    if (!token) return toast('先填写 Buffer API Key', true)
+    btn.disabled = true
+    btn.textContent = '拉取中…'
+    try {
+      // 先落库 API Key（渠道端点用它兜底），再拉渠道列表
+      await api('/admin/settings', { method: 'PUT', body: { bufferAccessToken: token } })
+      state.settings.bufferAccessToken = '••••••••'
+      const d = await api('/admin/buffer/channels', { method: 'POST', body: {} })
+      statusEl.textContent = '拉到 ' + d.channels.length + ' 个渠道：' + d.channels.map(function (ch) { return ch.displayName + '（' + ch.service + '）' }).join('、')
+      const pick = d.channels.find(function (ch) { return ch.service === 'twitter' }) || d.channels[0]
+      if (pick) {
+        document.getElementById('st-bufferChannelId').value = pick.id
+        toast('已填入「' + pick.displayName + '」的渠道 ID，记得点上方保存')
+      }
+    } catch (e) {
+      toast(e.message, true)
+    }
+    btn.disabled = false
+    btn.textContent = '拉取渠道'
+  })
+
   document.getElementById('btn-backup-now').addEventListener('click', async () => {
     const btn = document.getElementById('btn-backup-now')
     const statusEl = document.getElementById('backup-status')
@@ -2626,41 +2821,10 @@ async function viewSettings() {
 }
 
 /* ---------------- 上传（带进度） ----------------
- * 上传前自动压缩（与编辑器同参数）：JPEG/PNG/WebP 超 300KB 或超 2000px 时压成 JPEG（PNG 透明保 PNG）；
- * GIF 动图会压丢帧，原样直传。失败回退原文件。 */
-const IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 300 * 1024, QUALITY: 0.82 }
-
-function hasAlphaSampled(bmp) {
-  const cv = document.createElement('canvas')
-  cv.width = cv.height = 1
-  const ctx = cv.getContext('2d')
-  ctx.drawImage(bmp, 0, 0, 1, 1)
-  const d = ctx.getImageData(0, 0, 1, 1).data
-  return d[3] < 250
-}
-
-async function compressImage(file) {
-  try {
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= IMG_COMPRESS.MIN_BYTES) return file
-    const bmp = await createImageBitmap(file)
-    const scale = Math.min(1, IMG_COMPRESS.MAX_DIM / Math.max(bmp.width, bmp.height))
-    const toJpeg = file.type !== 'image/png' || !hasAlphaSampled(bmp)
-    if (scale >= 1 && !toJpeg) return file
-    const w = Math.max(1, Math.round(bmp.width * scale))
-    const h = Math.max(1, Math.round(bmp.height * scale))
-    const cv = document.createElement('canvas')
-    cv.width = w
-    cv.height = h
-    cv.getContext('2d').drawImage(bmp, 0, 0, w, h)
-    const blob = await new Promise((r) => cv.toBlob(r, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY))
-    bmp.close?.()
-    if (!blob || blob.size >= file.size) return file
-    const name = (file.name || 'image').replace(/\.[^.]+$/, '') + (toJpeg ? '.jpg' : '.png')
-    return new File([blob], name, { type: toJpeg ? 'image/jpeg' : 'image/png' })
-  } catch {
-    return file
-  }
-}
+ * 上传前压缩统一走 editor.js 导出的 compressImage（曾在本文件各抄一份，只压 JPEG/PNG 不转 WebP，
+ * 已与编辑器策略漂移——现共用一份实现）：JPEG/PNG/WebP 超 150KB 或最长边超 2000px 时先降尺寸再编码，
+ * 优先转 WebP（质量 0.75，透明不丢），旧浏览器回退 JPEG/PNG（0.82）；GIF 动图会压丢帧，原样直传；
+ * 产物不比原图小用原图；失败回退原文件。 */
 
 function uploadFile(file, onProgress) {
   return new Promise((resolve, reject) => {
@@ -2672,8 +2836,17 @@ function uploadFile(file, onProgress) {
     }
     xhr.onload = () => {
       const d = xhr.response || {}
-      if (xhr.status >= 200 && xhr.status < 300) resolve(d)
-      else reject(new Error(d.error || '上传失败'))
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(d)
+        return
+      }
+      // 与 api() 的会话过期兜底同口径：上传期间会话过期也回登录页，别让用户对着「未登录」toast 反复重试
+      if (xhr.status === 401 && state.user) {
+        state.user = null
+        authView('login')
+        toast('登录已过期，请重新登录', true)
+      }
+      reject(new Error(d.error || '上传失败'))
     }
     xhr.onerror = () => reject(new Error('网络错误，上传失败'))
     const fd = new FormData()
@@ -2699,6 +2872,7 @@ async function navigate() {
   const parts = path.split('/')
   const name = parts[0] || 'home'
   clearTimeout(postsSearchTimer)
+  clearTimeout(membersSearchTimer)
   // 离开编辑器：有未保存修改先自动保存再切页（此时编辑器 DOM 还在，能取到最新内容）；
   // 保存失败只提示不阻塞导航，避免把用户困在编辑器里。随后摘除编辑器的全局监听与挂起定时器
   if (currentRoute === 'editor' && name !== 'editor') {
@@ -2723,6 +2897,7 @@ async function navigate() {
     else if (name === 'categories') await viewCategories()
     else if (name === 'pages') await viewPages()
     else if (name === 'trash') await viewTrash()
+    else if (name === 'members') await viewMembers()
     else if (name === 'comments') await viewComments()
     else if (name === 'media') await viewMedia()
     else if (name === 'appearance') await viewAppearance()

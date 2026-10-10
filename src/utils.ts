@@ -69,7 +69,7 @@ export function readingMinutes(html: string): number {
   return Math.max(1, Math.ceil(n / 400))
 }
 
-/** 生成 slug：中文标题回退到随机短 ID，纯 ASCII 标题转 kebab-case */
+/** 生成 slug：纯 ASCII 标题转 kebab-case；中文等非 ASCII 标题回退 dateSlug（北京日期 + 随机位） */
 export function slugify(title: string): string {
   const ascii = title
     .toLowerCase()
@@ -82,7 +82,17 @@ export function slugify(title: string): string {
     const parts = ascii.split('-').slice(0, 6).join('-')
     if (parts.length >= 2) return parts
   }
-  return 'p-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
+  return dateSlug()
+}
+
+/** 中文标题的自动 slug（曾落成 p-时间戳+随机串，链接无标准可言）：发布日北京日期 + 4 位随机位
+ *  （如 20261007-k3fx），可读、可按日排序；随机位把同日撞名压到 1/36^4，重名仍由 db.ts
+ *  uniqueSlug 兜底加序号（-2、-3…），两道防线保证不会因重复发布失败。日期口径与 fmtDate
+ *  同源走 cstDate（+8h 后取 UTC 分量），0-8 点发布不得错到前一天 */
+export function dateSlug(now: number = Date.now()): string {
+  const d = cstDate(now)
+  const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
+  return `${ymd}-${Math.floor(Math.random() * 36 ** 4).toString(36).padStart(4, '0')}`
 }
 
 /** 用户自定义 slug 的字符集清洗：空白折叠成 -，只留字母/数字/中文/_/-。
@@ -101,6 +111,40 @@ export function clampInt(v: unknown, min: number, max: number, fallback: number)
   const n = parseInt(String(v ?? ''), 10)
   if (Number.isNaN(n)) return fallback
   return Math.min(max, Math.max(min, n))
+}
+
+/* ---------------- 会员昵称（注册选填 + 30 天一次修改，中英文均可） ----------------
+ * 展示名不做唯一约束（username 才是登录凭证），渲染层 esc 兜底 XSS；
+ * 清洗与窗口判定是纯函数：SSR 渲染、API 校验、Node 测试三处共用同一口径。 */
+
+export const NICKNAME_MAX_LEN = 24
+
+/** 昵称清洗：trim、剥控制字符（含 \t\r\n，防止渲染出怪异换行）、限长。
+ *  空/纯空白返回空串，由调用方决定回落 username 还是拒绝 */
+export function cleanNickname(raw: unknown): string {
+  return String(raw ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, NICKNAME_MAX_LEN)
+}
+
+/** 昵称修改冷却窗口（30 天）：NULL = 从未改过，首次修改不受限 */
+export const NICKNAME_CHANGE_COOLDOWN_MS = 30 * 24 * 3600_000
+
+/** QQ 号校验（评论头像 C2）：5-11 位数字、不以 0 开头——qlogo 头像抓取的入参门槛。
+ *  site.js 会员卡里有一份同款 ES5 正则镜像，改任一侧记得同步 */
+export function isValidQQ(q: unknown): boolean {
+  return /^[1-9][0-9]{4,10}$/.test(String(q ?? ''))
+}
+
+/** 30 天窗口判定：allowed = 现在能不能改；nextAt = 冷却中时的解禁时间（毫秒，可喂给 fmtDateCN） */
+export function nicknameCooldown(
+  changedAt: number | null | undefined,
+  now = Date.now()
+): { allowed: boolean; nextAt: number } {
+  if (!changedAt) return { allowed: true, nextAt: 0 }
+  const nextAt = changedAt + NICKNAME_CHANGE_COOLDOWN_MS
+  return { allowed: nextAt <= now, nextAt }
 }
 
 /** 插件停用列表（settings 的 pluginsDisabled，逗号分隔的 manifest id）清洗：去空白、保序去重、
@@ -174,4 +218,37 @@ export function isDemo(env: { DEMO_MODE?: string } | undefined): boolean {
 export async function sha256Hex(buf: ArrayBuffer): Promise<string> {
   const d = await crypto.subtle.digest('SHA-256', buf)
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** 付费墙试读段：按可见文本长度截断 HTML——标签原样保留、结尾闭合未关标签。
+ *  截断在服务端完成是付费墙的安全边界：浏览器拿不到的正文才真正拿不到（契约 DEVPLAN-2026-10-07 附录 A A2） */
+export function teaserHtml(html: string, limit = 200): string {
+  let seen = 0
+  let out = ''
+  const stack: string[] = []
+  const VOID = new Set(['br', 'img', 'hr', 'meta', 'link', 'input', 'source', 'wbr'])
+  for (const tok of html.match(/<[^>]+>|[^<]+/g) ?? []) {
+    if (tok[0] === '<') {
+      const close = /^<\/([a-zA-Z0-9-]+)\s*>$/.exec(tok)
+      if (close) {
+        if (stack[stack.length - 1] === close[1].toLowerCase()) stack.pop()
+      } else if (!/\/>$/.test(tok)) {
+        const open = /^<([a-zA-Z0-9-]+)/.exec(tok)
+        const name = open?.[1].toLowerCase()
+        if (name && !VOID.has(name)) stack.push(name)
+      }
+      out += tok
+      continue
+    }
+    const remain = limit - seen
+    if (tok.length > remain) {
+      out += tok.slice(0, remain)
+      break
+    }
+    seen += tok.length
+    out += tok
+    if (seen >= limit) break
+  }
+  while (stack.length) out += `</${stack.pop()}>`
+  return out
 }

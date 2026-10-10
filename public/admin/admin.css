@@ -263,6 +263,14 @@ input, textarea, select { font: inherit; color: inherit; }
 .media-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-size { font-size: 11px; color: var(--sub); margin-top: 2px; }
 
+/* 编辑器插图弹窗里的媒体库 picker */
+.media-picker {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px;
+  max-height: 46vh; overflow-y: auto; padding: 2px;
+}
+.media-picker .media-item.is-picked { outline: 2px solid var(--accent); outline-offset: -2px; }
+.media-picker .media-item .media-name { padding: 4px 8px; }
+
 /* ---------- 媒体体检 ---------- */
 .audit-modal { max-width: 860px; }
 .audit-body { padding: 16px 20px 20px; }
@@ -313,6 +321,15 @@ input, textarea, select { font: inherit; color: inherit; }
 .ed-status-pill { font-size: 12px; }
 .ed-top-ops { margin-left: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ed-save-state { margin-left: auto; font-size: 12px; color: var(--sub); }
+
+/* 查找替换条（挂在顶栏末尾） */
+.ed-findbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 12px; margin-top: 8px;
+  border-top: 1px dashed var(--line); font-size: 13px;
+}
+.ed-findbar .input { font-size: 13px; padding: 4px 8px; }
+.ed-editor mark[data-find] { background: #ffe28a; color: #333; border-radius: 2px; padding: 0 1px; }
 
 .ed-toolbar {
   display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
@@ -365,6 +382,19 @@ input, textarea, select { font: inherit; color: inherit; }
 .ed-editor h4 { font-size: 16px; }
 .ed-editor img { max-width: 100%; height: auto; border-radius: 8px; }
 .ed-editor video { max-width: 100%; border-radius: 8px; }
+
+/* 微信表情（文本码渲染的小图 + 选择面板；grid/cell 与前台 popover 同视觉口径） */
+.ed-editor img.wxq-emoji { width: 1.4em; height: 1.4em; max-width: none; border-radius: 0; vertical-align: -0.2em; display: inline-block; }
+.wxq-modal-body { max-height: 56vh; overflow-y: auto; }
+.wxq-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+.wxq-cell { border: none; background: none; padding: 2px; cursor: pointer; border-radius: 6px; line-height: 0; }
+.wxq-cell:hover { background: var(--bg2, #f2f2f2); }
+.wxq-cell img { width: 26px; height: 26px; }
+.wxq-empty { color: var(--sub, #888); font-size: 13px; margin: 4px 0; }
+@media (max-width: 480px) {
+  .wxq-grid { grid-template-columns: repeat(6, 1fr); }
+  .wxq-cell img { width: 30px; height: 30px; }
+}
 .ed-editor blockquote {
   margin: 0 0 18px; padding: 12px 15px;
   border-left: 3px solid rgba(178, 58, 41, 0.55); background: #faf6ee;
@@ -383,7 +413,17 @@ input, textarea, select { font: inherit; color: inherit; }
 .ed-editor hr { border: none; width: 64px; margin: 26px auto; border-top: 2px solid #ddd2bd; }
 .ed-editor a { color: #576b95; }
 .ed-editor table { border-collapse: collapse; margin-bottom: 18px; }
-.ed-editor th, .ed-editor td { border: 1px solid #e5e5e5; padding: 6px 10px; }
+.ed-editor th, .ed-editor td { border: 1px solid #e5e5e5; padding: 6px 10px; min-width: 60px; }
+.ed-editor th { background: #faf9f7; font-weight: 600; }
+/* 表格行列操作条：光标进表格浮现 */
+.ed-cellbar {
+  position: absolute; z-index: 30; display: none; gap: 2px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  padding: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); font-size: 12px;
+}
+.ed-cellbar button { border: none; background: none; padding: 4px 7px; border-radius: 5px; color: var(--ink); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.ed-cellbar button:hover { background: rgba(178, 58, 41, 0.09); color: var(--accent); }
+.ed-cellbar-sep { width: 1px; height: 16px; background: var(--line); margin: 0 3px; align-self: center; }
 .ed-editor[data-drag="1"] { outline: 2px dashed rgba(178, 58, 41, 0.4); outline-offset: 6px; border-radius: 4px; }
 
 .ed-md {
@@ -404,6 +444,19 @@ input, textarea, select { font: inherit; color: inherit; }
 .ed-bottombar .spacer { flex: 1; }
 .ed-link { color: var(--sub); transition: color 0.15s ease; }
 .ed-link:hover, .ed-link.is-active { color: var(--accent); }
+
+/* 专注模式：隐藏除写作纸面外的一切；纸面加宽居中，光标呼吸提示还在写作 */
+.editor-page.ed-focus .ed-topbar,
+.editor-page.ed-focus .ed-toolbar,
+.editor-page.ed-focus .ed-drawer,
+.editor-page.ed-focus .ed-bottombar { display: none; }
+.editor-page.ed-focus { background: var(--card); }
+.editor-page.ed-focus .ed-center { display: flex; justify-content: center; }
+.editor-page.ed-focus .ed-paper { max-width: 720px; width: 100%; padding-top: 12vh; }
+@media (max-width: 700px) {
+  /* 手机上地址栏/底栏占位变化大，直接铺满即可 */
+  .editor-page.ed-focus .ed-paper { padding-top: 24px; }
+}
 
 /* 元信息抽屉 */
 .ed-drawer {
@@ -449,6 +502,38 @@ input, textarea, select { font: inherit; color: inherit; }
 .upload-progress { height: 6px; background: #eef0f1; border-radius: 999px; overflow: hidden; margin-top: 12px; display: none; }
 .upload-progress.on { display: block; }
 .upload-progress i { display: block; height: 100%; background: var(--accent); width: 0; transition: width 0.2s ease; border-radius: 999px; }
+
+/* 链接卡片：弹窗预览 + 站内文章选择列表 + 编辑器内镜像（前台视觉口径在六主题 .rich .link-card） */
+.lk-meta-card {
+  display: flex; gap: 10px; align-items: stretch; justify-content: space-between;
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fafafa;
+}
+.lk-meta-text { min-width: 0; }
+.lk-meta-title { font-size: 13.5px; font-weight: 600; color: var(--text, #333); line-height: 1.5; }
+.lk-meta-desc { font-size: 12px; color: var(--sub); margin-top: 3px; line-height: 1.5; }
+.lk-meta-img { flex: 0 0 76px; width: 76px; height: 76px; object-fit: cover; border-radius: 8px; }
+.lk-post-list { max-height: 300px; overflow-y: auto; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.lk-post-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px;
+}
+.lk-post-item:last-child { border-bottom: none; }
+.lk-post-item:hover { background: #fafafa; }
+.lk-post-item.is-active { background: rgba(178, 58, 41, 0.06); }
+.lk-post-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lk-post-cover { flex: 0 0 52px; width: 52px; height: 40px; object-fit: cover; border-radius: 6px; }
+/* 编辑器内镜像：与前台 .rich .link-card 同视觉口径（admin.css 无主题变量，用固定色） */
+.ed-editor a.link-card {
+  display: flex; text-decoration: none; color: inherit; margin: 20px 0;
+  border: 1px solid #e5e5e5; border-radius: 10px; background: #fff;
+  overflow: hidden; pointer-events: none;
+}
+.ed-editor a.link-card .lc-body { display: flex; width: 100%; justify-content: space-between; gap: 12px; padding: 12px 14px; }
+.ed-editor a.link-card .lc-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ed-editor a.link-card .lc-title { font-size: 15px; font-weight: 600; color: #333; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ed-editor a.link-card .lc-desc { font-size: 13px; color: #999; margin-top: 4px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ed-editor a.link-card .lc-host { font-size: 12px; display: block; color: #b2b2b2; margin-top: 8px; }
+.ed-editor a.link-card .lc-img { flex: 0 0 84px; width: 84px; height: 84px; object-fit: cover; border-radius: 8px; margin: 0; align-self: center; }
 
 /* 体检报告 */
 .check-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f4f4f4; font-size: 13.5px; align-items: flex-start; }

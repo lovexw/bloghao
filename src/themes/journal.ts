@@ -1,5 +1,5 @@
 import type { SettingsMap } from '../types'
-import type { AboutData, ArchivesData, GuestbookData, HomeData, LinksData, PageData, PostData, WeiboData } from './registry'
+import type { AboutData, ArchivesData, GuestbookData, HomeData, LinksData, MemberData, PageData, PostData, RankData, WeiboData } from './registry'
 import { cstDate } from '../utils'
 import {
   archiveListHtml,
@@ -13,8 +13,12 @@ import {
   homeListBase,
   homeSortBar,
   likesBtn,
+  memberAuthHtml,
+  memberCardHtml,
   onThisDayCard,
   pagerHtml,
+  paywallHtml,
+  rankListHtml,
   shareBtn,
   siteMode,
   siteNav,
@@ -23,6 +27,7 @@ import {
   weiboComposer,
   weiboHomeEntry,
   weiboHomeFeed,
+  weiboSearchResults,
   weiboPager,
   weiboTopicBar,
   type CategoryLink,
@@ -92,14 +97,14 @@ export function home(d: HomeData): string {
     })
     .join('\n')
   return `<div class="jrn-wrap">
-  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
+  ${siteNav({ mode: siteMode(d.settings), memberEnabled: d.settings.membersEnabled === '1', cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
   <header class="jrn-masthead">
     <a class="jrn-logo" href="/">${avatar(s)}<span class="jrn-logo-name">${esc(s.siteName)}</span></a>
     <p class="jrn-intro">${esc(s.siteDescription)}</p>
   </header>
   <main>
   ${d.notice ? `<div class="jrn-notice">${d.notice}</div>` : ''}
-  ${d.weiboFeed ? weiboHomeFeed({ settings: s, items: d.weiboFeed.items, total: d.weiboFeed.total, avatarHtml: avatar(s), allowComments: d.weiboFeed.allowComments, adminName: d.weiboFeed.adminName }) : ''}
+  ${d.weiboFeed ? weiboHomeFeed({ settings: s, items: d.weiboFeed.items, total: d.weiboFeed.total, avatarHtml: avatar(s), allowComments: d.weiboFeed.allowComments, adminName: d.weiboFeed.adminName, memberName: d.weiboFeed.memberName }) : ''}
   ${d.weibo ? weiboHomeEntry(d.weibo) : ''}
   ${onThisDayCard(d.onThisDay)}
   ${searchForm(d.q)}
@@ -113,6 +118,7 @@ export function home(d: HomeData): string {
     base: homeListBase({ sort: d.sort, seed: d.seed, tag: d.tag, categorySlug: d.categorySlug, q: d.q }),
   })}
   </main>
+  ${d.searchWeibo ? weiboSearchResults({ settings: s, items: d.searchWeibo.items, total: d.searchWeibo.total, avatarHtml: avatar(s) }) : ''}
   ${foot(s, FOOT_LINKS.home)}
 </div>`
 }
@@ -133,7 +139,7 @@ export function post(d: PostData): string {
         .join('')}</aside>`
     : ''
   return `<div class="jrn-wrap">
-  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
+  ${siteNav({ mode: siteMode(d.settings), memberEnabled: d.settings.membersEnabled === '1', cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages })}
   <main>
   <article class="jrn-article">
     ${kicker}
@@ -141,6 +147,7 @@ export function post(d: PostData): string {
     <p class="jrn-meta"><time>${fmtDateCN(p.published_at)}</time><span>·</span><span>约 ${p.readingMinutes} 分钟</span><span>·</span><span>${fmtViews(p.views)} 阅读</span></p>
     ${p.cover ? `<figure class="jrn-cover"><img src="${esc(p.cover)}" alt=""><figcaption>摄于 ${fmtDateCN(p.published_at)}</figcaption></figure>` : ''}
     <div class="rich">${p.contentHtml}</div>
+    ${p.locked ? paywallHtml(p.minTier) : ''}
     <div class="jrn-foot">
       ${likesBtn(p.slug, p.likes)}
       ${d.share ? shareBtn(d.share.url, d.share.qr) : ''}
@@ -166,7 +173,7 @@ function aboutPage(o: {
   about?: boolean
 }): string {
   return `<div class="jrn-wrap">
-  ${siteNav({ mode: siteMode(o.settings), cls: 'jrn-snav', categories: o.categories, tags: o.tags, pages: o.pages, active: o.navActive })}
+  ${siteNav({ mode: siteMode(o.settings), memberEnabled: o.settings.membersEnabled === '1', cls: 'jrn-snav', categories: o.categories, tags: o.tags, pages: o.pages, active: o.navActive })}
   <main>
   <article class="jrn-article${o.about ? ' jrn-about' : ''}">
     <h1 class="jrn-title">${esc(o.title)}</h1>
@@ -190,7 +197,7 @@ export function page(d: PageData): string {
 export function archives(d: ArchivesData): string {
   const s = d.settings
   return `<div class="jrn-wrap">
-  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
+  ${siteNav({ mode: siteMode(d.settings), memberEnabled: d.settings.membersEnabled === '1', cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'archives' })}
   <main>
   <h1 class="jrn-title jrn-page-title">归档</h1>
   <p class="jrn-intro jrn-page-sub">${d.total > 0 ? `这本手账一共写了 ${d.total} 篇` : '写下的每一篇都会收进这里'}</p>
@@ -204,7 +211,7 @@ export function archives(d: ArchivesData): string {
 export function guestbook(d: GuestbookData): string {
   const s = d.settings
   return `<div class="jrn-wrap">
-  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
+  ${siteNav({ mode: siteMode(d.settings), memberEnabled: d.settings.membersEnabled === '1', cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'guestbook' })}
   <main>
   <h1 class="jrn-title jrn-page-title">留言板</h1>
   <p class="jrn-intro jrn-page-sub">${d.count > 0 ? `墙上已经贴了 ${d.count} 张便签` : '墙上还空着，贴张便签打个招呼吧'}</p>
@@ -225,9 +232,10 @@ export function weibo(d: WeiboData): string {
     avatarHtml: avatar(s),
     allowComments: d.allowComments,
     adminName: d.adminName,
+    memberName: d.memberName,
   })
   return `<div class="jrn-wrap jrn-wrap-weibo">
-  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
+  ${siteNav({ mode: siteMode(d.settings), memberEnabled: d.settings.membersEnabled === '1', cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'weibo' })}
   <main>
   <h1 class="jrn-title jrn-page-title">随手记</h1>
   <p class="jrn-intro jrn-page-sub">不用起标题的日常，想到什么记什么${d.total > 0 ? ` · 共 ${d.total} 条` : ''}</p>
@@ -246,7 +254,7 @@ export function weibo(d: WeiboData): string {
 export function links(d: LinksData): string {
   const s = d.settings
   return `<div class="jrn-wrap">
-  ${siteNav({ mode: siteMode(d.settings), cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
+  ${siteNav({ mode: siteMode(d.settings), memberEnabled: d.settings.membersEnabled === '1', cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'links' })}
   <main>
   <h1 class="jrn-title jrn-page-title">友邻</h1>
   <p class="jrn-intro jrn-page-sub">挂在墙上的 ${d.total} 张名片，都是交心的朋友</p>
@@ -256,6 +264,34 @@ export function links(d: LinksData): string {
   ${friendLinkApply()}
   </main>
   ${foot(s, FOOT_LINKS.article)}
+</div>`
+}
+
+/** 排行榜页（/rank）：会员积分总榜，榜单行结构共用 .rk-* */
+export function rank(d: RankData): string {
+  const s = d.settings
+  return `<div class="jrn-wrap">
+  ${siteNav({ mode: siteMode(d.settings), memberEnabled: s.membersEnabled === '1', cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'rank' })}
+  <main>
+  <h1 class="jrn-title jrn-page-title">排行榜</h1>
+  <p class="jrn-intro jrn-page-sub">${d.total > 0 ? `手账上的 ${d.total} 位常客 · 按积分排序` : '留言、常回来，名字就会出现在这里'}</p>
+  <section class="jrn-rank">${rankListHtml(d.entries) || '<p class="jrn-empty">这一页还空着，抢个头名吧。</p>'}</section>
+  </main>
+  ${foot(s, FOOT_LINKS.archive)}
+</div>`
+}
+
+/** 会员中心页（/member）：未登录出登录/注册表单，已登录出会员卡（结构共用 .mem-*） */
+export function member(d: MemberData): string {
+  const s = d.settings
+  return `<div class="jrn-wrap">
+  ${siteNav({ mode: siteMode(d.settings), memberEnabled: s.membersEnabled === '1', cls: 'jrn-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: 'member' })}
+  <main>
+  <h1 class="jrn-title jrn-page-title">会员中心</h1>
+  <p class="jrn-intro jrn-page-sub">${d.member ? '留言、常回来，积分与专属内容都在这里' : '署个名，成为这本手账的常客'}</p>
+  <section class="jrn-member">${d.member ? memberCardHtml(d.member) : memberAuthHtml()}</section>
+  </main>
+  ${foot(s, FOOT_LINKS.archive)}
 </div>`
 }
 

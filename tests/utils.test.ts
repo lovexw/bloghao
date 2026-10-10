@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanDisabledPlugins, cleanSlug, clampInt, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate, jsonItemLikePattern, likePattern, plainText } from '../src/utils.ts'
+import { cleanDisabledPlugins, cleanSlug, clampInt, dateSlug, extractWeiboTopics, fmtDate, fmtDateCN, fmtDateTime, isoDate, jsonItemLikePattern, likePattern, plainText, slugify } from '../src/utils.ts'
 
 // ── SSR 时间统一北京时间（回归：0-8 点发布的内容曾显示成前一天）──
 test('fmtDate 按 UTC+8 取墙上日期：UTC 16:30 = 北京次日 00:30', () => {
@@ -51,6 +51,26 @@ test('cleanSlug 清洗空白与非法字符', () => {
   assert.equal(cleanSlug('  --a--b--  '), 'a-b')
   assert.equal(cleanSlug('   '), '')
   assert.equal(cleanSlug('hello-world_1'), 'hello-world_1')
+})
+
+// ── slugify / dateSlug（回归：中文标题曾回退 p-时间戳+随机串，链接无标准）──
+test('slugify 纯 ASCII 标题转 kebab-case', () => {
+  assert.equal(slugify('My First Post!'), 'my-first-post')
+  assert.equal(slugify('  Hello   World  '), 'hello-world')
+  assert.equal(slugify('A -- B?? C'), 'a-b-c')
+})
+
+test('dateSlug 用北京日期：UTC 深夜归次日，0-8 点口径不错位', () => {
+  // 北京 2026-10-05 00:30（UTC 10-04 16:30）——按 UTC 取日期会错成 20261004
+  assert.match(dateSlug(Date.UTC(2026, 9, 4, 16, 30)), /^20261005-[0-9a-z]{4}$/)
+  // 北京 2026-10-08 01:00
+  assert.match(dateSlug(Date.UTC(2026, 9, 7, 17, 0)), /^20261008-[0-9a-z]{4}$/)
+})
+
+test('slugify 中文标题走 dateSlug，两次生成不重样（随机位 + uniqueSlug 兜底防重复）', () => {
+  const a = slugify('我的写作笔记')
+  assert.match(a, /^\d{8}-[0-9a-z]{4}$/)
+  assert.notEqual(slugify('我的写作笔记'), slugify('我的写作笔记'))
 })
 
 // ── 插件停用列表清洗（后台「插件」页启停写 settings.pluginsDisabled）──

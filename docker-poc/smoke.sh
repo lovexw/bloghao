@@ -83,6 +83,83 @@ check "t1 租户看不到 main 的图（R2 隔离）" 404 "$(code t1.localhost "
 check "main 租户 sitemap" 200 "$(code main.localhost /sitemap.xml)"
 
 kill ${SERVER_PID} 2>/dev/null || true
+wait ${SERVER_PID} 2>/dev/null || true
+
+# ── 控制面（多租户管理面板）───────────────────────────────────────────────
+# 用临时 tenants.json / 数据目录隔离，不污染仓库配置与 smoke 前半段数据
+echo "==> 控制面：登录 → 开站 → 重置密码 → 停用 → 删除"
+SMOKE_DIR=$(mktemp -d)
+SMOKE_CFG="${SMOKE_DIR}/tenants.json"
+SMOKE_DATA="${SMOKE_DIR}/tenants"
+cat > "$SMOKE_CFG" <<EOF
+{ "ops.localhost": {}, "main.localhost": {}, "demo.localhost": { "demo": true }, "t1.localhost": { "demo": true } }
+EOF
+CONTROL_HOST="ops.localhost" CONTROL_PASSWORD="ctrl-pass-123" \
+TENANTS_CONFIG="$SMOKE_CFG" TENANTS_DIR="$SMOKE_DATA" OPS_LOG_PATH="${SMOKE_DIR}/ops.log" \
+  node dist/server.js >server.smoke.log 2>&1 &
+SERVER_PID=$!
+for i in $(seq 1 60); do
+  if curl -sf -H 'Host: main.localhost' "${BASE}/api/health" >/dev/null 2>&1; then break; fi
+  [ "$i" = 60 ] && { echo "控制面服务 60 秒内没起来，server.smoke.log："; tail -50 server.smoke.log; exit 1; }
+  sleep 1
+done
+
+CTRL() { # CTRL <期望> <curl 参数...>
+  local want="$1"; shift
+  local got
+  got=$(curl -s -o /dev/null -w '%{http_code}' --resolve "ops.localhost:${PORT}:127.0.0.1" "$@" || true)
+  check "控制面：$1" "$want" "$( [ "${got}" = "${want}" ] && echo "$got" || echo "$got" )"
+}
+cctrl() { curl -s --resolve "ops.localhost:${PORT}:127.0.0.1" "$@"; }
+
+check "控制面未登录根路径出登录页"  200 "$(code ops.localhost /)"
+check "控制面未登录访问仪表盘 303"  303 "$(code ops.localhost /login)"
+check "控制面探活豁免（Caddy 签证书前提）" 200 "$(code ops.localhost '/api/health?domain=ops.localhost')"
+
+CJAR=$(mktemp)
+check "控制面登录成功 303" 303 "$(curl -s -o /dev/null -w '%{http_code}' --resolve "ops.localhost:${PORT}:127.0.0.1" -c "$CJAR" -d 'password=ctrl-pass-123' http://ops.localhost:${PORT}/login)"
+check "控制面错密码 403"   403 "$(curl -s -o /dev/null -w '%{http_code}' --resolve "ops.localhost:${PORT}:127.0.0.1" -d 'password=wrong' http://ops.localhost:${PORT}/login)"
+check "控制面登录后仪表盘 200" 200 "$(curl -s -o /dev/null -w '%{http_code}' --resolve "ops.localhost:${PORT}:127.0.0.1" -b "$CJAR" http://ops.localhost:${PORT}/)"
+check "跨站 Origin 提交被拒 403" 403 "$(curl -s -o /dev/null -w '%{http_code}' --resolve "ops.localhost:${PORT}:127.0.0.1" -b "$CJAR" -H 'Origin: https://evil.example' -d 'host=new.localhost' http://ops.localhost:${PORT}/create)"
+
+# 开站 → 热加载立即生效（免重启）
+cctrl -b "$CJAR" -d 'host=smoke-new.localhost' http://ops.localhost:${PORT}/create > /dev/null
+check "面板开站后新租户立即可访问（热加载）" 200 "$(code smoke-new.localhost /api/health)"
+grep -q '"smoke-new.localhost"' "$SMOKE_CFG" && check "tenants.json 已落盘" 1 1 || check "tenants.json 已落盘" 1 0
+
+# 首访建管理员 → 面板重置密码 → 新密码可登录
+# （setup 带 JSON 的 POST 走同源校验，curl 默认不发 Origin，天然同源；无 Origin 即放行）
+curl -s -o /dev/null --resolve "smoke-new.localhost:${PORT}:127.0.0.1" -H 'Content-Type: application/json' \
+  -d '{"username":"owner","password":"old-pass-123"}' http://smoke-new.localhost:${PORT}/api/auth/setup
+cctrl -b "$CJAR" -d 'host=smoke-new.localhost' http://ops.localhost:${PORT}/reset > /tmp/ctrl-reset.html
+# grep 无匹配 exit 1 会触发 set -e 静默退出（曾在此断言后无声死掉）——必须 || true
+NEWPASS=$(grep -o '<code style="font-size:18px">[^<]*' /tmp/ctrl-reset.html | head -1 | sed 's/.*>//' || true)
+check "重置密码输出一次性新密码" 1 "$([ -n "$NEWPASS" ] && echo 1 || echo 0)"
+# 旧密码已失效（登录失败统一 401「用户名或密码不对」）
+check "旧密码登录已失效" 401 "$(curl -s -o /dev/null -w '%{http_code}' --resolve "smoke-new.localhost:${PORT}:127.0.0.1" -H 'Content-Type: application/json' -d '{"username":"owner","password":"old-pass-123"}' http://smoke-new.localhost:${PORT}/api/auth/login)"
+# 新密码可登录（payload 先落变量再引用，避免 check 的 $( ) 里双层引号转义吃掉 JSON 花括号）
+NEWLOGIN=$(printf '{"username":"owner","password":"%s"}' "$NEWPASS")
+check "新密码可登录该站后台" 200 "$(curl -s -o /dev/null -w '%{http_code}' --resolve "smoke-new.localhost:${PORT}:127.0.0.1" -H 'Content-Type: application/json' -d "$NEWLOGIN" http://smoke-new.localhost:${PORT}/api/auth/login)"
+
+# 停用 → 404；启用 → 200
+cctrl -b "$CJAR" -d 'host=smoke-new.localhost' http://ops.localhost:${PORT}/disable > /dev/null
+check "停用后该站 404" 404 "$(code smoke-new.localhost /api/health)"
+check "停用后配置仍保留（disabled 标记）" 1 "$(grep -q '"disabled": true' "$SMOKE_CFG" && echo 1 || echo 0)"
+cctrl -b "$CJAR" -d 'host=smoke-new.localhost' http://ops.localhost:${PORT}/enable > /dev/null
+check "启用后恢复访问" 200 "$(code smoke-new.localhost /api/health)"
+
+# 删除：确认域名不匹配不动手；匹配才删（配置 + 目录）
+cctrl -b "$CJAR" -d 'host=smoke-new.localhost&confirm=wrong.example' http://ops.localhost:${PORT}/delete > /dev/null
+check "确认域名不匹配不删除" 1 "$([ -d "$SMOKE_DATA/smoke-new.localhost" ] && echo 1 || echo 0)"
+cctrl -b "$CJAR" -d 'host=smoke-new.localhost&confirm=smoke-new.localhost' http://ops.localhost:${PORT}/delete > /dev/null
+check "确认匹配后删除数据目录" 1 "$([ ! -d "$SMOKE_DATA/smoke-new.localhost" ] && echo 1 || echo 0)"
+check "删除后配置移除" 1 "$(grep -q 'smoke-new.localhost' "$SMOKE_CFG" && echo 0 || echo 1)"
+check "删除后路由 404" 404 "$(code smoke-new.localhost /api/health)"
+check "操作日志已记录" 1 "$(grep -q '"action":"删除"' "${SMOKE_DIR}/ops.log" && echo 1 || echo 0)"
+
+kill ${SERVER_PID} 2>/dev/null || true
+rm -rf "$SMOKE_DIR" /tmp/ctrl-reset.html
+
 echo
 echo "结果：PASS=${PASS} FAIL=${FAIL}"
 [ "$FAIL" = 0 ]

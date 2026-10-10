@@ -40,3 +40,37 @@ test('标题/加粗/代码块基础渲染', () => {
   assert.ok(out.includes('<strong>粗体</strong>'))
   assert.ok(out.includes('&lt;b&gt;'), '代码块内容转义')
 })
+
+// ── GFM 管道表格 ──
+test('表格：表头/正文/对齐/单元格内转义与行内格式', () => {
+  const out = mdToHtml(
+    '| 名称 | 数量 | 备注 |\n| --- | :---: | ---: |\n| **苹果** | 3 | a & b |\n| 香蕉 | 12 | `x<y` |'
+  )
+  assert.ok(out.includes('<table><thead><tr>'), out)
+  assert.ok(out.includes('<th>名称</th>'), out)
+  assert.ok(out.includes('<th style="text-align:center">数量</th>'), out)
+  assert.ok(out.includes('<th style="text-align:right">备注</th>'), out)
+  assert.ok(out.includes('<td><strong>苹果</strong></td>'), out)
+  assert.ok(out.includes('<td style="text-align:right">a &amp; b</td>'), out)
+  assert.ok(out.includes('<td style="text-align:right"><code>x&lt;y</code></td>'), out)
+  assert.ok(out.includes('</tbody></table>'), out)
+})
+
+test('表格：列数不齐按表头列数截断/补空，单元格缺省为空', () => {
+  const out = mdToHtml('| A | B |\n| --- | --- |\n| 只有一列 |\n| 多 | 出 | 来 |')
+  assert.ok(out.includes('<td>只有一列</td><td></td>'), out)
+  assert.ok(out.includes('<td>多</td><td>出</td>'), out)
+  assert.ok(!out.includes('<td>来</td>'), out)
+})
+
+test('只有竖线没有分隔行：当普通段落不产表格', () => {
+  const out = mdToHtml('a | b\nc | d')
+  assert.ok(!out.includes('<table>'), out)
+  assert.ok(out.includes('<p>a | b<br>c | d</p>'), out)
+})
+
+test('表格后面的普通段落正常衔接（表格 flush 不吞段）', () => {
+  const out = mdToHtml('| A |\n| --- |\n| 1 |\n\n正文段落')
+  assert.ok(out.includes('</table>'), out)
+  assert.ok(out.includes('<p>正文段落</p>'), out)
+})

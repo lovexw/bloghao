@@ -13,6 +13,41 @@ export interface SessionUser {
   avatar: string
 }
 
+/* ---------------- 会员体系（访客注册身份，与 users 管理员彻底分离，契约见 docs/DEVPLAN-2026-10-07.md 附录 A） ---------------- */
+
+export type MemberTier = 'normal' | 'coffee' | 'top'
+
+/** members 表整行（含口令字段，仅服务端登录/管理口径使用；对外一律过 memberView 裁剪） */
+export interface MemberRow {
+  id: number
+  username: string
+  password_hash: string
+  salt: string
+  email: string
+  display_name: string
+  avatar: string
+  /** 绑定的 QQ 号（仅头像抓取记账位）；任何公开出参不携带，头像走站内转存 */
+  qq: string
+  tier: MemberTier
+  points: number
+  status: 'active' | 'banned'
+  created_at: number
+  updated_at: number
+  last_login_at: number | null
+  /** 上次改昵称时间；null = 从未改过，首次修改不受 30 天窗口限制 */
+  display_name_changed_at: number | null
+}
+
+/** 会员会话身份（Cookie xw_member_session；banned 在查询层即视为未登录） */
+export interface MemberSessionUser {
+  id: number
+  username: string
+  display_name: string
+  avatar: string
+  tier: MemberTier
+  points: number
+}
+
 export type PostStatus = 'draft' | 'published' | 'scheduled'
 
 export interface PostRow {
@@ -31,6 +66,10 @@ export interface PostRow {
   published_at: number | null
   /** 定时发布目标时间（毫秒）；仅 scheduled 状态有值 */
   publish_at: number | null
+  /** 可见档位（契约 DEVPLAN 附录 A）：all | member | coffee | top，缺省 all；老库 ALTER 补列前可能缺省 */
+  min_tier?: string
+  /** 访问密码（src/protect.ts）：salt:hash（PBKDF2），空 = 未加密；不进任何后台响应 */
+  password_hash?: string
   created_at: number
   updated_at: number
   /** 回收站：非 NULL = 已移入回收站（毫秒），NULL = 存活（src/trash.ts） */
@@ -65,6 +104,15 @@ export interface CommentRow {
   status: 'approved' | 'pending'
   ip: string
   created_at: number
+  /** 会员徽标冗余字段：评论列表 LEFT JOIN members 带出（member_id > 0 时非空，契约 DEVPLAN 附录 A） */
+  member_name?: string
+  member_tier?: MemberTier
+  /** 会员头像（站内 /images/ 转存地址）：评论头像位展示用；QQ 号本体永不出参 */
+  member_avatar?: string
+  /** 游客选填的 QQ 号（评论头像 C2）：仅头像抓取记账位，任何公开出参不携带 */
+  qq?: string
+  /** 游客头像（服务端 qlogo 抓取后站内转存地址）：评论头像位展示用；空 = 首字块 */
+  avatar?: string
 }
 
 export interface CategoryRow {

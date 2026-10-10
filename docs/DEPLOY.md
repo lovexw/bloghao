@@ -6,7 +6,7 @@
 
 ## 方式一：一键部署（推荐，全程不碰命令行）
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/bloghao/bloghao)
 
 点按钮 → 用 GitHub 账号授权 → 在设置页给 Worker、D1 数据库、R2 图床起好名字 → 点 **Create and deploy**。Cloudflare 会自动完成：
 
@@ -119,7 +119,7 @@ https://你的域名/admin/
 - **站点名称 / 描述 / 页脚**：出现在首页刊头、浏览器标题、RSS
 - **站点链接**：填写最终访问域名（本站即 `https://blog.xiaowuleyi.com`），用于 RSS 和 sitemap 里的绝对链接。绑定了自定义域名就**务必填上**
 - **站点头像 / 网站图标**：都从后台上传、存进 R2 图床，改即时生效
-- **外观**：五套主题即点即换
+- **外观**：六套主题即点即换
 - **评论**：可开关留言、可开启「先审后展」
 
 ## 6. 绑定自定义域名
@@ -165,7 +165,7 @@ git push -u origin main
 不想把代码跑在 Cloudflare 上、手头有 VPS 时，仓库内的 `docker-poc/` 提供零改动的自托管方案：业务代码原样跑进一个 Node 容器，文章存进内置 SQLite（单文件、WAL 模式），图片存本地磁盘目录，也可以继续用 Cloudflare R2 桶（零出口流量费，备份自动异地）。单进程按域名同时托管多个完全独立的博客站，Cloudflare 退回只做 DNS + CDN。
 
 ```bash
-git clone https://github.com/lovexw/bloghao.git
+git clone https://github.com/bloghao/bloghao.git
 cd bloghao/docker-poc
 docker compose up --build -d     # 镜像约 70MB（node:26-alpine），数据落在 ./data/<域名>/
 ```
@@ -237,6 +237,6 @@ A：项目名改 `wrangler.jsonc` 的 `name`；本地端口 `npm run dev -- --po
 博客号官网是与博客系统互相独立的纯静态站点，源码在仓库 `website/` 目录，部署在 Cloudflare **Pages** 项目 `bloghao`（即 bloghao.pages.dev），自定义域绑定为 `bloghao.com`：
 
 - **改动发布**：修改 `website/public/` 后 push 到 GitHub，Pages 项目连着 `bloghao` 仓库（构建输出目录 `website/public`）会自动部署；也可手动 `cd website && npx wrangler pages deploy public`
-- **「博客号目录」**：数据在 `website/public/data/showcase.json`，访客通过官网入口向 [bloghao](https://github.com/lovexw/bloghao) 提 Issue 申请上榜，审核通过后把站点加进 JSON 即可
-- **在线示例**：官网指向的演示站（官方部署为 demo.bloghao.com，Worker 名 xwblog-demo）是引擎的另一套独立 Worker 部署，专供访客体验；作者实例 blog.xiaowuleyi.com 不作演示用
+- **「博客号目录」**：数据在 `website/public/data/showcase.json`，访客通过官网入口向 [bloghao](https://github.com/bloghao/bloghao) 提 Issue 申请上榜，审核通过后把站点加进 JSON 即可
+- **在线示例**：官网指向的演示站（Worker 名 xwblog-demo，地址以部署输出为准）是引擎的另一套独立 Worker 部署，专供访客体验；作者实例 blog.xiaowuleyi.com 不作演示用
 - 官网与本博客 Worker 互不影响，部署 / 回滚都在 Workers & Pages 的 `bloghao` 项目里操作

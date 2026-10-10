@@ -1,0 +1,23 @@
+// 博客号广场 hub —— 独立 Worker，与博客主仓库的 wrangler.jsonc 无关
+// 部署：见 plaza/README.md（建 D1 plaza-db → 刷 schema → 设 PLAZA_ADMIN_TOKEN → deploy）
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "plaza",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "routes": [{ "pattern": "plaza.bloghao.com", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "plaza-db",
+      "database_id": "REPLACE_WITH_PLAZA_DB_ID"
+    }
+  ],
+  "triggers": {
+    // RSS pull 补漏 + 180 天无心跳站点自动休眠
+    "crons": ["17 */6 * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

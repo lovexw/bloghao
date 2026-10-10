@@ -377,6 +377,15 @@ function renderCard(d, av, imgs) {
 let modal = null
 let state = null // { url, file, site, text, link?, title? }
 
+// Esc 关闭挂在 document 一次（模块加载时）：ensureModal 每次重建 overlay，若在此注册会随开合次数累积监听器
+document.addEventListener(
+  'keydown',
+  function (e) {
+    if (e.key === 'Escape' && modal) close()
+  },
+  true
+)
+
 function ensureModal() {
   if (modal) return modal
   const style = document.createElement('style')
@@ -427,13 +436,6 @@ function ensureModal() {
     if (e.target === overlay) close()
   })
   overlay.querySelector('.sc-close').addEventListener('click', close)
-  document.addEventListener(
-    'keydown',
-    function (e) {
-      if (e.key === 'Escape' && modal) close()
-    },
-    true
-  )
   overlay.querySelector('[data-act=save]').addEventListener('click', function () {
     if (!state) return
     const a = document.createElement('a')

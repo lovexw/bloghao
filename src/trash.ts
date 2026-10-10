@@ -86,7 +86,8 @@ export async function listTrash(
 }
 
 /** 到期彻底清除：每晚备份 cron 调用（src/index.ts scheduled()）。级联子查询先清评论/分类关联再删主行，
- *  一个 batch 事务内完成；返回清除的总行数（仅日志用途）。 */
+ *  一个 batch 事务内完成；返回清除的总行数（仅日志用途；因 FTS 删除触发器会计入索引删除行，
+ *  posts/weibo 部分约为实际条数的 2 倍——只看趋势勿当精确值） */
 export async function purgeTrash(db: D1Database, now = Date.now()): Promise<number> {
   const cutoff = now - TRASH_RETENTION_DAYS * 86_400_000
   const postCond = 'deleted_at IS NOT NULL AND deleted_at < ?'

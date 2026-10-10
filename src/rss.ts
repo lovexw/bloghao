@@ -1,17 +1,26 @@
 import type { PostRow, SettingsMap } from './types'
 import { siteMode } from './render'
 import { sanitizeHtml } from './sanitize'
-import { esc, fmtDate } from './utils'
+import { esc, fmtDate, teaserHtml } from './utils'
 import { cdata, rfc822, xmlEsc } from './xml'
 
 export function buildRss(settings: SettingsMap, posts: PostRow[], siteUrl: string): string {
   const fullText = settings.rssFullText !== '0'
   const items = posts
     .map((p) => {
-      // 全文走 content:encoded（标准做法：description 保持摘要轻量，订阅器优先读全文）
+      // 全文走 content:encoded（标准做法：description 保持摘要轻量，订阅器优先读全文）。
+      // 会员专属文章（min_tier 非 all）订阅器等同游客视角：只出试读段 + 引导，防付费墙被 RSS 绕过（契约 A2 防泄漏清单）
+      // 访问密码文章（password_hash 非空）更严：试读段也不出，description 只用作者自填摘要（src/protect.ts 防泄漏清单）
+      const pwProtected = !!p.password_hash
+      const memberLocked = !!p.min_tier && p.min_tier !== 'all'
       const encoded =
-        fullText && p.content
-          ? `\n      <content:encoded>${cdata(sanitizeHtml(p.content))}</content:encoded>`
+        fullText && p.content && !pwProtected
+          ? `\n      <content:encoded>${cdata(
+              memberLocked
+                ? teaserHtml(sanitizeHtml(p.content)) +
+                  '<p>—— 本文为会员专属内容，剩余部分请到站点登录会员后阅读。</p>'
+                : sanitizeHtml(p.content)
+            )}</content:encoded>`
           : ''
       return `    <item>
       <title>${xmlEsc(p.title)}</title>

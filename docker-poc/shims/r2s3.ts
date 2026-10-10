@@ -176,10 +176,16 @@ export function createR2S3(cfg: R2S3Config) {
       }
     },
 
-    async list(opts?: { prefix?: string; limit?: number }) {
+    async list(opts?: { prefix?: string; limit?: number; cursor?: string }) {
       const limit = Math.min(opts?.limit ?? 1000, 1000)
       const res = await s3fetch('GET', '', {
-        query: { 'list-type': '2', prefix: full(opts?.prefix ?? ''), 'max-keys': String(limit) },
+        query: {
+          'list-type': '2',
+          prefix: full(opts?.prefix ?? ''),
+          'max-keys': String(limit),
+          // cursor round-trip（demo.ts wipeBucket 分页删光）：S3 ListObjectsV2 的续页令牌
+          ...(opts?.cursor ? { 'continuation-token': opts.cursor } : {}),
+        },
       })
       if (!res.ok) fail('LIST', opts?.prefix ?? '', res)
       const xml = await res.text()
@@ -187,7 +193,8 @@ export function createR2S3(cfg: R2S3Config) {
         const key = (xmlTag(m[1], 'Key') || '').slice(prefix.length)
         return { key, size: Number(xmlTag(m[1], 'Size') || 0), uploaded: new Date(xmlTag(m[1], 'LastModified') || Date.now()) }
       })
-      return { objects, truncated: /<IsTruncated>true<\/IsTruncated>/.test(xml) }
+      const truncated = /<IsTruncated>true<\/IsTruncated>/.test(xml)
+      return { objects, truncated, cursor: truncated ? xmlTag(xml, 'NextContinuationToken') || undefined : undefined }
     },
   }
 }

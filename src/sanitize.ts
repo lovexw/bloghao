@@ -9,6 +9,9 @@
  * - 内联样式仅保留排版类属性，且 url() 只允许站内相对路径
  */
 
+import { wrapAnchorHref } from './outlink'
+
+
 const VOID_TAGS = new Set(['br', 'hr', 'img', 'source', 'wbr'])
 
 /** 连同内容一起丢弃的标签（安全风险或与排版无关） */
@@ -45,8 +48,9 @@ const ALLOWED_TAGS = new Set([
 
 /** 所有标签都可用的属性。
  *  不放行 id：正文在评论区之前，<img id="comment-form"> 之类的 DOM clobbering
- *  会让 site.js 的 getElementById 命中正文元素，评论区功能瘫痪（锚点锚 id 同理不可靠） */
-const GLOBAL_ATTRS = new Set(['class', 'data-w', 'data-ignore-width', 'data-no-dark', 'data-ignore-dm'])
+ *  会让 site.js 的 getElementById 命中正文元素，评论区功能瘫痪（锚点锚 id 同理不可靠）
+ *  data-link-card 是编辑器「链接卡片」的结构标记（src/linkmeta.ts），纯样式钩子 */
+const GLOBAL_ATTRS = new Set(['class', 'data-w', 'data-ignore-width', 'data-no-dark', 'data-ignore-dm', 'data-link-card'])
 
 const TAG_ATTRS: Record<string, Set<string>> = {
   a: new Set(['href', 'target', 'title']),
@@ -109,7 +113,7 @@ function sanitizeStyle(v: string): string {
   return keep.join('; ')
 }
 
-function sanitizeAttrs(tag: string, raw: string): string {
+function sanitizeAttrs(tag: string, raw: string, origin?: string): string {
   const allowed = TAG_ATTRS[tag] ?? new Set<string>()
   const are = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g
   const seen = new Set<string>()
@@ -141,6 +145,13 @@ function sanitizeAttrs(tag: string, raw: string): string {
     if (name === 'href' || name === 'src' || name === 'poster') {
       if (!safeUrl(v)) continue
       if (name === 'href') {
+        // 外链中间页（src/outlink.ts）：仅在渲染路径传 origin 时包装非白名单外链——
+        // 存库 / RSS / 导出不传 origin，落盘内容保持原始 URL；/go?u= 是相对地址，重复净化不会二次包装
+        const wrapped = origin ? wrapAnchorHref(v, origin) : null
+        if (wrapped) {
+          out += ` href="${escAttr(wrapped)}" target="_blank" rel="nofollow noopener noreferrer"`
+          continue
+        }
         out += ` href="${escAttr(v)}"`
         if (/^https?:\/\//i.test(v)) out += ' rel="noopener noreferrer"'
         continue
@@ -160,6 +171,9 @@ function sanitizeAttrs(tag: string, raw: string): string {
     if (name === 'data-w') {
       if (!/^\d{1,5}$/.test(v)) continue
     }
+    if (name === 'data-link-card') {
+      if (v !== '' && v !== 'link-card') continue // 固定值标记，别的值一律剥
+    }
     out += ` ${name}="${escAttr(v)}"`
   }
   return out
@@ -173,8 +187,9 @@ function escapeStrayLt(segment: string): string {
   return segment.replace(/<(?=[a-zA-Z/!?])/g, '&lt;')
 }
 
-export function sanitizeHtml(input: string): string {
+export function sanitizeHtml(input: string, opts?: { origin?: string }): string {
   if (!input) return ''
+  const origin = opts?.origin
   const re = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^"'>])*?)(\/?)>/g
   let out = ''
   let last = 0
@@ -213,7 +228,7 @@ export function sanitizeHtml(input: string): string {
       out += `</${name}>`
       continue
     }
-    const attrs = sanitizeAttrs(name, attrsRaw)
+    const attrs = sanitizeAttrs(name, attrsRaw, origin)
     out += `<${name}${attrs}>`
   }
   out += escapeStrayLt(input.slice(last))

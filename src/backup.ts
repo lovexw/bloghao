@@ -8,14 +8,16 @@
  */
 import { getSettings, saveSettings } from './db'
 import { notifyAdminText } from './external'
-import { purgeExpiredSessions } from './auth'
+import { purgeExpiredSessions, purgeExpiredMemberSessions } from './auth'
 import type { Env } from './types'
 
 const BACKUP_PREFIX = 'backups/'
 const KEEP_FILES = 30
-// 会话表是临时凭证、tg_buffer 是相册合并缓冲，都不值得备份
+// 会话表是临时凭证（管理员的 sessions 与会员的 member_sessions）、tg_buffer 是相册合并缓冲，都不值得备份
 const BACKUP_TABLES = [
   'users',
+  'members',
+  'member_points_log',
   'posts',
   'pages',
   'comments',
@@ -93,9 +95,10 @@ export async function runBackup(env: Env): Promise<BackupResult> {
 
 /** Cron 入口：备份失败 / 表超限截断时尽量推一条 Telegram 给站长（成功不打扰） */
 export async function scheduledBackup(_controller: unknown, env: Env): Promise<void> {
-  // 顺带清理过期会话（一天一次足够），失败不影响备份
+  // 顺带清理过期会话（管理员 + 会员，一天一次足够），失败不影响备份
   try {
     await purgeExpiredSessions(env.DB)
+    await purgeExpiredMemberSessions(env.DB)
   } catch {
     /* ignore */
   }

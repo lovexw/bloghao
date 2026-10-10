@@ -1,3 +1,4 @@
+import * as bitcoin from './bitcoin'
 import * as journal from './journal'
 import * as midnight from './midnight'
 import * as minimal from './minimal'
@@ -8,8 +9,10 @@ import type {
   CategoryLink,
   FriendLinkView,
   HomePostView,
+  MemberView,
   NavPage,
   OnThisDayItemView,
+  RankEntryView,
   TagCount,
   WeiboItemView,
 } from '../render'
@@ -54,7 +57,18 @@ export interface HomeData {
    * 首页微博流（仅「微博+博客」模式的首页传入）：完整微博卡片先行，文章列表跟在后面。
    * 主题侧用 weiboHomeFeed({ settings, ...weiboFeed, avatarHtml }) 渲染；没有已发布微博时为 null
    */
-  weiboFeed?: { items: WeiboItemView[]; total: number; allowComments: boolean; adminName?: string } | null
+  weiboFeed?: {
+    items: WeiboItemView[]
+    total: number
+    allowComments: boolean
+    adminName?: string
+    memberName?: string
+  } | null
+  /**
+   * 搜索页微博结果（ROADMAP B4，仅 /search 带关键词时传入）：主题侧用
+   * weiboSearchResults({ settings, ...searchWeibo, avatarHtml }) 渲染；没有命中时为 null
+   */
+  searchWeibo?: { items: WeiboItemView[]; total: number } | null
   /** 历史上的今天（仅首页第一页且未筛选时传入）：往年今日的文章与微博，空数组/缺省不渲染 */
   onThisDay?: OnThisDayItemView[] | null
 }
@@ -74,6 +88,8 @@ export interface WeiboData {
   allowComments: boolean
   /** 登录管理员昵称：卡片内评论表单免填昵称，以作者身份发言 */
   adminName?: string
+  /** 登录会员昵称（管理员未登录时生效）：卡片内评论表单免填昵称，以会员身份发言 */
+  memberName?: string
   /** 当前筛选的话题（?topic=），为空为全部 */
   topic?: string
   /** 已发布微博的话题聚合（话题条数据），为空不渲染话题条 */
@@ -103,6 +119,10 @@ export interface PostData {
     views: number
     likes: number
     readingMinutes: number
+    /** 谁能看档位（编辑器「谁能看」选择，缺省 'all' 全员可见；'member' = 登录会员可见） */
+    minTier?: 'all' | 'member' | 'coffee' | 'top'
+    /** true = 当前访客不可读全文：contentHtml 已被服务端截断为试读段，主题在正文后渲染付费墙遮挡卡（paywallHtml），不得自行补全内容 */
+    locked?: boolean
   }
   category: CategoryLink | null
   categories: CategoryLink[]
@@ -161,10 +181,37 @@ export interface GuestbookData {
   count: number
 }
 
+/** 会员中心页（/member）：member 为 null 渲染登录/注册双表单（memberAuthHtml），否则渲染会员卡（memberCardHtml） */
+export interface MemberData {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  pages?: NavPage[]
+  tags?: TagCount[]
+  /** 导航高亮：会员中心页传 'member' */
+  navActive?: string
+  /** 当前登录会员（服务端会话解析产出）；null = 未登录 */
+  member: MemberView | null
+}
+
+/** 排行榜页（/rank）：会员积分总榜，entries 已按 points 倒序、rank 已排好名次 */
+export interface RankData {
+  settings: SettingsMap
+  categories: CategoryLink[]
+  pages?: NavPage[]
+  tags?: TagCount[]
+  /** 导航高亮：排行榜页传 'rank' */
+  navActive?: string
+  entries: RankEntryView[]
+  /** 上榜会员总数（页头副标题用） */
+  total: number
+  /** 当前访客在榜上的自己（未上榜/未登录为 null；本人行同时带 isMe 标记） */
+  me?: RankEntryView | null
+}
+
 /**
  * 主题注册表 —— 新增主题：
  * 1. 在 src/themes/ 下新建 mytheme.ts + mytheme.css，从本文件 import 上述 *Data 类型
- *    实现八个同名导出函数（page 可省略，运行时兜底通用版）
+ *    实现八个同名导出函数（page 可省略，运行时兜底通用版；member/rank 同为可选 + 运行时兜底）
  * 2. 在这里注册一行
  * 详见 docs/THEMES.md
  */
@@ -183,6 +230,10 @@ export interface ThemeModule {
   page(d: PageData): string
   archives(d: ArchivesData): string
   guestbook(d: GuestbookData): string
+  /** 会员中心页（/member）：可省略，运行时兜底通用版 */
+  member?(d: MemberData): string
+  /** 排行榜页（/rank）：可省略，运行时兜底通用版 */
+  rank?(d: RankData): string
 }
 
 export const THEMES: Record<string, ThemeModule> = {
@@ -220,6 +271,13 @@ export const THEMES: Record<string, ThemeModule> = {
     name: '夜航',
     description: '深夜星图蓝 + 等宽字体点缀的开发者日志风',
     colors: ['#0f1115', '#58a6ff', '#161a22', '#1d232e', '#181d26'],
+  },
+  bitcoin: {
+    ...bitcoin,
+    id: 'bitcoin',
+    name: '比特币',
+    description: '比特币橙 × 暖白纸面，描边分层、衬线大标题与等宽眉题的品牌 kit 风',
+    colors: ['#faf9f6', '#f7931a', '#ffffff', '#fff3e0', '#f2f0ea'],
   },
 }
 

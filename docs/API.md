@@ -9,6 +9,9 @@
 ### GET /api/health
 `{"ok":true,"time":...}`
 
+### GET /api/public/emoji
+微信默认表情映射表（文本码 → 站内小图码点），单一来源 `src/emoji.ts`：`{ base: "/emoji/", codes: { "微笑": "1f60a", ... } }`。静态数据，浏览器缓存一天（`Cache-Control: public, max-age=86400`）；闭站时随公开 API 一律 503（编辑器表情面板降级为空，文本码插入与渲染不受影响）。正文 / 微博 / 评论区渲染层把 `[微笑]` 替换成 `<img class="wxq-emoji" src="/emoji/1f60a.png" alt="[微笑]">`（查表不到原样保留），存库永远是文本码。图源 Twemoji（CC-BY 4.0，归属见 public/emoji/README.md）。
+
 ### GET /api/public/posts?page=1&limit=10&tag=生活
 已发布文章分页（摘要视图），返回 `{items, total, page, totalPages}`，`items` 元素含 `slug/title/summary/cover/tags/published_at/views/likes/pinned`。
 
@@ -37,7 +40,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 留言板留言（`/guestbook` 页）。Body 与规则同 `POST /api/public/comments`（`nickname` / `content` / 蜜罐 `link` / 限流 / 审核），无 `slug`；管理员带 `parentId` 即以作者身份回复（楼中楼）。存储上留言板留言是 `post_id = 0 AND weibo_id = 0` 的评论。响应 `{ok, pending?}`。
 
 ### GET /api/public/weibo/:id/comments
-微博的已展示评论（平铺 ASC，最多 200 条），元素含 `id/parent_id/is_admin/nickname/content/created_at`；前端按 `parent_id` 组装楼中楼。响应 `{comments, allowComments}`。
+微博的已展示评论（平铺 ASC，最多 200 条），元素含 `id/parent_id/is_admin/nickname/content/created_at`；前端按 `parent_id` 组装楼中楼。响应 `{comments, allowComments, adminAvatar}`——`adminAvatar` 是站点头像（settings.avatarUrl，可为空串），前端给 `is_admin` 评论的作者头像位用，与会员 `member_avatar` 同一展示位。
 
 ### POST /api/public/weibo/:id/comments
 微博评论。规则同 `POST /api/public/comments`（蜜罐 / 限流 / 审核 / 管理员 `parentId` 回复），`nickname`/`content` 约束一致。
@@ -64,6 +67,45 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 - 设备 / 浏览器族由服务端按 User-Agent 解析，国家取 `CF-IPCountry`；不存 IP 与原始 UA
 - 同 IP 10 分钟限 120 次；设置 `statsEnabled=0` 时接口返回 `{ok:true}` 但不入库
 - 始终返回 `{"ok":true}`（失败静默，不打扰页面）
+
+### POST /api/member/register
+会员注册（站点「会员功能」关闭时整组 `/api/member/*` 返回 404）。Body：
+
+```json
+{ "username": "xiaoke", "password": "至少8位", "nickname": "选填昵称", "email": "可选", "link": "" }
+```
+
+- `link` 是蜜罐字段，正常客户端永远传空字符串/不传；限流同 IP 10 分钟 5 次
+- 用户名 2-24 位字母/数字/`_`/`-`，密码 8-64 位；用户名占用或校验失败 400
+- `nickname` 选填（中英文均可，剥控制字符后 ≤24 字符，仅展示不做唯一约束）；注册填写**不占用** 30 天修改窗口
+- 成功即登录：`{ok:true, member:{nickname,tier,points,...}}` 并签发 `xw_member_session` Cookie（HttpOnly，30 天，与管理员会话完全独立）
+
+### POST /api/member/login
+`{username, password}` → `{ok:true, member:{...}}`；口令错误 401（响应耗时恒定防用户名枚举），账号被封禁 403 `{"error":"banned"}`。
+
+### POST /api/member/logout
+清除会员会话 → `{ok:true}`。
+
+### GET /api/member/me
+`{member: {...} | null}`，恒 200（未登录为 `null`，前端据此渲染登录表单或会员卡）；本人视角额外含 `username` / `email` / `createdAt` / `displayNameChangedAt`（上次改昵称时间戳，null = 从未改过）。会员发言走上方评论三路接口即可：带会员 Cookie 时服务端自动挂身份，`nickname`/`email`/`website` 字段被忽略。
+
+### POST /api/member/profile
+修改昵称 / 绑定 QQ 头像（需登录；会员功能关闭时 404）。Body：`{ "nickname"?: "新昵称", "qq"?: "12345" }`，两键至少一个；`qq` 不带键 = 不碰。
+
+- **昵称**：清洗口径与注册一致（剥控制字符、trim、≤24 字符），空值 400「昵称不能为空」；**30 天一次**——冷却中 403（消息含解禁日期，如「昵称每 30 天只能修改一次，2026年11月6日后可再改」）；窗口判定下沉为 SQL 条件更新（`display_name_changed_at IS NULL OR <= now-30d`），并发双开同时过前置检查时只有一动能落库；成功 `{ok:true, nickname, displayNameChangedAt}`
+- **QQ 头像**（评论头像 C2）：`qq` 校验 `^[1-9][0-9]{4,10}$`（`utils.ts isValidQQ`，每会员 10 次/分钟限流）；服务端抓 `q1/q2.qlogo.cn`（s=140）→ 魔数识别 → 站内 R2 转存（EXIF 剥离同款兜底）→ 回写 `members.avatar`。**抓取失败容忍**：只记 qq 号，出参 `avatarFailed:true`，重发同一请求即重试头像；成功出参含 `avatarUrl`（站内 `/images/` 地址）。**`qq` 号本体只进本人视角出参**（`/api/member/me` 的 self 视图），评论 / 排行榜等公开面一律不携带
+- **游客也可选填** `qq`（评论头像 C2 扩展）：三路评论接口的 body 都收 `qq` 字段——校验 `^[1-9][0-9]{4,10}$`，**格式不对按没填处理**（不拦评论）；合法则服务端抓取腾讯头像转存 R2（同号历史头像直接复用，不重复抓取）。qq 号本体任何接口都不返回，评论行只带 `avatar`（站内 `/images/` 地址）
+- 微博评论 JSON（`GET /api/public/weibo/:id/comments`）与文章 / 留言板评论渲染新增 `member_avatar`（会员头像）与 `avatar`（游客自填 QQ 抓取的站内头像）字段，前端按 会员 → 作者站点头像 → 游客 → 昵称首字块 取值
+- 评论头像位优先级：会员 `member_avatar` → 作者评论（`is_admin=1`）用 `adminAvatar`（站点头像，与微博卡同源）→ 昵称首字块
+
+### POST /api/member/password
+修改密码（需登录；会员功能关闭时 404）。Body：`{ "currentPassword": "当前密码", "newPassword": "新密码" }`。
+
+- 新密码 8-64 位；当前密码错误 400（PBKDF2 验证，按 IP 10 分钟 10 次限流防滥用）
+- 成功后**其他设备的会员会话全部失效**（当前会话保留）；本站不提供密码找回，表单旁有固定提醒
+
+### GET /go?u=<url>（SSR 页面）
+外链中间页（机制见 `src/outlink.ts`）：白名单域名（`TRUSTED_OUT_DOMAINS`，子域名自动跟随）与本站同源地址 302 直跳；其余第三方 http(s) 地址渲染「即将离开本站」确认页（展示目标域名与完整链接、附免责声明，`noindex`，无 JS、不自动跳转，故不构成开放重定向）。目标缺失 / 非 http(s) / 超 2048 字符一律 302 回首页。正文外链在渲染层包装进来：文章 / 页面 / 关于我走 `sanitizeHtml(html, { origin })`，微博文本走 `weiboTextHtml`（客户端镜像在 site.js）——存库与 RSS / 导出保持原始 URL。
 
 ## 认证
 
@@ -110,6 +152,7 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 | --- | --- | --- |
 | GET | `/api/admin/posts?status=all\|published\|scheduled\|draft&q=关键词&page=1&limit=20` | 列表（不含 content；元素附 `tagList`、`categoryName`） |
 | POST | `/api/admin/posts` | 新建 |
+| GET | `/api/admin/posts/lookup?q=关键词&page=1` | 站内文章选择器（编辑器「插入链接 → 站内文章」）：仅已发布，轻出参 `{items:[{id, slug, title, summary, cover, published_at, hasPassword, minTier}], total, page, totalPages}`，无正文无口令；**注册在 `/:id` 之前**（否则 lookup 被 id 参数吞掉） |
 | GET | `/api/admin/posts/:id` | 详情（含 content、categoryId） |
 | PUT | `/api/admin/posts/:id` | 更新（autosave 用；已发布时间不会被草稿保存抹掉）。**缺键即保留**：Body 里没出现的字段（content/tags/categoryId/title 等）一律沿用旧值——列表页状态切换只发 `{status}` 不会误清正文；显式传空串/空数组/`null` 才是清空 |
 | POST | `/api/admin/posts/:id/pin` | Body `{pinned:true/false}` |
@@ -129,11 +172,14 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
   "status": "draft | published | scheduled",
   "publishAt": 1791121500000,
   "pinned": false,
-  "slug": "留空自动生成，可自定义"
+  "slug": "留空自动生成，可自定义",
+  "password": "访问密码，可空"
 }
 ```
 
-约束：title ≤ 150 字；content ≤ 1MB；tags ≤ 8 个、每个 ≤ 20 字；cover 必须以 `/` 或 `http(s)://` 开头；`categoryId` 为 null/空表示未分类，不存在分类 id 时被忽略。`status:"scheduled"` 时 `publishAt` 为毫秒时间戳（到点由每分钟 Cron 翻成 published 并把 `published_at` 设为该时刻，同时推 Telegram；转 published/draft 时 `publishAt` 自动清空）。
+约束：title ≤ 150 字；content ≤ 1MB；tags ≤ 8 个、每个 ≤ 20 字；cover 必须以 `/` 或 `http(s)://` 开头；`categoryId` 为 null/空表示未分类，不存在分类 id 时被忽略；`password` ≤ 64 位。`status:"scheduled"` 时 `publishAt` 为毫秒时间戳（到点由每分钟 Cron 翻成 published 并把 `published_at` 设为该时刻，同时推 Telegram；转 published/draft 时 `publishAt` 自动清空）。
+
+**访问密码（文章加密码）**：`password` 缺键 = 保持现状（自动保存安全），非空 = 设置 / 更换（服务端 PBKDF2 单向哈希落库，明文与哈希都不回显），空串 = 解除加密。响应里只有 `hasPassword` 布尔，`password_hash` 永不出现。加密文章的前台行为（机制见 `src/protect.ts`）：文章页在密码验证通过前只渲染密码表单（正文、评论区、自动摘要、JSON-LD 描述一概不出，管理员登录除外）；解锁走表单 `POST /post/:slug/unlock`（`application/x-www-form-urlencoded`，Body `password=…`，非 JSON API）——成功 303 回文章页并签发 HttpOnly 解锁 Cookie `bloghao_pp`（HMAC key 即该文 password_hash，30 天有效、改密即失效），失败 303 回 `?pwerr=1`，限流触发 303 回 `?pwerr=slow`（每 IP 每文 10 次 / 10 分钟）。防泄漏口径：RSS 不出该文 `content:encoded` 全文；关键词搜索不命中加密文章；`/random` 不进加密文章。
 
 ### 微博（随手记）
 | 方法 | 路径 | 说明 |
@@ -238,9 +284,10 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 ### 设置 / 账号 / 工具
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, ogImageDefault, theme, allowComments, moderateComments, notifyNewComment, rssFullText, backupEnabled, postsPerPage, about（legacy，已由「页面」承载）, pluginsDisabled, siteGrayscale, siteClosed, siteClosedMessage, externalToken, telegramBotToken, telegramAllowFrom, telegramWebhookSecret`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl`/`ogImageDefault` 只接受站内 `/images/` 与 `http(s)` 外链；`pluginsDisabled` 为逗号分隔的插件 manifest id（仅字母/数字/`_`/`-`）；`siteGrayscale`/`siteClosed` 为 `1`/`0` 开关（闭站时公开页面与公开 API 一律 503，白名单见 src/closed.ts，已登录管理员不受影响）；`siteClosedMessage` ≤1000 字；`externalToken`/`telegramBotToken`/`telegramWebhookSecret` 为敏感项，GET 与 PUT 的响应一律打码（`••••••••`），明文只在生成时返回一次，PUT 收到打码占位符视为保持原值 |
+| GET / PUT | `/api/admin/settings` | 可写键：`siteName, siteDescription, siteUrl, footerText, avatarUrl, faviconUrl, ogImageDefault, theme, allowComments, moderateComments, notifyNewComment, rssFullText, backupEnabled, postsPerPage, about（legacy，已由「页面」承载）, pluginsDisabled, siteGrayscale, siteClosed, siteClosedMessage, membersEnabled（会员体系总开关）, rankTopN（/rank 展示条数 1-50）, externalToken, telegramBotToken, telegramAllowFrom, telegramWebhookSecret`；`theme` 必须是已注册主题 id；`avatarUrl`/`faviconUrl`/`ogImageDefault` 只接受站内 `/images/` 与 `http(s)` 外链；`pluginsDisabled` 为逗号分隔的插件 manifest id（仅字母/数字/`_`/`-`）；`siteGrayscale`/`siteClosed` 为 `1`/`0` 开关（闭站时公开页面与公开 API 一律 503，白名单见 src/closed.ts，已登录管理员不受影响）；`siteClosedMessage` ≤1000 字；`externalToken`/`telegramBotToken`/`telegramWebhookSecret` 为敏感项，GET 与 PUT 的响应一律打码（`••••••••`），明文只在生成时返回一次，PUT 收到打码占位符视为保持原值 |
 | PUT | `/api/admin/password` | Body `{oldPassword, newPassword}`（8-64 位） |
 | POST | `/api/admin/tools/md` | Body `{md}` → `{html}`，Markdown 渲染 |
+| POST | `/api/admin/tools/linkmeta` | Body `{url}` → `{meta:{title, description, image, siteName}}`，编辑器「网址卡片」抓取目标页 og 元数据；只抓 http(s) 公网地址（私有网段/非常规端口拒绝，限长限时），抓不到时字段为空（前端用域名占位组卡）。限频 10 次/分钟/IP |
 | POST | `/api/admin/tools/sanitize` | Body `{html}` → `{html}`，白名单净化（粘贴用） |
 
 ### 采集（公众号文章）
@@ -265,6 +312,12 @@ Body `{"delta": 1}` 或 `{"delta": -1}`，返回 `{"ok":true,"likes":7}`。计�
 
 ### GET /api/meta/themes
 已注册主题列表 `{themes:[{id,name,description,colors}]}`，`colors` 为后台皮肤卡预览色板（`[背景, 强调条, 卡面, 卡面2, 卡面3]`，未设置时为 `null`）。
+
+### GET /api/admin/members?page=1&q=
+会员列表（后台「会员」页数据源）：`{items:[{id, username, email, tier, points, status, created_at, last_login_at}], total, page, totalPages}`；`q` 模糊匹配用户名 / 邮箱，20 条/页。
+
+### PUT /api/admin/members/:id
+改档位 / 封禁，**缺键即保留**（只传要改的键）：`{ "tier": "normal|coffee|top" }` 或 `{ "status": "active|banned" }` → `{ok:true}`；`status:"banned"` 同时清空该会员全部会话（即刻踢下线），历史评论保留。会员不存在 404。
 
 ## 外部接口（Token 鉴权，供 Telegram 机器人 / 第三方工具调用）
 
@@ -303,4 +356,4 @@ Telegram Bot API 的 Webhook 接收端，由 Telegram 服务器调用（校验 `
 - 唯一例外：`<meta data-og-image="/images/…">` 原样保留（编辑器生成的 OG 分享卡图标记，仅限站内路径）
 - 链接仅允许 `http(s) / mailto / 站内相对 / #锚点`（校验前剥离 tab/换行，`jav&#9;ascript:` 之类混淆无法绕过）；`data:`/`javascript:` 一律拒绝
 - 内联样式仅保留排版属性（颜色/字号/行高/间距/边框/对齐等）；`url()` 只接受站内 `/` 开头路径；`!important` 被剥除
-- 规范属性 `data-w / data-ignore-width / data-no-dark / data-ignore-dm` 原样保留
+- 规范属性 `data-w / data-ignore-width / data-no-dark / data-ignore-dm` 原样保留；`data-link-card="link-card"` 为编辑器「链接卡片」结构标记（src/linkmeta.ts），只认该固定值，其余值剥除

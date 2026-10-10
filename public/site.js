@@ -54,11 +54,12 @@
     }
   }
 
-  /* ---------------- 上传前图片压缩与 WebP 转换（前台发布器，与后台同参数） ----------------
-   * JPEG/PNG/WebP 超 300KB：最长边压到 2000px，优先转 WebP（质量 0.82，比 JPEG 约再省 1/4，
-   * 透明不丢）；旧浏览器编码不了 WebP 时回退原 JPEG/PNG 口径（透明 PNG 只缩尺寸不转格式）；
-   * GIF 动图会压丢帧原样直传；产物不比原图小则用原图；失败回退原文件。 */
-  var IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 300 * 1024, QUALITY: 0.82 }
+  /* ---------------- 上传前图片压缩与 WebP 转换（前台发布器；后台 editor.js 是同参数同逻辑的 ES Module 原版，改任一侧记得同步另一侧） ----------------
+   * JPEG/PNG/WebP 且「超阈值或最长边超 2000px」：先降尺寸再编码，优先转 WebP（质量 0.75——
+   * WebP 压缩率高，0.75 已是业内通行的视觉无损甜点，比同画质 JPEG 约再省三成，透明不丢）；
+   * 旧浏览器编码不了 WebP 时回退 JPEG/PNG 口径（质量 0.82，透明 PNG 只缩尺寸不转格式）；
+   * GIF 动图会压丢帧原样直传；小且尺寸合规的图直通；产物不比原图小则用原图；失败回退原文件。 */
+  var IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 150 * 1024, WEBP_QUALITY: 0.75, FALLBACK_QUALITY: 0.82 }
 
   function hasAlphaSampled(bmp) {
     var cv = document.createElement('canvas')
@@ -71,10 +72,15 @@
 
   function compressImage(file) {
     return new Promise(function (resolve) {
-      if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= IMG_COMPRESS.MIN_BYTES) return resolve(file)
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return resolve(file)
       createImageBitmap(file)
         .then(function (bmp) {
           var scale = Math.min(1, IMG_COMPRESS.MAX_DIM / Math.max(bmp.width, bmp.height))
+          // 体积与尺寸都合规的直通：重编码不会更小，白耗 CPU 还平白叠一代有损
+          if (file.size <= IMG_COMPRESS.MIN_BYTES && scale >= 1) {
+            bmp.close && bmp.close()
+            return resolve(file)
+          }
           var w = Math.max(1, Math.round(bmp.width * scale))
           var h = Math.max(1, Math.round(bmp.height * scale))
           var cv = document.createElement('canvas')
@@ -95,8 +101,8 @@
               if (!blob || blob.size >= file.size) return resolve(file)
               var name = (file.name || 'image').replace(/\.[^.]+$/, '') + (toJpeg ? '.jpg' : '.png')
               resolve(new File([blob], name, { type: toJpeg ? 'image/jpeg' : 'image/png' }))
-            }, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY)
-          }, 'image/webp', IMG_COMPRESS.QUALITY)
+            }, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.FALLBACK_QUALITY)
+          }, 'image/webp', IMG_COMPRESS.WEBP_QUALITY)
         })
         .catch(function () {
           resolve(file)
@@ -148,6 +154,27 @@
     return compressImage(file).then(uploadImage)
   }
 
+  // 动态 file input 必须先挂到 DOM 再 click：iOS Safari 对游离节点的选图器能打开、
+  // 能选照片，但 change 不回填（文件永远回不到页面），上传静默失败且无任何提示——
+  // 手机上「选了图却没动静」即此。挂 body 隐藏，读完文件 / 用户取消即摘除。
+  function pickFiles(opts, onFiles) {
+    var input = document.createElement('input')
+    input.type = 'file'
+    if (opts.accept) input.accept = opts.accept
+    if (opts.multiple) input.multiple = true
+    input.hidden = true
+    input.addEventListener('cancel', function () {
+      input.remove()
+    })
+    input.addEventListener('change', function () {
+      var files = input.files
+      input.remove()
+      onFiles(files)
+    })
+    document.body.appendChild(input)
+    input.click()
+  }
+
   /* ---------------- 顶部导航「分类话题」折叠菜单：点外部 / Esc 收起 ---------------- */
   function closeNavMenus(except) {
     var open = document.querySelectorAll('details.snav-dd[open]')
@@ -197,6 +224,26 @@
       })
   })
 
+  /* ---------------- 游客 QQ 头像（评论头像 C2 扩展，三处评论表单共用） ----------------
+   * 选填：填了才抓头像；正则与 utils.ts isValidQQ 同款镜像（改任一侧记得同步）；
+   * 填错给提示但不静默丢弃——游客自己决定改还是清空；上次填过的 QQ 存本机自动回填 */
+  function guestQQ(form, tipEl) {
+    var input = form.querySelector('[name=qq]')
+    var qq = input ? input.value.trim() : ''
+    if (!qq) return ''
+    if (!/^[1-9][0-9]{4,10}$/.test(qq)) {
+      if (tipEl) tipEl.textContent = 'QQ 号格式不对（5-11 位数字，不以 0 开头），可留空或修改后再发'
+      if (input) input.focus()
+      return null
+    }
+    return qq
+  }
+  var savedQQ = storeGet('cmt-qq') || ''
+  if (savedQQ) {
+    var qqInputs = document.querySelectorAll('input[name=qq]')
+    for (var qi = 0; qi < qqInputs.length; qi++) if (!qqInputs[qi].value) qqInputs[qi].value = savedQQ
+  }
+
   /* ---------------- 文章留言（管理员可回复：楼中楼） ---------------- */
   var form = document.getElementById('comment-form')
   if (form) {
@@ -242,6 +289,8 @@
       if (!content.value.trim()) return
       // 管理员表单没有昵称输入（服务端直接取作者身份），访客留言必须填昵称
       if (nicknameInput && !replyId && !nicknameInput.value.trim()) return
+      var qq = guestQQ(form, tipEl)
+      if (qq === null) return
       var label = btn.textContent
       btn.textContent = '发送中…'
       btn.disabled = true
@@ -250,9 +299,11 @@
         nickname: nicknameInput ? nicknameInput.value.trim() : '',
         content: content.value.trim(),
         link: link ? link.value : '',
+        qq: qq || undefined,
         parentId: replyId || undefined,
       })
         .then(function (d) {
+          if (qq) storeSet('cmt-qq', qq)
           if (d && d.pending) {
             if (tipEl) tipEl.textContent = '已提交，审核通过后展示'
             content.value = ''
@@ -304,7 +355,9 @@
 
     document.addEventListener('click', function (e) {
       var btn = e.target && e.target.closest ? e.target.closest('.cmt-reply-btn') : null
-      if (!btn || !document.getElementById('guestbook').contains(btn)) return
+      // 本监听是 document 级（文章页也注册），文章页没有 guestbook 容器——必须先判空
+      var gb = document.getElementById('guestbook')
+      if (!btn || !gb || !gb.contains(btn)) return
       e.preventDefault()
       gbSetReply(Number(btn.getAttribute('data-reply')), btn.getAttribute('data-name') || '')
     })
@@ -317,6 +370,8 @@
       if (!content.value.trim()) return
       // 管理员表单没有昵称输入（服务端直接取作者身份），访客留言必须填昵称
       if (gbNickname && !gbForm.dataset.replyId && !gbNickname.value.trim()) return
+      var qq = guestQQ(gbForm, gbTip)
+      if (qq === null) return
       var label = btn.textContent
       btn.textContent = '发送中…'
       btn.disabled = true
@@ -324,9 +379,11 @@
         nickname: gbNickname ? gbNickname.value.trim() : '',
         content: content.value.trim(),
         link: link ? link.value : '',
+        qq: qq || undefined,
         parentId: gbForm.dataset.replyId ? Number(gbForm.dataset.replyId) : undefined,
       })
         .then(function (d) {
+          if (qq) storeSet('cmt-qq', qq)
           if (d && d.pending) {
             if (gbTip) gbTip.textContent = '已提交，审核通过后展示'
             content.value = ''
@@ -348,6 +405,61 @@
     })
   }
 
+  /* ---------------- 微信表情（[微笑] → 站内小图，表与 src/emoji.ts 同源经 /api/public/emoji 下发） ----------------
+   * 声明在大 IIFE 顶层：wbTextHtml（下方嵌套块）与微博评论渲染（本层）共用；文章/微博/评论的 SSR
+   * 直出由服务端 replaceEmoji 完成，这里只负责客户端就地重渲染。表未拉到时降级为纯文本码。
+   * 镜像测试（tests/emoji.test.ts）把本段与 wbTextHtml 段切片拼接执行，双端同输入比对输出 */
+  var WXQ_CODES
+  var WXQ_BASE = '/emoji/'
+  // 文本码 token：[名称]，名称里排除属性/实体特征字符（= ; & < > " ' / \）——与服务端同口径
+  var WXQ_TOKEN_RE = /\[([^\[\]=;&<>"'/\\\n]{1,12})\]/g
+  function wxqTokenHtml(token) {
+    if (!WXQ_CODES) return token
+    var name = token.slice(1, -1)
+    if (!Object.prototype.hasOwnProperty.call(WXQ_CODES, name)) return token
+    return (
+      '<img class="wxq-emoji" style="width:1.4em;height:1.4em;vertical-align:-0.2em;" src="' +
+      WXQ_BASE +
+      WXQ_CODES[name] +
+      '.png" alt="' +
+      token +
+      '" loading="lazy">'
+    )
+  }
+  // 与 src/emoji.ts replaceEmoji 同口径：只替换 <> 标签外的 token（esc 后文本里的 < 已是 &lt;，
+  // 不会误入标签态），hasOwnProperty 防原型链属性，查不到原样保留
+  function wxqReplace(escaped) {
+    if (!WXQ_CODES) return escaped
+    var out = ''
+    var last = 0
+    var inTag = false
+    WXQ_TOKEN_RE.lastIndex = 0
+    var m
+    while ((m = WXQ_TOKEN_RE.exec(escaped))) {
+      var between = escaped.slice(last, m.index)
+      for (var i = 0; i < between.length; i++) {
+        var ch = between.charAt(i)
+        if (ch === '<') inTag = true
+        else if (ch === '>') inTag = false
+      }
+      out += between + (inTag ? m[0] : wxqTokenHtml(m[0]))
+      last = m.index + m[0].length
+    }
+    return out + escaped.slice(last)
+  }
+  // 拉取映射表（镜像测试切片到本行之前，Node 里不会真的发请求；失败保持降级）
+  fetch('/api/public/emoji')
+    .then(function (r) {
+      return r.ok ? r.json() : null
+    })
+    .then(function (d) {
+      if (d && d.codes && d.base) {
+        WXQ_CODES = d.codes
+        WXQ_BASE = d.base
+      }
+    })
+    .catch(function () {})
+
   /* ---------------- 微博卡片：折叠评论区 ---------------- */
   var authPromise = null
   function authState() {
@@ -356,7 +468,7 @@
   }
 
   // 平铺评论 → 楼中楼（父评论被删的回复按顶层展示）
-  function renderWeiboComments(panel, comments, isAdmin) {
+  function renderWeiboComments(panel, comments, isAdmin, adminAvatar) {
     var listEl = panel.querySelector('[data-role=list]')
     if (!listEl) return
     var byParent = {}
@@ -373,16 +485,26 @@
       listEl.innerHTML = '<p class="wb-cmt-empty">还没有评论，来抢沙发～</p>'
       return
     }
+    // 评论头像位（服务端 commentAvatarHtml 的 ES5 手工镜像，改任一侧记得同步）：
+    // 会员有站内头像用图；作者（管理员）发言用站点头像（adminAvatar，接口随列表下发）；
+    // 游客自填 QQ 抓取转存的站内头像（接口只出 /images/ 地址，qq 本体永不下发）；其余退回昵称首字块
+    function avatarHtml(c) {
+      if (c.member_avatar) return '<img class="wb-cmt-avatar wb-cmt-avatar-img" src="' + esc(c.member_avatar) + '" alt="">'
+      if (Number(c.is_admin) && adminAvatar) return '<img class="wb-cmt-avatar wb-cmt-avatar-img" src="' + esc(adminAvatar) + '" alt="">'
+      if (c.avatar) return '<img class="wb-cmt-avatar wb-cmt-avatar-img" src="' + esc(c.avatar) + '" alt="">'
+      var ch = (c.nickname || '客').charAt(0) || '客'
+      return '<span class="wb-cmt-avatar" aria-hidden="true">' + esc(ch) + '</span>'
+    }
     function item(c, nested) {
       var html =
         '<li class="wb-cmt-item' + (nested ? ' wb-cmt-nested' : '') + '" id="wbc-' + c.id + '">' +
-        '<div class="wb-cmt-head"><span class="wb-cmt-name">' + esc(c.nickname) +
-        (Number(c.is_admin) ? '<span class="wb-cmt-badge">作者</span>' : '') +
+        '<div class="wb-cmt-head">' + avatarHtml(c) + '<span class="wb-cmt-name">' + esc(c.nickname) +
+        (Number(c.is_admin) ? '<span class="wb-cmt-badge">作者</span>' : c.member_name ? '<span class="wb-cmt-badge">会员</span>' : '') +
         '</span><span class="wb-cmt-time">' + fmtTime(c.created_at) + '</span>' +
         (isAdmin
           ? '<button type="button" class="wb-cmt-reply-btn" data-reply="' + c.id + '" data-name="' + esc(c.nickname) + '">回复</button>'
           : '') +
-        '</div><div class="wb-cmt-body">' + esc(c.content) + '</div>'
+        '</div><div class="wb-cmt-body">' + wxqReplace(esc(c.content)) + '</div>'
       var kids = byParent[c.id] || []
       if (kids.length) html += '<ul class="wb-cmt-children">' + kids.map(function (k) { return item(k, true) }).join('') + '</ul>'
       return html + '</li>'
@@ -397,7 +519,7 @@
     listEl.innerHTML = '<p class="wb-cmt-loading">加载中…</p>'
     Promise.all([getJSON('/api/public/weibo/' + encodeURIComponent(wbId) + '/comments'), authState()])
       .then(function (rs) {
-        renderWeiboComments(panel, (rs[0] && rs[0].comments) || [], !!(rs[1] && rs[1].user))
+        renderWeiboComments(panel, (rs[0] && rs[0].comments) || [], !!(rs[1] && rs[1].user), (rs[0] && rs[0].adminAvatar) || '')
       })
       .catch(function () {
         listEl.innerHTML = '<p class="wb-cmt-empty">评论加载失败，稍后再试</p>'
@@ -466,6 +588,8 @@
     if (!content || !content.value.trim()) return
     // 管理员表单没有昵称输入（服务端直接取作者身份），访客必须填
     if (nickname && !form.dataset.replyId && !nickname.value.trim()) return
+    var qq = guestQQ(form, tip)
+    if (qq === null) return
     var label = btn ? btn.textContent : ''
     if (btn) {
       btn.textContent = '发送中…'
@@ -475,9 +599,11 @@
       nickname: nickname ? nickname.value.trim() : '',
       content: content.value.trim(),
       link: link ? link.value : '',
+      qq: qq || undefined,
       parentId: form.dataset.replyId ? Number(form.dataset.replyId) : undefined,
     })
       .then(function (d) {
+        if (qq) storeSet('cmt-qq', qq)
         if (d && d.pending) {
           if (tip) tip.textContent = '已提交，审核通过后展示'
           content.value = ''
@@ -553,6 +679,88 @@
       })
   })
 
+  /* ---------------- 微信表情面板（前台发布器 / 卡片编辑共用，ES5；表在上方 WXQ_CODES） ---------------- */
+  function wxqInsertToken(ta, token) {
+    if (!ta) return
+    var s = ta.selectionStart == null ? ta.value.length : ta.selectionStart
+    var e = ta.selectionEnd == null ? s : ta.selectionEnd
+    ta.value = ta.value.slice(0, s) + token + ta.value.slice(e)
+    var pos = s + token.length
+    ta.focus()
+    try {
+      ta.setSelectionRange(pos, pos)
+    } catch (err) {}
+  }
+
+  function wxqTogglePanel(btn, ta) {
+    var old = document.querySelector('[data-wxq-panel]')
+    if (old) {
+      old.remove()
+      return
+    }
+    if (!WXQ_CODES) return
+    var names = []
+    for (var k in WXQ_CODES) {
+      if (Object.prototype.hasOwnProperty.call(WXQ_CODES, k)) names.push(k)
+    }
+    var panel = document.createElement('div')
+    panel.setAttribute('data-wxq-panel', '')
+    panel.setAttribute(
+      'style',
+      'position:absolute;z-index:80;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.14);padding:8px;display:grid;grid-template-columns:repeat(8,32px);gap:2px;width:296px;max-height:216px;overflow-y:auto;'
+    )
+    for (var i = 0; i < names.length; i++) {
+      ;(function (name) {
+        var cell = document.createElement('button')
+        cell.type = 'button'
+        cell.title = '[' + name + ']'
+        cell.setAttribute(
+          'style',
+          'border:none;background:none;padding:0;width:32px;height:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:6px;'
+        )
+        var img = document.createElement('img')
+        img.src = WXQ_BASE + WXQ_CODES[name] + '.png'
+        img.alt = ''
+        img.loading = 'lazy'
+        img.setAttribute('style', 'width:24px;height:24px;display:block;')
+        cell.appendChild(img)
+        cell.addEventListener('click', function (ev) {
+          ev.preventDefault()
+          wxqInsertToken(ta, '[' + name + ']')
+        })
+        panel.appendChild(cell)
+      })(names[i])
+    }
+    var r = btn.getBoundingClientRect()
+    var docW = document.documentElement.clientWidth
+    panel.style.top = r.bottom + window.pageYOffset + 6 + 'px'
+    panel.style.left = Math.max(8, Math.min(r.left + window.pageXOffset, docW - 306)) + 'px'
+    document.body.appendChild(panel)
+  }
+
+  // 点外关闭（全局委托，一次注册）
+  document.addEventListener('click', function (e) {
+    var panel = document.querySelector('[data-wxq-panel]')
+    if (!panel) return
+    if (e.target.closest && (e.target.closest('[data-wxq-panel]') || e.target.closest('[data-wxq-btn]'))) return
+    panel.remove()
+  })
+
+  // 给发布器 / 卡片编辑的按钮行插入表情按钮（插入动作依赖 JS，按钮也由 JS 动态加）
+  function wxqAttachButton(foot, ta) {
+    if (!foot || foot.querySelector('[data-wxq-btn]')) return
+    var btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'wb-composer-add'
+    btn.textContent = '😊 表情'
+    btn.setAttribute('data-wxq-btn', '')
+    btn.addEventListener('click', function (e) {
+      e.preventDefault()
+      wxqTogglePanel(btn, ta)
+    })
+    foot.insertBefore(btn, foot.firstChild)
+  }
+
   /* ---------------- 前台发微博（管理员登录时微博页顶部的发布框，能力与后台发布器一致） ---------------- */
   var composerForm = document.querySelector('[data-wb-composer]')
   if (composerForm) {
@@ -565,6 +773,7 @@
     var cpTip = composerForm.querySelector('.wb-composer-tip')
     var cpButtons = composerForm.querySelectorAll('.wb-composer-add, .wb-composer-draft, .wb-composer-publish')
     var cpImages = []
+    var cpUploading = 0 // 在途上传计数：发布前必须归零，否则发布会把没传完的图静默丢掉
     var cpTipTimer = null
 
     function cpMsg(msg) {
@@ -611,11 +820,16 @@
       var chain = Promise.resolve()
       imgs.slice(0, room).forEach(function (f) {
         chain = chain.then(function () {
+          cpUploading++
           if (cpAdd) cpAdd.textContent = '上传中 ' + f.name.slice(0, 12) + '…'
-          return uploadCompressed(f).then(function (url) {
-            cpImages.push(url)
-            cpRender()
-          })
+          return uploadCompressed(f)
+            .then(function (url) {
+              cpImages.push(url)
+              cpRender()
+            })
+            .finally(function () {
+              cpUploading--
+            })
         })
       })
       chain
@@ -633,14 +847,13 @@
 
     if (cpAdd) {
       cpAdd.addEventListener('click', function () {
-        var input = document.createElement('input')
-        input.type = 'file'
-        input.accept = 'image/jpeg,image/png,image/webp,image/gif'
-        input.multiple = true
-        input.onchange = function () { cpAddFiles(input.files) }
-        input.click()
+        pickFiles({ accept: 'image/jpeg,image/png,image/webp,image/gif', multiple: true }, function (files) {
+          cpAddFiles(files)
+        })
       })
     }
+
+    wxqAttachButton(composerForm.querySelector('.wb-composer-foot'), cpText)
 
     // 粘贴图片：光标在发布框内 ⌘/Ctrl+V 即上传（纯文本粘贴不受影响）
     composerForm.addEventListener('paste', function (e) {
@@ -668,6 +881,7 @@
     })
 
     function cpPublish(status) {
+      if (cpUploading > 0) return cpMsg('还有图片在上传中，等一下再发')
       var content = cpText ? cpText.value.trim() : ''
       if (!content && !cpImages.length) {
         cpMsg('写点什么，或者配张图吧')
@@ -706,17 +920,87 @@
   ;(function () {
     var WB_MAX_IMAGES = 9
     var WB_MAX_CHARS = 5000
-    // 与后端 weiboTextHtml 同口径：esc 后把 #话题# 渲染成链接（编辑保存后就地重渲染用）。
+    // 与后端 weiboTextHtml（src/render.ts）同口径：URL 与 #话题# 单次扫描二选一（先转链接再扫
+    // 话题会把 href 里的 #fragment 误判成话题），URL 不吞 CJK 与全角标点。
     // 用捕获组消费「# 前的字符」代替 lookbehind——Safari ≤ 16.3 不支持 lookbehind，
     // 正则字面量在解析期就抛 SyntaxError，会让整个 site.js 瘫掉（匹配语义与服务端一致）
-    var WB_TOPIC_RE = /(^|[^\p{L}\p{N}#])(#[^\s#&<>"']{1,24}(?:#|(?=\s)|$))/gu
+    var WB_TEXT_RE = /(https?:\/\/[^\s<>"'\u3000-\u303f\uff00-\uffef\u4e00-\u9fff]+)|((^|[^\p{L}\p{N}#])(#[^\s#&<>"']{1,24}(?:#|(?=\s)|$)))/gu
+
+    // 与 src/outlink.ts 的 TRUSTED_OUT_DOMAINS 手工同步：主流官方大站；
+    // 白名单外域包 /go 中间页（外链提醒 + 免责声明），同源与白名单直出
+    var TRUSTED_OUT = ['apple.com', 'icloud.com', 'google.com', 'youtube.com', 'android.com', 'microsoft.com', 'live.com', 'office.com', 'bing.com', 'github.com', 'gitlab.com', 'stackoverflow.com', 'npmjs.com', 'wikipedia.org', 'wikimedia.org', 'mozilla.org', 'cloudflare.com', 'amazon.com', 'x.com', 'twitter.com', 'twimg.com', 'facebook.com', 'instagram.com', 'threads.net', 'linkedin.com', 'reddit.com', 'pinterest.com', 'tiktok.com', 'telegram.org', 't.me', 'discord.com', 'medium.com', 'substack.com', 'openai.com', 'anthropic.com', 'huggingface.co', 'weibo.com', 'weibo.cn', 'sina.com.cn', 'baidu.com', 'zhihu.com', 'bilibili.com', 'b23.tv', 'qq.com', 'tencent.com', '163.com', '126.com', 'netease.com', 'jd.com', 'taobao.com', 'tmall.com', 'alipay.com', 'aliyun.com', 'alibaba.com', 'douyin.com', 'kuaishou.com', 'xiaohongshu.com', 'sohu.com', 'csdn.net', 'juejin.cn', 'cnblogs.com', 'segmentfault.com', 'v2ex.com', 'gitee.com', 'oschina.net', 'jianshu.com', 'sspai.com', 'ithome.com', '36kr.com', 'mi.com', 'xiaomi.com', 'huawei.com']
+
+    function trustedOutHost(host) {
+      var h = String(host || '').toLowerCase().replace(/\.+$/, '')
+      if (!h) return false
+      for (var i = 0; i < TRUSTED_OUT.length; i++) {
+        var d = TRUSTED_OUT[i]
+        if (h === d || h.slice(-(d.length + 1)) === '.' + d) return true
+      }
+      return false
+    }
+
+    // 与后端 outHref 同口径（超长 URL 不包，防撑爆请求行）
+    function outHrefJs(url) {
+      try {
+        var u = new URL(url)
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return url
+        if (u.origin === location.origin) return url
+        if (trustedOutHost(u.hostname)) return url
+        if (url.length > 1000) return url
+        return '/go?u=' + encodeURIComponent(u.href)
+      } catch (e) {
+        return url
+      }
+    }
+
+    // 与后端 trimUrlTail 同口径：链接尾部标点留在链接外，括号配对时保留
+    function trimUrlTailJs(u) {
+      var s = u
+      while (s.length > 1) {
+        var last = s.charAt(s.length - 1)
+        if (last === ')') {
+          var opens = (s.match(/\(/g) || []).length
+          if ((s.match(/\)/g) || []).length > opens) {
+            s = s.slice(0, -1)
+            continue
+          }
+          break
+        }
+        if (".,;:!?>'、。，；：！？）】」』》›»…·".indexOf(last) !== -1) {
+          s = s.slice(0, -1)
+          continue
+        }
+        break
+      }
+      return s
+    }
 
     function wbTextHtml(content) {
-      return esc(content).replace(WB_TOPIC_RE, function (m, lead, tag) {
-        var name = tag.replace(/^#/, '').replace(/#$/, '')
-        if (!name) return m
-        return lead + '<a class="wb-topic" href="/weibo?topic=' + encodeURIComponent(name) + '">' + esc(tag) + '</a>'
-      })
+      var out = ''
+      var last = 0
+      var text = String(content == null ? '' : content)
+      var m
+      WB_TEXT_RE.lastIndex = 0
+      while ((m = WB_TEXT_RE.exec(text))) {
+        out += wxqReplace(esc(text.slice(last, m.index)))
+        last = m.index + m[0].length
+        if (m[1]) {
+          var url = trimUrlTailJs(m[1])
+          out +=
+            '<a class="wb-link" href="' + esc(outHrefJs(url)) + '" target="_blank" rel="noopener noreferrer">' +
+            esc(url) + '</a>' + wxqReplace(esc(m[0].slice(url.length)))
+        } else {
+          var lead = m[3] || ''
+          var tag = m[4]
+          var name = tag.replace(/^#/, '').replace(/#$/, '')
+          out += esc(lead)
+          if (!name) out += wxqReplace(esc(tag))
+          else out += '<a class="wb-topic" href="/weibo?topic=' + encodeURIComponent(name) + '">' + esc(tag) + '</a>'
+        }
+      }
+      out += wxqReplace(esc(text.slice(last)))
+      return out
     }
 
     // 图片网格 class 与后端 weiboImageGrid 同口径：1 张大图，2/4 张两列，其余三列
@@ -783,6 +1067,7 @@
       if (foot) card.insertBefore(form, foot)
       else card.appendChild(form)
 
+      wxqAttachButton(form.querySelector('.wb-composer-foot'), form.querySelector('textarea'))
       var ta = form.querySelector('textarea')
       var tiles = form.querySelector('.wb-composer-tiles')
       var addBtn = form.querySelector('.wb-composer-add')
@@ -791,6 +1076,7 @@
       var saveBtn = form.querySelector('[data-wb-edit-save]')
       var cancelBtn = form.querySelector('[data-wb-edit-cancel]')
       var images = []
+      var uploading = 0 // 与顶部发布框同口径：保存前必须等在途上传归零
       var tipTimer = null
 
       function tip(msg) {
@@ -824,11 +1110,16 @@
         var chain = Promise.resolve()
         imgs.slice(0, room).forEach(function (f) {
           chain = chain.then(function () {
+            uploading++
             addBtn.textContent = '上传中 ' + f.name.slice(0, 12) + '…'
-            return uploadCompressed(f).then(function (url) {
-              images.push(url)
-              renderTiles()
-            })
+            return uploadCompressed(f)
+              .then(function (url) {
+                images.push(url)
+                renderTiles()
+              })
+              .finally(function () {
+                uploading--
+              })
           })
         })
         chain
@@ -840,12 +1131,9 @@
           })
       }
       addBtn.addEventListener('click', function () {
-        var input = document.createElement('input')
-        input.type = 'file'
-        input.accept = 'image/jpeg,image/png,image/webp,image/gif'
-        input.multiple = true
-        input.onchange = function () { addFiles(input.files) }
-        input.click()
+        pickFiles({ accept: 'image/jpeg,image/png,image/webp,image/gif', multiple: true }, function (files) {
+          addFiles(files)
+        })
       })
       // 粘贴 / 拖拽加图，与顶部发布框同款
       form.addEventListener('paste', function (e) {
@@ -875,6 +1163,7 @@
       cancelBtn.addEventListener('click', leaveEdit)
 
       saveBtn.addEventListener('click', function () {
+        if (uploading > 0) return tip('还有图片在上传中，等一下再保存')
         var content = ta.value.trim()
         if (!content && !images.length) return tip('写点什么，或者配张图吧')
         saveBtn.textContent = '保存中…'
@@ -1085,7 +1374,9 @@
       // 同组：同一容器里的所有内容图（文章正文 / 微博九图），按 DOM 顺序
       var holder = target.closest('.rich, .wb-imgs, .wb-card') || document.body
       var imgs = [].slice.call(holder.querySelectorAll('img')).filter(function (im) {
-        return (im.currentSrc || im.src) && !im.closest('a')
+        // 同入口委托口径排除小图（<100px，头像/图标/表情）：键盘翻页不翻进 22px 表情再被拉伸成模糊大图
+        var w = im.getBoundingClientRect().width
+        return (im.currentSrc || im.src) && !im.closest('a') && !(w && w < 100)
       })
       group = imgs.map(function (im) {
         return im.currentSrc || im.src
@@ -1229,6 +1520,187 @@
       open(t)
     })
   })()
+
+  /* ---------------- 会员（/member：登录 / 注册 / 退出，API 见 DEVPLAN 附录 A5） ----------------
+   * 表单为服务端渲染（memberAuthHtml），这里只接管提交与双表单切换；
+   * 无 JS 时两个表单都可见可直接提交，有 JS 时只显当前一个 */
+  var memAuth = document.querySelector('.mem-auth')
+  if (memAuth) {
+    var memForms = memAuth.querySelectorAll('[data-member-form]')
+    if (memForms.length > 1) {
+      var memShow = function (name) {
+        memForms.forEach(function (f) {
+          f.hidden = f.getAttribute('data-member-form') !== name
+        })
+      }
+      memAuth.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-member-swap]') : null
+        if (btn) memShow(btn.getAttribute('data-member-swap') || 'login')
+      })
+      memShow('login')
+    }
+    memForms.forEach(function (form) {
+      var kind = form.getAttribute('data-member-form')
+      var tip = form.querySelector('[data-member-tip]')
+      form.addEventListener('submit', function (e) {
+        e.preventDefault()
+        var btn = form.querySelector('.mem-btn')
+        if (!btn || btn.disabled) return
+        var username = form.querySelector('[name=username]')
+        var password = form.querySelector('[name=password]')
+        var email = form.querySelector('[name=email]')
+        var link = form.querySelector('[name=link]')
+        if (!username || !username.value.trim() || !password || !password.value) return
+        var label = btn.textContent
+        btn.textContent = kind === 'register' ? '注册中…' : '登录中…'
+        btn.disabled = true
+        var body = { username: username.value.trim(), password: password.value, link: link ? link.value : '' }
+        if (kind === 'register') {
+          var nick = form.querySelector('[name=nickname]')
+          if (nick && nick.value.trim()) body.nickname = nick.value.trim()
+          if (email && email.value.trim()) body.email = email.value.trim()
+        }
+        postJSON('/api/member/' + kind, body)
+          .then(function () {
+            if (tip) tip.textContent = kind === 'register' ? '注册成功，正在进入…' : '登录成功，正在进入…'
+            setTimeout(function () {
+              location.reload()
+            }, 500)
+          })
+          .catch(function (err) {
+            if (tip) tip.textContent = err.message || '操作失败，请重试'
+            btn.textContent = label
+            btn.disabled = false
+          })
+      })
+    })
+  }
+
+  // 会员中心卡（memberCardHtml）：昵称 30 天一次、密码无找回；提交走 /api/member/profile|password
+  var memNickForm = document.querySelector('[data-member-nickname-form]')
+  if (memNickForm) {
+    memNickForm.addEventListener('submit', function (e) {
+      e.preventDefault()
+      var btn = memNickForm.querySelector('.mem-btn')
+      var tip = memNickForm.querySelector('[data-member-tip]')
+      var input = memNickForm.querySelector('[name=nickname]')
+      if (!btn || btn.disabled) return
+      if (!input || !input.value.trim()) {
+        if (tip) tip.textContent = '昵称不能为空'
+        return
+      }
+      var label = btn.textContent
+      btn.disabled = true
+      btn.textContent = '保存中…'
+      postJSON('/api/member/profile', { nickname: input.value.trim() })
+        .then(function () {
+          if (tip) tip.textContent = '昵称已更新，正在刷新…'
+          setTimeout(function () {
+            location.reload()
+          }, 500)
+        })
+        .catch(function (err) {
+          if (tip) tip.textContent = err.message || '保存失败，请重试'
+          btn.textContent = label
+          btn.disabled = false
+        })
+    })
+  }
+
+  // 会员中心卡（memberCardHtml）：QQ 头像绑定（评论头像 C2）——绑过再存即幂等重试头像；
+  // QQ 号正则与 utils.ts isValidQQ 同款镜像，改任一侧记得同步
+  var memQQForm = document.querySelector('[data-member-qq-form]')
+  if (memQQForm) {
+    memQQForm.addEventListener('submit', function (e) {
+      e.preventDefault()
+      var btn = memQQForm.querySelector('.mem-btn')
+      var tip = memQQForm.querySelector('[data-member-tip]')
+      var input = memQQForm.querySelector('[name=qq]')
+      if (!btn || btn.disabled) return
+      var qq = input ? input.value.trim() : ''
+      if (!/^[1-9][0-9]{4,10}$/.test(qq)) {
+        if (tip) tip.textContent = 'QQ 号格式不对（5-11 位数字，不以 0 开头）'
+        return
+      }
+      var label = btn.textContent
+      btn.disabled = true
+      btn.textContent = '保存中…'
+      postJSON('/api/member/profile', { qq: qq })
+        .then(function (d) {
+          if (d && d.avatarFailed) {
+            // 头像抓取失败但 qq 已记上：提示重试（服务端容忍失败是设计口径）
+            if (tip) tip.textContent = 'QQ 已绑定，但头像没抓到，稍后再点一次重试'
+            btn.textContent = '重试头像'
+            btn.disabled = false
+          } else {
+            if (tip) tip.textContent = '已保存，正在刷新…'
+            setTimeout(function () {
+              location.reload()
+            }, 500)
+          }
+        })
+        .catch(function (err) {
+          if (tip) tip.textContent = err.message || '保存失败，请重试'
+          btn.textContent = label
+          btn.disabled = false
+        })
+    })
+  }
+
+  var memPwdForm = document.querySelector('[data-member-password-form]')
+  if (memPwdForm) {
+    memPwdForm.addEventListener('submit', function (e) {
+      e.preventDefault()
+      var btn = memPwdForm.querySelector('.mem-btn')
+      var tip = memPwdForm.querySelector('[data-member-tip]')
+      var cur = memPwdForm.querySelector('[name=current]')
+      var next = memPwdForm.querySelector('[name=next]')
+      if (!btn || btn.disabled) return
+      if (!cur || !cur.value || !next || !next.value) {
+        if (tip) tip.textContent = '请填写当前密码与新密码'
+        return
+      }
+      if (next.value.length < 8) {
+        if (tip) tip.textContent = '新密码至少 8 位'
+        return
+      }
+      var label = btn.textContent
+      btn.disabled = true
+      btn.textContent = '提交中…'
+      postJSON('/api/member/password', { currentPassword: cur.value, newPassword: next.value })
+        .then(function () {
+          if (tip) tip.textContent = '密码已修改，其他设备已退出登录。请务必记好新密码'
+          if (cur) cur.value = ''
+          if (next) next.value = ''
+          btn.textContent = label
+          btn.disabled = false
+        })
+        .catch(function (err) {
+          if (tip) tip.textContent = err.message || '修改失败，请重试'
+          btn.textContent = label
+          btn.disabled = false
+        })
+    })
+  }
+
+  var memLogout = document.querySelector('[data-member-logout]')
+  if (memLogout)
+    memLogout.addEventListener('click', function () {
+      if (memLogout.disabled) return
+      var label = memLogout.textContent
+      memLogout.disabled = true
+      postJSON('/api/member/logout', {})
+        .then(function () {
+          location.reload()
+        })
+        .catch(function (err) {
+          memLogout.disabled = false
+          memLogout.textContent = err.message || '退出失败，请重试'
+          setTimeout(function () {
+            memLogout.textContent = label
+          }, 2000)
+        })
+    })
 
   /* ---------------- 访客统计打点（后台「统计」页，服务端见 src/stats.ts） ----------------
    * 只上报匿名访客 id / 路径 / 标题 / 来源域名，不碰 Cookie 不存 IP；

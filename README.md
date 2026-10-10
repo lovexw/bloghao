@@ -8,9 +8,11 @@
 
 **在线示例：[https://blog.xiaowuleyi.com](https://blog.xiaowuleyi.com)**（作者小吴乐意自己的博客，由本系统驱动）
 
-[![Version](https://img.shields.io/github/package-json/v/lovexw/bloghao?color=1a73e8)](https://github.com/lovexw/bloghao/blob/main/CHANGELOG.md) [![License](https://img.shields.io/badge/License-MIT-07c160) ![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers%20%C2%B7%20D1%20%C2%B7%20R2-F38020) ![No Framework](https://img.shields.io/badge/%E5%89%8D%E5%90%8E%E7%AB%AF-%E6%97%A0%E6%A1%86%E6%9E%B6%E4%BE%9D%E8%B5%96-1a1a1a)](https://github.com/lovexw/bloghao)
+**演示体验站：[https://demo.bloghao.com](https://demo.bloghao.com)** —— 动手部署前可以先去转一圈：预置全年仿真数据、会员 / 付费墙 / 加密文章全开着，随便折腾，每 2 小时自动重置；后台账号 `demo` / `demo1234`，打开登录页就已自动填好（机制见 [docs/DEMO.md](docs/DEMO.md)）。
 
-<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="36"></a>
+[![Version](https://img.shields.io/github/package-json/v/bloghao/bloghao?color=1a73e8)](https://github.com/bloghao/bloghao/blob/main/CHANGELOG.md) [![License](https://img.shields.io/badge/License-MIT-07c160) ![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers%20%C2%B7%20D1%20%C2%B7%20R2-F38020) ![No Framework](https://img.shields.io/badge/%E5%89%8D%E5%90%8E%E7%AB%AF-%E6%97%A0%E6%A1%86%E6%9E%B6%E4%BE%9D%E8%B5%96-1a1a1a)](https://github.com/bloghao/bloghao)
+
+<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/bloghao/bloghao"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="36"></a>
 
 </div>
 
@@ -18,7 +20,7 @@
 
 博客号（BlogHao）是一款完全运行在 Cloudflare 上的开源博客引擎：网页由 Workers 边缘渲染，文字存进 D1，图片传进 R2——服务器、运维、账单，统统不存在。写作后台对标微信公众号编辑器，截图 `⌘V` 粘贴即自动上云。
 
-2.0 在「写文章」的基础上，整合了作者博客沉淀的一整套**日常记录与互动**能力：短内容的「微博 / 随手记」、楼中楼评论、友情链接、首页搜索与排序、公众号文章一键采集等，五套主题全部适配，手机端同样完整可用。
+2.0 在「写文章」的基础上，整合了作者博客沉淀的一整套**日常记录与互动**能力：短内容的「微博 / 随手记」、楼中楼评论、友情链接、首页搜索与排序、公众号文章一键采集等，六套主题全部适配，手机端同样完整可用。
 
 ## ✨ 特性一览
 
@@ -33,9 +35,9 @@
 | 🔍 **站内搜索与排序** | 首页搜索文章；列表按最新 / 最多阅读 / 最多点赞 / 最多留言 / 随机排序（随机洗牌翻页不重洗） |
 | 🩺 **排版体检** | 按微信官方规范静态检查 13 条规则（固定宽度、行高叠字、`!important`、嵌套层级、`data-w`…），支持一键修复 |
 | 📰 **公众号采集** | 编辑器插件：粘贴公众号文章链接，抓正文、配图转存图床，生成保留原发布时间的草稿 |
-| 🎨 **五套主题** | 微信公众号（明亮）/ 纸墨 / 极简 / 夜航 / 手账（奶油纸面手账风），后台「皮肤」页即点即换，附皮肤市场精选目录；主题即模块，开放注册 |
+| 🎨 **六套主题** | 微信公众号（明亮）/ 纸墨 / 极简 / 夜航 / 手账（奶油纸面手账风）/ 比特币（品牌素材库风），后台「皮肤」页即点即换，附皮肤市场精选目录；主题即模块，开放注册 |
 | 🧩 **编辑器插件** | 后台「插件」页一键启停（无需重新部署），附插件市场精选目录；一个插件 = 一个 JS 文件，开放注册；另有随内核运行的服务端插件钩子（发布同步 TG 频道、评论 Webhook、页脚注入三个官方示例） |
-| 🖼️ **R2 图床** | 图片视频私有存储，Worker 鉴权输出 + 长缓存 + ETag 304，媒体库可视化管理；上传前自动压缩并转 WebP（>300KB 或 >2000px，同画质比 JPEG 约再省 1/4、透明不丢，旧浏览器自动回退 JPEG/PNG） |
+| 🖼️ **R2 图床** | 图片视频私有存储，Worker 鉴权输出 + 长缓存 + ETag 304，媒体库可视化管理；上传前自动压缩并转 WebP（>150KB 或 >2000px，同画质比 JPEG 约再省三成、透明不丢，旧浏览器自动回退 JPEG/PNG）；EXIF / GPS 元数据自动抹除，手机照片的拍摄位置不随图公开 |
 | 🔒 **安全默认开启** | PBKDF2 / HttpOnly 会话 / CSRF 同源校验 / HTML 白名单净化 / 评论与友链蜜罐限流 / CSP |
 | ⚡ **快** | SSR 直出、主题 CSS 内联零额外请求、边缘节点全球分发 |
 | 📡 **自带生态件** | 全文 RSS、sitemap、robots.txt、OG 分享标签（可一键生成 1200×630 专属分享卡图）、JSON-LD 结构化数据、图片灯箱、每晚自动备份到 R2、GitHub Actions 自动部署 |
@@ -52,7 +54,7 @@
 - **订阅与备份**：RSS 全文输出（订阅器不点开就能读完，可切回摘要）；每天北京时间 00:30 自动把数据库全量快照存进 R2，滚动保留 30 份，后台可查看 / 手动备份
 - **独立页面**：后台「页面」新建 / 编辑 / 排序，勾选后出现在前台顶部导航；「关于我」为 `about` 页面（升级自动迁移，`/about` 不变）
 - **数据导出**：设置 → 数据导出，Markdown 包（图片流式打包不过内存）与 WXR 单文件
-- **时光机**：首页「历史上的今天」卡片，往年今日的文章与微博自动浮上来（四主题适配，无命中不渲染）
+- **时光机**：首页「历史上的今天」卡片，往年今日的文章与微博自动浮上来（六主题适配，无命中不渲染）
 - **分类与标签**：分类页 `/category/:slug`；分类页可直接预建 / 删除全站标签
 - **站点外观**：站点名称 / 描述 / 页脚 / 头像 / 浏览器 favicon（均可上传到图床）/ 每页文章数 / 关于我（页面系统承载）
 - **站点状态**：一键灰度（哀悼 / 纪念时刻全站去色）与一键闭站（访客只见闭站页，RSS / 评论一并停用，503 + Retry-After 保住搜索收录；后台与已登录的管理员不受影响）
@@ -75,13 +77,13 @@
 | [`/about`](https://blog.xiaowuleyi.com/about) · [`/random`](https://blog.xiaowuleyi.com/random) · [`/rss.xml`](https://blog.xiaowuleyi.com/rss.xml) | 关于我 · 随机一篇 · RSS 订阅 |
 | [`/admin/`](https://blog.xiaowuleyi.com/admin/) | 管理后台（写作、微博、友链、评论、媒体、皮肤、插件、设置） |
 
-顶部导航（四主题一致）：**首页 · 微博 · 归档 · 留言板 · 分类话题（折叠菜单）· 友情链接 · 关于我 · 随机**。
+顶部导航（六套主题一致）：**首页 · 微博 · 归档 · 留言板 · 分类话题（折叠菜单）· 友情链接 · 自建页面 · 关于我 · 随机**（自建页面在后台「页面」创建并选择是否上导航）。
 
 ## 🚀 部署自己的博客号
 
 **方式一：一键部署（推荐）**——点上面（或下面）的按钮，授权 GitHub 后给 Worker / 数据库 / 图床起好名字，Cloudflare 自动完成剩下的：复制一份仓库到你的账号 → 开通 D1 数据库与 R2 图床并回填配置 → 构建部署上线 → 接管 push 自动部署。全程不碰命令行。
 
-<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="36"></a>
+<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/bloghao/bloghao"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="36"></a>
 
 > 若账号还没用过 R2，会被要求先添加支付方式——免费额度内不扣费，只是验证。
 
@@ -91,7 +93,7 @@
 
 ```bash
 # 1. 克隆并安装
-git clone https://github.com/lovexw/bloghao.git
+git clone https://github.com/bloghao/bloghao.git
 cd bloghao && npm install
 npx wrangler login
 
@@ -116,7 +118,7 @@ npm run deploy
 命令行部署的想开启自动部署，两种任选：
 
 - **Workers Builds**（推荐）：Cloudflare 面板 → 你的 Worker → Settings → Git 支持，连接 GitHub 仓库即可
-- **GitHub Actions**：推上 GitHub 后，在仓库 Settings → Secrets → Actions 添加 `CLOUDFLARE_API_TOKEN`（Workers Scripts + D1 + R2 编辑权限）与 `CLOUDFLARE_ACCOUNT_ID`，仓库内置的 `.github/workflows/deploy.yml` 会在每次 push 到 `main` 时自动执行：类型检查 → 同步 schema → 部署。另有 `.github/workflows/ci.yml` 与部署并行，跑类型检查 + 回归测试（`tests/` 30+ 用例），防止已修复的 bug 悄悄复发
+- **GitHub Actions**：推上 GitHub 后，在仓库 Settings → Secrets → Actions 添加 `CLOUDFLARE_API_TOKEN`（Workers Scripts + D1 + R2 编辑权限）与 `CLOUDFLARE_ACCOUNT_ID`，仓库内置的 `.github/workflows/deploy.yml` 会在每次 push 到 `main` 时自动执行：类型检查 → 同步 schema → 部署。另有 `.github/workflows/ci.yml` 与部署并行，跑类型检查 + 回归测试（`tests/` 300+ 用例），防止已修复的 bug 悄悄复发
 
 </details>
 
@@ -125,7 +127,7 @@ npm run deploy
 业务代码零改动地跑进一个 Node 容器：文章存内置 SQLite（单文件 WAL），图片存本地磁盘目录，也可以继续用 Cloudflare R2 桶（零出口流量费）。单进程按域名同时托管多个完全独立的博客站，Cloudflare 退回只做 DNS + CDN。
 
 ```bash
-git clone https://github.com/lovexw/bloghao.git
+git clone https://github.com/bloghao/bloghao.git
 cd bloghao/docker-poc
 docker compose up --build -d     # 镜像约 70MB（node:26-alpine），数据落在 ./data/<域名>/
 ```
@@ -140,7 +142,7 @@ npm run db:init:local   # 初始化本地 D1（.wrangler/state，与线上互不
 npm run dev             # http://127.0.0.1:8787
 npm run dev:demo        # 演示站本地预览（自动建表 + 播种一年仿真数据，见 docs/DEMO.md）
 npm run typecheck       # TypeScript 类型检查，提交前必须通过
-npm test                # 回归测试（tests/，30+ 用例），提交前必须通过
+npm test                # 回归测试（tests/，300+ 用例），提交前必须通过
 npm run smoke           # 本地冒烟：起 wrangler dev 逐路由断言，改 SQL 拼接/渲染后必跑
 ```
 
@@ -157,7 +159,7 @@ bloghao/
 │   ├── scheduler.ts    # 每分钟 Cron：定时发布到点自动上线
 │   ├── backup.ts       # 每晚 00:30 全量备份 D1 → R2（滚动保留 30 份）
 │   ├── auth.ts / sanitize.ts / markdown.ts / db.ts / render.ts / rss.ts / utils.ts
-│   └── themes/         # 五套主题 + 注册表（新主题加在这里）
+│   └── themes/         # 六套主题 + 注册表（新主题加在这里）
 ├── public/
 │   ├── admin/          # 管理后台 SPA（原生 JS，无构建）
 │   ├── site.js         # 前台交互（点赞/评论/楼中楼/灯箱/微博发布/折叠菜单）
@@ -184,7 +186,7 @@ bloghao/
 | [docker-poc/README.md](docker-poc/README.md) | **Docker 自托管**：架构与适配层、本地直跑、图片存储二选一（本地盘 / R2）、加站点 |
 | [docker-poc/DEPLOY.md](docker-poc/DEPLOY.md) | 自托管服务器部署清单：选机、端口与反代、HTTPS 与缓存、验收与升级 |
 | [docs/wechat-typography-spec.md](docs/wechat-typography-spec.md) | 微信排版规范落地对照 + 体检规则表 |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | 开发方向备忘：已上线能力与近期计划（会员体系等已调研方向的拍板状态） |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 开发方向备忘：已调研未启动的功能方向（会员体系等）与待拍板决策 |
 
 ## ❓ FAQ
 
@@ -222,16 +224,16 @@ npm run deploy    # schema 有更新时再执行一次 npx wrangler d1 execute D
 
 ## 🛣 路线图
 
+- [x] 会员体系：游客注册 + 分级会员 + 积分 + 排行榜 + 专属文章付费墙（已上线，默认关闭，后台开启；用法见 [docs/GUIDE.md](docs/GUIDE.md) §15）
+- [ ] 多作者协作
 - [x] 编辑器 Markdown 快捷输入（`> ` 自动转引用等，已上线）
 - [x] 服务端插件钩子（发布 / 评论事件回调 + 页脚注入，已上线，见 [docs/PLUGINS.md](docs/PLUGINS.md)）
-- [x] WebP 自动转换（上传前压缩已上线）
-- [ ] 会员体系：游客注册 + 分级会员 + 专属文章付费墙（调研已完成，待拍板决策，详见 [docs/ROADMAP.md](docs/ROADMAP.md)）
-- [ ] 多作者协作
 - [ ] 市场远程化：皮肤 / 插件目录改为远程数据源 + 更顺畅的安装体验（后台「皮肤 / 插件」页的精选目录与启停管理已就绪）
+- [x] WebP 自动转换（上传前压缩已上线）
 
 ## 🤝 相关仓库
 
-- **官方仓库**：[lovexw/bloghao](https://github.com/lovexw/bloghao)（本仓库）——2.0 起整合作者实例线的全部增强，欢迎提 Issue / PR；官网源码在仓库内 `website/` 目录（**[bloghao.com](https://bloghao.com)**，Cloudflare Pages 部署，官网「博客号目录」上榜请提 Issue）
+- **官方仓库**：[bloghao/bloghao](https://github.com/bloghao/bloghao)（本仓库）——2.0 起整合作者实例线的全部增强，欢迎提 Issue / PR；官网源码在仓库内 `website/` 目录（**[bloghao.com](https://bloghao.com)**，Cloudflare Pages 部署，官网「博客号目录」上榜请提 Issue）
 - **作者实例**：[lovexw/bloghao-xwblog](https://github.com/lovexw/bloghao-xwblog)——[blog.xiaowuleyi.com](https://blog.xiaowuleyi.com) 的源仓库，官方仓库的滚动开发线（迭代先行于此，稳定后清洗发布至官方仓库），提交信息沿用 `theme:` / `mobile:` / `feat:` / `docs:` 前缀的中文风格
 
 ## 📄 License

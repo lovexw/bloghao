@@ -6,7 +6,7 @@
 <title>博客号 BlogHao —— 微信有公众号，你有博客号</title>
 <meta name="description" content="博客号 BlogHao：完全运行在 Cloudflare Workers + D1 + R2 上的开源博客系统。不用申请、不用排队，五分钟部署，想写就写，数据 100% 归你。博客号，博客好！">
 <meta property="og:title" content="博客号 BlogHao —— 微信有公众号，你有博客号">
-<meta property="og:description" content="博客号，博客好！公众号风格写作 · 排版规范体检 · 五套主题 · 图片粘贴自动上云 · 免费部署">
+<meta property="og:description" content="博客号，博客好！公众号风格写作 · 排版规范体检 · 六套主题 · 图片粘贴自动上云 · 免费部署">
 <meta property="og:image" content="./assets/editor.png">
 <meta property="og:type" content="website">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -24,12 +24,13 @@
       <a href="#themes">主题</a>
       <a href="#showcase">目录</a>
       <a href="#editor">编辑器</a>
+      <a href="./plaza/">广场</a>
       <a href="#start">快速开始</a>
       <a href="#docs">文档</a>
     </nav>
     <div class="nav-cta">
       <a class="nav-demo" href="https://demo.bloghao.com" target="_blank" rel="noopener">在线演示 ↗</a>
-      <a class="btn btn-ghost" href="https://github.com/lovexw/bloghao" target="_blank" rel="noopener">
+      <a class="btn btn-ghost" href="https://github.com/bloghao/bloghao" target="_blank" rel="noopener">
         <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub
       </a>
@@ -43,7 +44,7 @@
   <section class="hero">
     <div class="hero-bg" aria-hidden="true"></div>
     <div class="wrap hero-inner">
-      <span class="hero-badge reveal">微信有公众号，你有博客号 ✌️ · v2.1 · MIT 开源</span>
+      <span class="hero-badge reveal">微信有公众号，你有博客号 ✌️ · v2.0 · MIT 开源</span>
       <h1 class="reveal">博客号，博客好。</h1>
       <p class="hero-sub reveal">
         一套完全跑在 Cloudflare（Workers + D1 + R2）上的开源博客系统。<br class="pc-only">
@@ -108,8 +109,8 @@
         </article>
         <article class="card reveal">
           <div class="card-icon">🎨</div>
-          <h3>五套主题即点即换</h3>
-          <p>微信公众号 / 纸墨 / 极简 / 夜航 / 手账，后台点一下立即生效，手机端同样完整可用。主题就是代码模块，欢迎贡献第六套。</p>
+          <h3>六套主题即点即换</h3>
+          <p>微信公众号 / 纸墨 / 极简 / 夜航 / 手账 / 比特币，后台点一下立即生效，手机端同样完整可用。主题就是代码模块，欢迎贡献第七套。</p>
         </article>
         <article class="card reveal">
           <div class="card-icon">🧩</div>
@@ -128,7 +129,7 @@
   <!-- ================= 主题 ================= -->
   <section class="section section-tint" id="themes">
     <div class="wrap">
-      <h2 class="sec-title reveal">五套主题，五种心情</h2>
+      <h2 class="sec-title reveal">六套主题，六种心情</h2>
       <p class="sec-sub reveal">后台「设置 → 外观」一点即换，响应式适配手机与桌面。</p>
       <div class="theme-row">
         <figure class="phone reveal">
@@ -151,6 +152,10 @@
           <img src="./assets/theme-journal.png" alt="手账主题">
           <figcaption><b>手账</b><span>奶油纸面 · 和纸胶带</span></figcaption>
         </figure>
+        <figure class="phone reveal">
+          <img src="./assets/theme-bitcoin.png" alt="比特币主题">
+          <figcaption><b>比特币</b><span>比特币橙 · 品牌素材风</span></figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -164,7 +169,7 @@
         <div class="showcase-empty reveal">目录加载中…</div>
       </div>
       <p class="showcase-cta reveal">
-        开了博客号？<a href="https://github.com/lovexw/bloghao/issues/new?title=%E6%8F%90%E4%BA%A4%E6%88%91%E7%9A%84%E5%8D%9A%E5%AE%A2%E5%8F%B7" target="_blank" rel="noopener">提交你的站点 →</a>
+        开了博客号？<a href="https://github.com/bloghao/bloghao/issues/new?title=%E6%8F%90%E4%BA%A4%E6%88%91%E7%9A%84%E5%8D%9A%E5%AE%A2%E5%8F%B7" target="_blank" rel="noopener">提交你的站点 →</a>
         一步入库，全球可见。
       </p>
     </div>
@@ -176,6 +181,7 @@
       <span class="roadmap-tag">🚧 即将上线</span>
       <div class="roadmap-items">
         <span>🎙️ 中文播客聚合 —— 让你的文字与声音同框</span>
+        <span>✔️ <a href="./plaza/">广场</a>已上线 —— 你的文章与微博，官网首页之外再亮一次</span>
       </div>
     </div>
   </section>
@@ -216,7 +222,7 @@
       <h2 class="sec-title reveal">五分钟，把博客搬到云上</h2>
       <p class="sec-sub reveal">需要一个免费的 Cloudflare 账号，完事。</p>
       <div class="deploy-cta reveal">
-        <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/lovexw/bloghao" target="_blank" rel="noopener">
+        <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/bloghao/bloghao" target="_blank" rel="noopener">
           <img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="40">
         </a>
         <p class="step-note">推荐一键部署：授权 GitHub 后，Cloudflare 自动复制仓库、开通 D1 数据库与 R2 图床、构建上线并接管 push 自动部署——全程不碰命令行。</p>
@@ -226,7 +232,7 @@
       <ol class="steps reveal">
         <li>
           <b>克隆并安装</b>
-          <pre><code>git clone https://github.com/lovexw/bloghao.git
+          <pre><code>git clone https://github.com/bloghao/bloghao.git
 cd bloghao &amp;&amp; npm install
 npx wrangler login</code></pre>
         </li>
@@ -246,7 +252,7 @@ npm run deploy</code></pre>
           <p class="step-note">访问 <code>https://bloghao.你的子域.workers.dev/admin/</code>，首次进入即创建管理员账号，欢迎文章已就位。</p>
         </li>
       </ol>
-      <p class="reveal steps-more">一键部署的副本已自动接管部署；命令行部署的可推上 GitHub 开启自动部署 → <a href="https://github.com/lovexw/bloghao/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">完整部署教程</a></p>
+      <p class="reveal steps-more">一键部署的副本已自动接管部署；命令行部署的可推上 GitHub 开启自动部署 → <a href="https://github.com/bloghao/bloghao/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">完整部署教程</a></p>
     </div>
   </section>
 
@@ -256,22 +262,22 @@ npm run deploy</code></pre>
       <h2 class="sec-title reveal">文档齐全，随便改</h2>
       <p class="sec-sub reveal">全部中文，放在仓库里，欢迎 PR 补充。</p>
       <div class="grid-3 grid-docs">
-        <a class="card card-link reveal" href="https://github.com/lovexw/bloghao/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">
+        <a class="card card-link reveal" href="https://github.com/bloghao/bloghao/blob/main/docs/DEPLOY.md" target="_blank" rel="noopener">
           <h3>🚀 部署教程</h3><p>从注册 Cloudflare 到绑定自定义域名、自动部署、备份与恢复。</p>
         </a>
-        <a class="card card-link reveal" href="https://github.com/lovexw/bloghao/blob/main/docs/GUIDE.md" target="_blank" rel="noopener">
+        <a class="card card-link reveal" href="https://github.com/bloghao/bloghao/blob/main/docs/GUIDE.md" target="_blank" rel="noopener">
           <h3>📖 使用手册</h3><p>后台导览、写文章全流程、快捷键、评论与媒体管理、设置逐项说明。</p>
         </a>
-        <a class="card card-link reveal" href="https://github.com/lovexw/bloghao/blob/main/docs/THEMES.md" target="_blank" rel="noopener">
+        <a class="card card-link reveal" href="https://github.com/bloghao/bloghao/blob/main/docs/THEMES.md" target="_blank" rel="noopener">
           <h3>🎨 主题开发</h3><p>三步注册一套新主题，公共积木与排版规范底线。</p>
         </a>
-        <a class="card card-link reveal" href="https://github.com/lovexw/bloghao/blob/main/docs/PLUGINS.md" target="_blank" rel="noopener">
+        <a class="card card-link reveal" href="https://github.com/bloghao/bloghao/blob/main/docs/PLUGINS.md" target="_blank" rel="noopener">
           <h3>🧩 插件开发</h3><p>一个 JS 文件扩展编辑器，插件 API 与加载机制。</p>
         </a>
-        <a class="card card-link reveal" href="https://github.com/lovexw/bloghao/blob/main/docs/API.md" target="_blank" rel="noopener">
+        <a class="card card-link reveal" href="https://github.com/bloghao/bloghao/blob/main/docs/API.md" target="_blank" rel="noopener">
           <h3>🔌 API 参考</h3><p>全部公开 / 管理接口，写自己的客户端。</p>
         </a>
-        <a class="card card-link reveal" href="https://github.com/lovexw/bloghao/blob/main/docs/wechat-typography-spec.md" target="_blank" rel="noopener">
+        <a class="card card-link reveal" href="https://github.com/bloghao/bloghao/blob/main/docs/wechat-typography-spec.md" target="_blank" rel="noopener">
           <h3>🩺 排版规范</h3><p>微信编辑器插件开发规范的落地对照表与体检规则。</p>
         </a>
         <a class="card card-link reveal" href="./llms.txt" target="_blank" rel="noopener">
@@ -287,7 +293,7 @@ npm run deploy</code></pre>
       <h2>开个博客号，把写作变成每天的小事</h2>
       <p>博客号，博客好。免费部署，代码全在 GitHub，随时改造成你喜欢的样子。</p>
       <div class="hero-cta">
-        <a class="btn btn-primary btn-lg" href="https://github.com/lovexw/bloghao" target="_blank" rel="noopener">⭐ 去 GitHub 点个 Star</a>
+        <a class="btn btn-primary btn-lg" href="https://github.com/bloghao/bloghao" target="_blank" rel="noopener">⭐ 去 GitHub 点个 Star</a>
         <a class="btn btn-lg" href="#start">现在就开号</a>
       </div>
     </div>
@@ -299,7 +305,8 @@ npm run deploy</code></pre>
   <div class="wrap footer-inner">
     <span>© <span id="year">2026</span> 博客号 BlogHao · MIT License</span>
     <span class="footer-links">
-      <a href="https://github.com/lovexw/bloghao" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/bloghao/bloghao" target="_blank" rel="noopener">GitHub</a>
+      <a href="./plaza/">广场</a>
       <a href="https://demo.bloghao.com" target="_blank" rel="noopener">演示站</a>
       <a href="./llms.txt" target="_blank" rel="noopener">AI 索引</a>
       <a href="https://developers.weixin.qq.com/doc/service/guide/product/plugin_spec.html" target="_blank" rel="noopener">微信排版规范</a>

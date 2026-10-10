@@ -86,6 +86,8 @@ export interface DemoComment {
   /** 回复的目标评论序号（从 1 起，对应本数组中更早的评论；顶层评论为 0） */
   replyTo?: number
   admin?: boolean
+  /** 以会员身份发言（DEMO_MEMBERS 的 username）：评论挂 member_id，前台带会员徽标 */
+  member?: string
   nick: string
   site?: string
   content: string
@@ -98,7 +100,7 @@ export const DEMO_COMMENTS: DemoComment[] = [
   // —— cloudflare-free-tier-one-year ——
   { post: 'cloudflare-free-tier-one-year', nick: '山下的人', content: '这个表太直观了，之前一直担心免费额度，看完彻底放心。请问读者上传图片也存 R2 吗？', hoursAfter: 74, site: 'https://shanxia.example.com' },
   { post: 'cloudflare-free-tier-one-year', replyTo: 1, admin: true, nick: '阿拾', content: '对，评论头像和图床都在 R2，成本可以忽略。放心用！', hoursAfter: 80 },
-  { post: 'cloudflare-free-tier-one-year', nick: 'Momo', content: '想问下备份的 30 份滚动是怎么算的？每天一份那不就一个月了吗', hoursAfter: 120 },
+  { post: 'cloudflare-free-tier-one-year', nick: 'Momo', member: 'momo', content: '想问下备份的 30 份滚动是怎么算的？每天一份那不就一个月了吗', hoursAfter: 120 },
   { post: 'cloudflare-free-tier-one-year', replyTo: 3, admin: true, nick: '阿拾', content: '对，就是保留最近 30 天每天一份，第 31 天自动删最旧的。', hoursAfter: 127 },
   { post: 'cloudflare-free-tier-one-year', nick: '背包客小鹿', content: '同行，我的博客也满一年了，账单几乎一样，+1。真的不用升级付费计划。', hoursAfter: 200, site: 'https://lulu.example.com' },
   // —— start-bloghao-in-ten-minutes ——
@@ -113,7 +115,7 @@ export const DEMO_COMMENTS: DemoComment[] = [
   { post: 'editor-guide', replyTo: 12, admin: true, nick: '阿拾', content: '编辑器左上角有模式切换，Markdown 和富文本内容互通，来回切都行。', hoursAfter: 84 },
   // —— theme-choice ——
   { post: 'theme-choice', nick: '山茶', content: '被纸墨主题击中了，已经切过去了，太好看。', hoursAfter: 20 },
-  { post: 'theme-choice', nick: 'Momo', content: '夜航+1，深色党表示终于有不刺眼的博客了。', hoursAfter: 45 },
+  { post: 'theme-choice', nick: 'Momo', member: 'momo', content: '夜航+1，深色党表示终于有不刺眼的博客了。', hoursAfter: 45 },
   { post: 'theme-choice', nick: '骑行与胶片', content: '手账主题配我的旅行手记正合适，感谢逐套点评！', hoursAfter: 88, site: 'https://ridefilm.example.com' },
   // —— plugin-market ——
   { post: 'plugin-market', nick: '效率控', content: '格式助手治好了我多年的中英文空格强迫症，作者辛苦！', hoursAfter: 26 },
@@ -135,7 +137,7 @@ export const DEMO_COMMENTS: DemoComment[] = [
   { post: 'content-pipeline', nick: '效率控', content: '周日集中写的方案试了两周，确实比日更舒服，感谢分享。', hoursAfter: 72 },
   // —— visitor-stats ——
   { post: 'visitor-stats', nick: '茶水间周刊', content: '不存 IP 这点好评， privacy 这块博客圈确实该向你看齐。', hoursAfter: 55, site: 'https://tearoom.example.com' },
-  { post: 'visitor-stats', nick: 'Momo', content: '「时段分布」好奇，我的是晚上十点半到十二点，原来大家都是夜猫子。', hoursAfter: 90 },
+  { post: 'visitor-stats', nick: 'Momo', member: 'momo', content: '「时段分布」好奇，我的是晚上十点半到十二点，原来大家都是夜猫子。', hoursAfter: 90 },
   // —— server-plugins ——
   { post: 'server-plugins', nick: '老张的后端笔记', content: 'webhook 那段 JSON 直接抄走接飞书了，五分钟搞定，感谢！', hoursAfter: 8, site: 'https://laozhang.example.com' },
   { post: 'server-plugins', replyTo: 31, admin: true, nick: '阿拾', content: '好用的话欢迎回来留个言哈哈。', hoursAfter: 12 },
@@ -173,7 +175,7 @@ export const DEMO_COMMENTS: DemoComment[] = [
   { post: 'toolbox-2025', nick: '效率控', content: '「200 天门槛」这个入选标准严格，我盘了盘自己的工具箱，能上榜的不到一半。', hoursAfter: 80 },
   // —— digital-minimalism ——
   { post: 'digital-minimalism', nick: '夜航西飞', content: '「无聊回来了」这段共鸣了，我的好多想法也是排队时冒出来的。', hoursAfter: 65 },
-  { post: 'digital-minimalism', nick: 'Momo', content: '短视频每天 20 分钟的诚实，比很多极简博主都真实。', hoursAfter: 140 },
+  { post: 'digital-minimalism', nick: 'Momo', member: 'momo', content: '短视频每天 20 分钟的诚实，比很多极简博主都真实。', hoursAfter: 140 },
   // —— rss-200-feeds ——
   { post: 'rss-200-feeds', nick: '茶水间周刊', content: '三层结构清晰，信号层用 RSSHub 做关键词监控这个用法学到了。', hoursAfter: 48, site: 'https://tearoom.example.com' },
   // —— book-in-place ——
@@ -211,6 +213,8 @@ export const DEMO_COMMENTS: DemoComment[] = [
   { weibo: 17, nick: '老张的后端笔记', content: '独立开发的蹦迪哈哈哈，精辟。', hoursAfter: 10, site: 'https://laozhang.example.com' },
   { weibo: 22, nick: '一只北方的猫', content: '深夜部署俱乐部成员前来报到。', hoursAfter: 6, site: 'https://cat.example.com' },
   { weibo: 27, nick: '云间手记', content: '读者来信是最强的正反馈，恭喜！', hoursAfter: 5, site: 'https://yunjian.example.com' },
+  // —— 演示会员发言（member 字段挂 member_id，前台渲染会员徽标；放数组末尾不影响 replyTo 序号）——
+  { guestbook: true, member: 'demo', nick: '体验访客', content: '用公示的演示会员账号（demo / demo1234）登录后来留言：会员卡、积分、排行榜都能玩，会员专享文章也能解锁，体验很完整 👍', hoursAfter: 5000 },
 ]
 
 export interface DemoLink {
@@ -248,7 +252,7 @@ export interface DemoPage {
   daysAgo: number
 }
 
-const ABOUT_HTML = `<p>你好，我是<strong>阿拾</strong>——一个白天写代码、晚上写字的普通人。这里是我在 Cloudflare 上的小书房，住着 50 多篇文章、180 多条随手记，和一只不出镜的猫。</p><h2>这个站</h2><ul><li>它由开源博客系统<strong>博客号 BlogHao</strong> 驱动，整套架构跑在 Cloudflare 免费额度上：Workers 渲染、D1 存文字、R2 存图片</li><li>内容主要是<strong>建站折腾、写作心得、数字生活</strong>，偶尔写写读书观影和深夜的面馆</li><li>站内微博页是碎片想法的收容所，欢迎在留言板找我玩</li></ul><blockquote>注：你正在看的这个站点是<strong>博客号的官方演示站</strong>——账号密码公开在登录页，数据每隔两小时自动重置，随便看，随便玩。</blockquote><h2>联系我</h2><p>评论区和留言板回复最快；也可以通过友链页去串门我朋友们的书房。</p><p>—— 阿拾</p>`
+const ABOUT_HTML = `<p>你好，我是<strong>阿拾</strong>——一个白天写代码、晚上写字的普通人。这里是我在 Cloudflare 上的小书房，住着 50 多篇文章、180 多条随手记，和一只不出镜的猫。</p><h2>这个站</h2><ul><li>它由开源博客系统<strong>博客号 BlogHao</strong> 驱动，整套架构跑在 Cloudflare 免费额度上：Workers 渲染、D1 存文字、R2 存图片</li><li>内容主要是<strong>建站折腾、写作心得、数字生活</strong>，偶尔写写读书观影和深夜的面馆</li><li>站内微博页是碎片想法的收容所，欢迎在留言板找我玩</li></ul><blockquote>注：你正在看的是博客号的<strong>演示体验版</strong>（非最新正式版，仅供测试体验）——后台账号公示在登录页，会员演示账号 <code>demo</code> / <code>demo1234</code>，数据每 2 小时自动清空重置。随便看，随便玩。</blockquote><h2>联系我</h2><p>评论区和留言板回复最快；也可以通过友链页去串门我朋友们的书房。</p><p>—— 阿拾</p>`
 
 export const DEMO_PAGES: DemoPage[] = [
   {
@@ -283,7 +287,7 @@ export const DEMO_PAGES: DemoPage[] = [
 /** settings 全量种子：DEFAULT_SETTINGS 之上叠演示站人设（demo.ts 落库） */
 export const DEMO_SETTINGS: Record<string, string> = {
   siteName: '拾光小筑',
-  siteDescription: '用「博客号 BlogHao」搭的演示站 · 数据每 2 小时自动重置，随便看随便玩',
+  siteDescription: '博客号 BlogHao 演示体验版（非最新正式版，仅供测试体验）· 数据每 2 小时自动清空重置，随便看随便玩',
   theme: 'paper',
   siteUrl: '',
   postsPerPage: '8',
@@ -295,6 +299,8 @@ export const DEMO_SETTINGS: Record<string, string> = {
   notifyNewComment: '1',
   about: ABOUT_HTML,
   pagesSeeded: '1',
+  // 会员体系开到「开」：会员卡 / 积分 / 排行榜 / 会员专享文都在体验范围内（demo.ts 播种演示会员）
+  membersEnabled: '1',
 }
 
 export const DEMO_CATEGORIES: { name: string; slug: string; sort: number }[] = [
@@ -306,6 +312,27 @@ export const DEMO_CATEGORIES: { name: string; slug: string; sort: number }[] = [
 ]
 
 export const DEMO_ADMIN = { username: 'demo', password: 'demo1234', displayName: '阿拾' }
+
+/* ---------------- 演示会员（会员体系演示：会员卡 / 积分 / 排行榜 / 徽标） ----------------
+ * username 'demo' 是公示账号（会员登录页/关于页注明 demo / demo1234），其余会员是背景板；
+ * 积分账本不手写明细，由 buildDemoPlan 按 dailyLogins/comments/adminAdjust 确定性展开，
+ * 余额 = 明细合计（tests/demo.test.ts 守着，不会漂移）。 */
+
+export interface DemoMember {
+  username: string
+  password: string
+  displayName: string
+  tier: 'normal' | 'coffee' | 'top'
+  createdDaysAgo: number
+  dailyLogins: number
+  comments: number
+  adminAdjust?: number
+}
+
+export const DEMO_MEMBERS: DemoMember[] = [
+  { username: 'demo', password: 'demo1234', displayName: '体验访客', tier: 'normal', createdDaysAgo: 30, dailyLogins: 4, comments: 6 },
+  { username: 'momo', password: 'momo-demo-2026', displayName: 'Momo', tier: 'coffee', createdDaysAgo: 150, dailyLogins: 7, comments: 9, adminAdjust: 5 },
+]
 
 /* ---------------- 计划组装 ---------------- */
 
@@ -321,6 +348,10 @@ export interface PlannedPost {
   views: number
   likes: number
   cat: string
+  /** 可见档位（posts.min_tier）：'all' = 所有人，'member'/'coffee'/'top' = 付费墙演示 */
+  minTier: string
+  /** 访问密码明文（demo.ts 落库前 hash 成 salt:hash，种子里可读是为了公示演示密码） */
+  password?: string
   createdAt: number
   updatedAt: number
   publishedAt: number | null
@@ -344,11 +375,31 @@ export interface PlannedComment {
   weiboId: number
   parentId: number
   isAdmin: number
+  /** 会员身份（members.id，0 = 游客）：前台评论列表 LEFT JOIN members 带徽标 */
+  memberId: number
   nickname: string
   website: string
   content: string
   status: 'approved' | 'pending'
   createdAt: number
+}
+
+export interface PlannedMemberLog {
+  delta: number
+  reason: 'comment' | 'dailyLogin' | 'adminAdjust'
+  note: string
+  createdAt: number
+}
+
+export interface PlannedMember {
+  username: string
+  password: string
+  displayName: string
+  tier: 'normal' | 'coffee' | 'top'
+  /** 积分余额 = log 明细合计（确定性展开，tests 守着不漂移） */
+  points: number
+  createdAt: number
+  log: PlannedMemberLog[]
 }
 
 export interface PlannedVisit {
@@ -373,6 +424,7 @@ export interface DemoPlan {
   tags: string[]
   settings: Record<string, string>
   visits: PlannedVisit[]
+  members: PlannedMember[]
   admin: typeof DEMO_ADMIN
 }
 
@@ -413,6 +465,8 @@ export function buildDemoPlan(now: number): DemoPlan {
       views: p.views,
       likes: p.likes,
       cat: p.cat,
+      minTier: p.minTier ?? 'all',
+      password: p.password,
       createdAt: ts,
       updatedAt: ts,
       publishedAt: status === 'published' ? ts : null,
@@ -459,6 +513,7 @@ export function buildDemoPlan(now: number): DemoPlan {
       weiboId: c.weibo ?? 0,
       parentId: c.replyTo ?? 0,
       isAdmin: c.admin ? 1 : 0,
+      memberId: c.member ? DEMO_MEMBERS.findIndex((m) => m.username === c.member) + 1 : 0,
       nickname: c.nick,
       website: c.site ?? '',
       content: c.content,
@@ -480,6 +535,31 @@ export function buildDemoPlan(now: number): DemoPlan {
   const tagSet: string[] = []
   for (const p of DEMO_POSTS) for (const t of p.tags) if (!tagSet.includes(t)) tagSet.push(t)
 
+  // 会员与积分账本（确定性展开）：登录每日 +1、评论 +2、可选一次管理员调整；
+  // 落库序 = 数组序（demo.ts 播种前重置自增，members.id = 下标 + 1，评论按此引用）
+  const members: PlannedMember[] = DEMO_MEMBERS.map((m, mi) => {
+    const log: PlannedMemberLog[] = []
+    for (let i = 0; i < m.dailyLogins; i++) {
+      log.push({ delta: 1, reason: 'dailyLogin', note: '', createdAt: daysAgoAt(now, i + 1, 9, (mi * 13 + i * 7) % 60) })
+    }
+    for (let i = 0; i < m.comments; i++) {
+      log.push({ delta: 2, reason: 'comment', note: '', createdAt: daysAgoAt(now, i * 2 + 1, 20, (mi * 29 + i * 11) % 60) })
+    }
+    if (m.adminAdjust) {
+      log.push({ delta: m.adminAdjust, reason: 'adminAdjust', note: '后台调整（演示数据）', createdAt: daysAgoAt(now, Math.min(m.createdDaysAgo - 1, 12), 15, (mi * 17) % 60) })
+    }
+    log.sort((a, b) => a.createdAt - b.createdAt)
+    return {
+      username: m.username,
+      password: m.password,
+      displayName: m.displayName,
+      tier: m.tier,
+      points: log.reduce((s, r) => s + r.delta, 0),
+      createdAt: daysAgoAt(now, m.createdDaysAgo, 10, (mi * 23) % 60),
+      log,
+    }
+  })
+
   const visits = buildVisitRows(now, rng)
 
   return {
@@ -492,6 +572,7 @@ export function buildDemoPlan(now: number): DemoPlan {
     tags: tagSet,
     settings: DEMO_SETTINGS,
     visits,
+    members,
     admin: DEMO_ADMIN,
   }
 }

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>广场 —— 博客号 BlogHao</title>
+<meta name="description" content="博客号广场：所有博客号的最新文章与微博，在这里汇成一条河。权重 + 新文推荐 + 随机展示，每次刷新都可能有新发现。">
+<meta property="og:title" content="博客号广场 —— 大家都在写什么">
+<meta property="og:description" content="所有博客号的最新文章与微博汇成一条河，刷新一下，逛逛别人的博客号。">
+<meta property="og:type" content="website">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="./plaza.css">
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="nav-logo" href="../">
+      <img src="../favicon.svg" alt="博客号 logo">博客号 <span class="nav-logo-en">BlogHao</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../#features">特性</a>
+      <a href="../#themes">主题</a>
+      <a href="../#showcase">目录</a>
+      <a href="../#start">快速开始</a>
+      <a href="./" class="is-active">广场</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="nav-demo" href="https://demo.bloghao.com" target="_blank" rel="noopener">在线演示 ↗</a>
+      <a class="btn btn-ghost" href="https://github.com/bloghao/bloghao" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="plaza-hero">
+    <div class="wrap">
+      <h1>广场</h1>
+      <p class="plaza-hero-sub">所有博客号的最新文章与微博，在这里汇成一条河。<br>权重、新文与一点随机，每次刷新都可能撞见新东西。</p>
+      <div class="plaza-tabs" id="plaza-tabs" role="tablist" aria-label="内容类型">
+        <button class="plaza-tab is-active" data-kind="" role="tab" aria-selected="true">全部</button>
+        <button class="plaza-tab" data-kind="post" role="tab" aria-selected="false">📝 文章</button>
+        <button class="plaza-tab" data-kind="weibo" role="tab" aria-selected="false">💭 微博</button>
+        <button class="plaza-tab plaza-tab-refresh" id="plaza-refresh" title="换一批（混排带随机，刷新就有新顺序）" type="button">🔄 换一批</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section plaza-body">
+    <div class="wrap plaza-wrap">
+      <div class="plaza-feed" id="plaza-feed" aria-live="polite">
+        <div class="plaza-loading">广场内容加载中…</div>
+      </div>
+      <aside class="plaza-side">
+        <div class="plaza-side-card">
+          <h2>收录的博客号</h2>
+          <ul class="plaza-sites" id="plaza-sites"><li class="plaza-loading">加载中…</li></ul>
+        </div>
+        <div class="plaza-side-card">
+          <h2>你的博客号也来？</h2>
+          <p>部署博客号后，在后台「设置 → 服务端插件」开启<b>广场同步</b>即可上榜；站点信息与认证请联系站长登记。</p>
+          <p><a class="btn btn-primary" href="../#start">五分钟开个博客号</a></p>
+        </div>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <span>© <span id="year">2026</span> 博客号 BlogHao · MIT License</span>
+    <span class="footer-links">
+      <a href="https://github.com/bloghao/bloghao" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://demo.bloghao.com" target="_blank" rel="noopener">演示站</a>
+      <a href="../llms.txt" target="_blank" rel="noopener">AI 索引</a>
+    </span>
+  </div>
+</footer>
+
+<script src="../site.js" defer></script>
+<script src="./plaza.js" defer></script>
+</body>
+</html>

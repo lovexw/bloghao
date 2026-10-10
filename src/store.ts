@@ -4,6 +4,7 @@
  */
 import type { Env } from './types'
 import { sha256Hex } from './utils'
+import { stripImageMetadata } from './exif'
 
 /** 上传体积上限（手动上传与各转存链路同口径） */
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -27,7 +28,9 @@ export function imageExtOf(mime: string): string | undefined {
 
 /** 字节进 R2 图床并登记 uploads 表，返回站内地址。
  *  ext/mime 由调用方先过白名单（imageExtOf）或魔数识别（sniffImageExt）；
- *  dir 为图床目录（普通上传 u/，OG 卡图 og/），年月子目录由这里统一拼 */
+ *  dir 为图床目录（普通上传 u/，OG 卡图 og/），年月子目录由这里统一拼。
+ *  落库前统一剥 EXIF/GPS 元数据（src/exif.ts，纯字节手术；GIF/视频/带旋转标记的
+ *  JPEG 原样返回）——哈希与登记 size 都取剥离后的字节，媒体查重与体检查重口径一致 */
 export async function saveUpload(
   env: Env,
   buf: ArrayBuffer,
@@ -39,12 +42,13 @@ export async function saveUpload(
   const now = new Date()
   const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
   const key = `${dir}/${ym}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.${ext}`
-  await env.IMAGES.put(key, buf, {
+  const clean = stripImageMetadata(buf)
+  await env.IMAGES.put(key, clean, {
     httpMetadata: { contentType: mime, cacheControl: 'public, max-age=31536000, immutable' },
   })
   await env.DB.prepare('INSERT INTO uploads (key, name, mime, size, created_at, hash) VALUES (?, ?, ?, ?, ?, ?)')
     // SHA-256 指纹随登记入库（媒体「体检」查重用，见 src/audit.ts）；老数据由 hash-backfill 端点增量回填
-    .bind(key, name.slice(0, 120), mime, buf.byteLength, Date.now(), await sha256Hex(buf))
+    .bind(key, name.slice(0, 120), mime, clean.byteLength, Date.now(), await sha256Hex(clean))
     .run()
   return `/images/${key}`
 }

@@ -17,6 +17,8 @@ interface DuePost {
   title: string
   summary: string
   publish_at: number
+  password_hash: string | null
+  min_tier: string | null
 }
 
 export interface ScheduleResult {
@@ -29,7 +31,7 @@ export async function runScheduledPublish(env: Env): Promise<ScheduleResult> {
   const result: ScheduleResult = { published: 0, errors: [] }
   try {
     const { results } = await env.DB.prepare(
-      `SELECT id, slug, title, summary, publish_at FROM posts
+      `SELECT id, slug, title, summary, publish_at, password_hash, min_tier FROM posts
        WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= ? AND deleted_at IS NULL
        LIMIT 20`
     )
@@ -53,10 +55,17 @@ export async function runScheduledPublish(env: Env): Promise<ScheduleResult> {
         result.errors.push(`${p.title}: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
-    // 广播发布事件给服务端插件（发布同步 TG 频道等，见 src/hooks.ts）：与手动发布同一事件
+    // 广播发布事件给服务端插件（发布同步 TG 频道 / 广场等，见 src/hooks.ts）：与手动发布同一事件；
+    // locked = 加密/会员锁文标志，广场同步插件据此跳过（防泄漏清单同口径）
     for (const p of results ?? []) {
       if (!publishedIds.has(p.id)) continue
-      await firePostPublished(env, { slug: p.slug, title: p.title, summary: p.summary, via: 'scheduler' })
+      await firePostPublished(env, {
+        slug: p.slug,
+        title: p.title,
+        summary: p.summary,
+        via: 'scheduler',
+        locked: !!p.password_hash || (!!p.min_tier && p.min_tier !== 'all'),
+      })
     }
     // 汇总通知一条：发布了 0 篇不打扰；失败尽量报出来
     if (result.published > 0 || result.errors.length) {

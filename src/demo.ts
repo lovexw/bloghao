@@ -35,6 +35,9 @@ const WIPE_TABLES = [
   'pages',
   'tg_buffer',
   'sessions',
+  'members',
+  'member_sessions',
+  'member_points_log',
   'visit_log',
   'users',
   'settings',
@@ -164,6 +167,29 @@ async function seedAll(env: Env): Promise<void> {
     .bind(DEMO_ADMIN.username, hash, salt, DEMO_ADMIN.displayName, '', now, now)
   await db.batch([userStmt])
 
+  // 4.5) 演示会员（公示账号 demo / demo1234 + 背景板会员）与积分账本；
+  //      落库序 = plan.members 数组序（自增已重置，members.id = 下标 + 1，评论按此引用）
+  for (const [mi, m] of plan.members.entries()) {
+    const { hash, salt } = await hashPassword(m.password)
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO members (username, password_hash, salt, email, display_name, avatar, tier, points, status, created_at, updated_at, last_login_at)
+           VALUES (?, ?, ?, '', ?, '', ?, ?, 'active', ?, ?, ?)`
+        )
+        .bind(m.username, hash, salt, m.displayName, m.tier, m.points, m.createdAt, m.createdAt, m.createdAt),
+    ])
+    if (m.log.length) {
+      await db.batch(
+        m.log.map((r) =>
+          db
+            .prepare('INSERT INTO member_points_log (member_id, delta, reason, ref_id, note, created_at) VALUES (?, ?, ?, 0, ?, ?)')
+            .bind(mi + 1, r.delta, r.reason, r.note, r.createdAt)
+        )
+      )
+    }
+  }
+
   // 5) settings 全量（DEFAULT_SETTINGS 打底 + 演示站人设覆盖）
   const settings = { ...DEFAULT_SETTINGS, ...plan.settings }
   await batched(
@@ -185,14 +211,21 @@ async function seedAll(env: Env): Promise<void> {
   )
   const catIds = new Map(plan.categories.map((c, i) => [c.slug, i + 1]))
 
-  // 7) 文章（id = 下标 + 1，评论按此引用）+ 分类关联
+  // 7) 文章（id = 下标 + 1，评论按此引用）+ 分类关联；密码文先 hash（salt:hash，protect.ts 口径）
+  const pwHashes = new Map<string, string>()
+  for (const p of plan.posts) {
+    if (p.password && !pwHashes.has(p.slug)) {
+      const { hash, salt } = await hashPassword(p.password)
+      pwHashes.set(p.slug, `${salt}:${hash}`)
+    }
+  }
   const postStmts = plan.posts.map((p) =>
     db
       .prepare(
-        `INSERT INTO posts (slug, title, content, summary, cover, tags, status, pinned, views, likes, author_id, published_at, publish_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`
+        `INSERT INTO posts (slug, title, content, summary, cover, tags, status, pinned, views, likes, author_id, min_tier, password_hash, published_at, publish_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(p.slug, p.title, p.content, p.summary, p.cover, p.tags, p.status, p.pinned, p.views, p.likes, p.publishedAt, p.publishAt, p.createdAt, p.updatedAt)
+      .bind(p.slug, p.title, p.content, p.summary, p.cover, p.tags, p.status, p.pinned, p.views, p.likes, p.minTier, pwHashes.get(p.slug) ?? '', p.publishedAt, p.publishAt, p.createdAt, p.updatedAt)
   )
   const catLinkStmts = plan.posts
     .filter((p) => catIds.has(p.cat))
@@ -211,15 +244,15 @@ async function seedAll(env: Env): Promise<void> {
     )
   }
 
-  // 9) 评论（id = 下标 + 1，parentId 已按计划序号落好）
+  // 9) 评论（id = 下标 + 1，parentId 已按计划序号落好；memberId 挂会员徽标）
   await batched(
     db,
     plan.comments.map((c) =>
       db
         .prepare(
-          'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, nickname, email, website, content, status, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+          'INSERT INTO comments (post_id, weibo_id, parent_id, is_admin, member_id, nickname, email, website, content, status, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )
-        .bind(c.postId, c.weiboId, c.parentId, c.isAdmin, c.nickname, '', c.website, c.content, c.status, '', c.createdAt)
+        .bind(c.postId, c.weiboId, c.parentId, c.isAdmin, c.memberId, c.nickname, '', c.website, c.content, c.status, '', c.createdAt)
     )
   )
 

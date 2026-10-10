@@ -67,7 +67,7 @@
 - **4.3 图片**：别用图片承载纯文本（算法无法转换其中的文字）；透明底图片注意在 Dark Mode 正文底色 `#191919` 上的对比度。
 - **4.4 SVG**：如需 SVG 线条颜色跟随深浅色，使用 `stroke="currentColor" fill="currentColor"`。
 - **4.5 技巧**：`data-no-dark` 让单个节点跳过转换；**不要使用 `!important`**；确认无碍的告警可用 `data-ignore-dm="low-contrast text-bg-gradient"` 豁免检测。
-- **博客号**：`!important` 在净化时被剥除、体检提示；`data-no-dark` / `data-ignore-dm` 属性原样保留；wechat 主题通过 `prefers-color-scheme` 实现整站 Dark Mode。
+- **博客号**：`!important` 在净化时被剥除、体检提示；`data-no-dark` / `data-ignore-dm` 属性原样保留；wechat 主题默认保持明亮配色（站点不做 `prefers-color-scheme` 自动 Dark Mode）。
 
 ## 5. 博客号体检规则一览（编辑器 → 体检）
 

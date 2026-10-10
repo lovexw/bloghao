@@ -10,6 +10,8 @@
  * - 插件系统：window.BlogHao.registerPlugin（见 docs/PLUGINS.md）
  */
 
+import { loadEmoji, emojiGridHtml, emojiEditorImg, stripEmojiImgs, insertToken } from './emoji.js'
+
 function esc(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -31,25 +33,52 @@ async function api(path, opts = {}) {
   return data
 }
 
-/* ---------- 上传前图片压缩与 WebP 转换（编辑器/封面/OG 与前台发布器共用逻辑，两端各自落地） ----------
- * JPEG/PNG/WebP 且大于阈值时：最长边压到 MAX_DIM，优先转 WebP（质量 0.82，比 JPEG 约再省 1/4 体积，
- * 透明也不丢——透明 PNG / 带 alpha 的 WebP 都能转）；旧浏览器 canvas 编码不了 WebP（toBlob 静默回退
- * 成 PNG），按产物 type 识别后走原 JPEG/PNG 口径：非 PNG 一律 JPEG，透明 PNG 只在超尺寸时缩 PNG。
- * GIF（动图会压丢帧）与小于阈值的图原样返回；产物不比原图小也用原图。失败时返回原文件，不阻塞上传。 */
-const IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 300 * 1024, QUALITY: 0.82 }
+/* 动态 file input 必须先挂到 DOM 再 click：iOS Safari 对游离节点的选图器能打开、
+ * 能选照片，但 change 不回填（文件永远回不到页面），上传静默失败且无任何提示——
+ * 手机上「选了图却没动静」即此。挂 body 隐藏，读完文件 / 用户取消即摘除。
+ * app.js 的媒体库 / 头像 /favicon / OG 卡图与编辑器图片、视频、封面共用此入口。 */
+export function pickFiles(accept, multiple, onFiles) {
+  const input = document.createElement('input')
+  input.type = 'file'
+  if (accept) input.accept = accept
+  if (multiple) input.multiple = true
+  input.hidden = true
+  input.addEventListener('cancel', () => input.remove())
+  input.addEventListener('change', () => {
+    const files = input.files
+    input.remove()
+    onFiles(files)
+  })
+  document.body.appendChild(input)
+  input.click()
+}
 
-async function compressImage(file) {
+/* ---------- 上传前图片压缩与 WebP 转换（编辑器/封面/OG/后台发布器共用，app.js 直接 import；
+ * 前台 site.js 是同参数同行为的 ES5 手工镜像，改任一侧记得同步另一侧） ----------
+ * JPEG/PNG/WebP 且「超阈值或最长边超 MAX_DIM」时：先降尺寸再编码，优先转 WebP（质量 0.75——
+ * WebP 压缩率高，0.75 已是业内通行的视觉无损甜点，比同画质 JPEG 约再省三成，透明也不丢——
+ * 透明 PNG / 带 alpha 的 WebP 都能转）；旧浏览器 canvas 编码不了 WebP（toBlob 静默回退
+ * 成 PNG），按产物 type 识别后走 JPEG/PNG 口径（质量 0.82）：非 PNG 一律 JPEG，透明 PNG 只缩尺寸不转格式。
+ * GIF（动图会压丢帧）与小且尺寸合规的图原样返回；产物不比原图小也用原图。失败时返回原文件，不阻塞上传。 */
+const IMG_COMPRESS = { MAX_DIM: 2000, MIN_BYTES: 150 * 1024, WEBP_QUALITY: 0.75, FALLBACK_QUALITY: 0.82 }
+
+export async function compressImage(file) {
   try {
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= IMG_COMPRESS.MIN_BYTES) return file
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file
     const bmp = await createImageBitmap(file)
     const scale = Math.min(1, IMG_COMPRESS.MAX_DIM / Math.max(bmp.width, bmp.height))
+    // 体积与尺寸都合规的直通：重编码不会更小，白耗 CPU 还平白叠一代有损
+    if (file.size <= IMG_COMPRESS.MIN_BYTES && scale >= 1) {
+      bmp.close?.()
+      return file
+    }
     const w = Math.max(1, Math.round(bmp.width * scale))
     const h = Math.max(1, Math.round(bmp.height * scale))
     const cv = document.createElement('canvas')
     cv.width = w
     cv.height = h
     cv.getContext('2d').drawImage(bmp, 0, 0, w, h)
-    const webp = await new Promise((r) => cv.toBlob(r, 'image/webp', IMG_COMPRESS.QUALITY))
+    const webp = await new Promise((r) => cv.toBlob(r, 'image/webp', IMG_COMPRESS.WEBP_QUALITY))
     if (webp?.type === 'image/webp') {
       bmp.close?.()
       if (webp.size >= file.size) return file
@@ -59,7 +88,7 @@ async function compressImage(file) {
     const toJpeg = file.type !== 'image/png' || !hasAlpha(bmp)
     bmp.close?.()
     if (scale >= 1 && !toJpeg) return file
-    const blob = await new Promise((r) => cv.toBlob(r, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.QUALITY))
+    const blob = await new Promise((r) => cv.toBlob(r, toJpeg ? 'image/jpeg' : 'image/png', IMG_COMPRESS.FALLBACK_QUALITY))
     if (!blob || blob.size >= file.size) return file
     const name = (file.name || 'image').replace(/\.[^.]+$/, '') + (toJpeg ? '.jpg' : '.png')
     return new File([blob], name, { type: toJpeg ? 'image/jpeg' : 'image/png' })
@@ -194,6 +223,7 @@ const IC = {
   ul: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="18" r="1" fill="currentColor"/><path d="M10 6h10M10 12h10M10 18h10"/></svg>',
   ol: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><text x="3" y="8" font-size="7" fill="currentColor" stroke="none">1.</text><text x="3" y="18" font-size="7" fill="currentColor" stroke="none">2.</text><path d="M11 6h9M11 16h9"/></svg>',
   hr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h16M8 6h8M8 18h8" opacity="0.5"/></svg>',
+  table: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10"/></svg>',
   link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.1"/><path d="M14 10a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.1"/></svg>',
   image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5.5-5.5L14 17l3-3 4 4"/></svg>',
   video: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m10 9.5 5 2.5-5 2.5z" fill="currentColor" stroke="none"/></svg>',
@@ -201,6 +231,7 @@ const IC = {
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6h5"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   cloud: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.4-9A6 6 0 0 1 18 8.5 4 4 0 0 1 17.5 18z"/></svg>',
+  find: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg>',
 }
 
 /* ---------------- 插件系统 ---------------- */
@@ -410,7 +441,11 @@ function htmlToMd(html) {
       else if (t === 'del' || t === 's') out += `~~${inner.trim()}~~`
       else if (t === 'code') out += '`' + n.textContent + '`'
       else if (t === 'a') out += `[${inner.trim()}](${n.getAttribute('href') || ''})`
-      else if (t === 'img') out += `![${n.getAttribute('alt') || ''}](${n.getAttribute('src') || ''})`
+      else if (t === 'img') {
+        // 编辑器插入的表情图还原成文本码（不转 markdown 图片语法）；data-emoji 值就是 [微笑] 这类码
+        const emojiCode = n.getAttribute('data-emoji')
+        out += emojiCode || `![${n.getAttribute('alt') || ''}](${n.getAttribute('src') || ''})`
+      }
       else out += inner
     })
     return out
@@ -436,7 +471,27 @@ function htmlToMd(html) {
         lines.push((t === 'ul' ? '- ' : `${i++}. `) + inline(li).trim())
       })
     } else if (t === 'hr') lines.push('---')
-    else if (t === 'img') lines.push(`![](${n.getAttribute('src') || ''})`)
+    else if (t === 'table') {
+      // GFM 管道表格：首行当表头；单元格内的竖线与换行转义掉防破表。
+      // 整表合并成一个元素（行间单 \n）——lines 是用空行 join 的，表格行若逐行 push 会散成段落
+      const trs = [...n.querySelectorAll('tr')]
+      if (!trs.length) return
+      const cells = (tr) =>
+        [...tr.querySelectorAll(':scope > th, :scope > td')].map((c) => {
+          const text = inline(c).trim().replace(/\|/g, '\\|').replace(/\n/g, ' ')
+          return text || ' '
+        })
+      const head = cells(trs[0])
+      const colCount = head.length
+      if (!colCount) return
+      const rows = ['| ' + head.join(' | ') + ' |', '| ' + Array.from({ length: colCount }, () => '---').join(' | ') + ' |']
+      for (const tr of trs.slice(1)) {
+        const row = cells(tr)
+        rows.push('| ' + Array.from({ length: colCount }, (_, i) => row[i] || ' ').join(' | ') + ' |')
+      }
+      lines.push(rows.join('\n'))
+    }
+    else if (t === 'img') lines.push(n.getAttribute('data-emoji') || `![](${n.getAttribute('src') || ''})`)
     else {
       const text = inline(n).trim()
       if (text) lines.push(text)
@@ -481,6 +536,8 @@ export async function mountEditor(root, postId, opts = {}) {
     published_at: null,
     publish_at: null,
     og_image: '',
+    minTier: 'all',
+    hasPassword: false,
   }
   if (postId) {
     const d = await api(`/admin/posts/${postId}`)
@@ -505,6 +562,7 @@ export async function mountEditor(root, postId, opts = {}) {
     <span class="ed-status-pill chip ${post.status === 'published' ? 'chip-green' : 'chip-gray'}" id="ed-pill">${post.status === 'published' ? '已发布' : '草稿'}</span>
     <span class="ed-save-state" id="ed-save-state">—</span>
     <div class="ed-top-ops">
+      <button class="btn btn-sm" id="ed-find" title="查找替换 ⌘F">${IC.find} 查找</button>
       <button class="btn btn-sm" id="ed-check" title="按微信排版规范检查正文">${IC.check} 体检</button>
       <button class="btn btn-sm" id="ed-preview">${IC.eye} 预览</button>
       <button class="btn btn-sm" id="ed-save">${IC.cloud} 存草稿</button>
@@ -536,8 +594,10 @@ export async function mountEditor(root, postId, opts = {}) {
     <span class="ed-sep"></span>
     <button class="ed-btn" data-act="link" title="链接">${IC.link}</button>
     <button class="ed-btn" data-act="image" title="图片（可粘贴 / 拖拽）">${IC.image}</button>
+    <button class="ed-btn" data-act="table" title="表格">${IC.table}</button>
     <button class="ed-btn" data-act="video" title="视频">${IC.video}</button>
     <button class="ed-btn" data-act="clear" title="清除格式">${IC.eraser}</button>
+    <button class="ed-btn" data-act="emoji" title="微信表情">😊</button>
     <span class="ed-sep"></span>
     <span id="ed-plugin-slot" style="display:flex;gap:2px;"></span>
   </div>
@@ -576,6 +636,26 @@ export async function mountEditor(root, postId, opts = {}) {
       </select>
       <div style="font-size:12px;color:var(--sub);margin-top:6px;">在后台「分类」里维护</div>
 
+      <div class="drawer-title">谁能看</div>
+      <select class="input" id="ed-min-tier">
+        <option value="all"${post.minTier === 'member' || post.minTier === 'coffee' || post.minTier === 'top' ? '' : ' selected'}>所有人可见</option>
+        <option value="member"${post.minTier === 'member' ? ' selected' : ''}>仅登录会员</option>
+        <option value="coffee"${post.minTier === 'coffee' ? ' selected' : ''}>咖啡会员及以上</option>
+        <option value="top"${post.minTier === 'top' ? ' selected' : ''}>仅顶级会员</option>
+      </select>
+      <div style="font-size:12px;color:var(--sub);margin-top:6px;">设为会员可见后，游客与低档位会员只能读到试读部分（正文在服务端截断，不整篇下发）</div>
+
+      <div class="drawer-title">访问密码</div>
+      <div class="switch-row">
+        <div><div class="switch-label">加密访问</div><div class="switch-sub">访客需输入密码才能阅读全文</div></div>
+        <label class="switch"><input type="checkbox" id="ed-locked" ${post.hasPassword ? 'checked' : ''}><span class="track"></span></label>
+      </div>
+      <div id="ed-lock-picker" style="display:none;">
+        <input class="input" type="password" id="ed-password" maxlength="64" autocomplete="new-password"
+          placeholder="${post.hasPassword ? '已设置密码：留空保持不变' : '输入这篇文章的访问密码'}">
+        <div style="font-size:12px;color:var(--sub);margin-top:6px;">${post.hasPassword ? '直接输入新密码即更换；取消勾选并保存即解除加密' : '取消勾选并保存即解除加密；密码只在服务端做单向哈希，不回显'}。与「谁能看」并用时密码墙优先，解锁后再按档位判定</div>
+      </div>
+
       <div class="drawer-title">链接 Slug</div>
       <input class="input" id="ed-slug" value="${esc(post.slug)}" placeholder="留空则根据标题自动生成">
 
@@ -609,6 +689,7 @@ export async function mountEditor(root, postId, opts = {}) {
     <span id="ed-count">0 字</span>
     <span id="ed-read">约 1 分钟</span>
     <span class="spacer"></span>
+    <button class="ed-link" id="ed-focus-toggle" title="专注模式：隐藏界面只留写作区，Esc 退出">专注</button>
     <button class="ed-link" id="ed-md-toggle" title="Markdown 与富文本互转">Markdown</button>
   </div>
 </div>`
@@ -621,7 +702,74 @@ export async function mountEditor(root, postId, opts = {}) {
   pluginSlotEl = document.getElementById('ed-plugin-slot')
   saveSelectionHook = saveSelection
 
+  /* ---------- 本地草稿兜底（localStorage） ----------
+   * 服务端自动保存（1.5s）是主线，这里是最后防线：保存成功前内容只活在内存里，
+   * 弱网断线 / 崩溃 / 误关页面就全丢。键按文章 id（新文章 ed-draft-new），
+   * 写入节流 2s + 卸载前同步补写；保存成功即清。隐私加固浏览器访问 localStorage
+   * 即抛 SecurityError：存取全部吞异常，兜底失效不影响写作。 */
+  const draftKey = () => 'ed-draft-' + (post.id || 'new')
+  let draftTimer = null
+  function writeLocalDraft() {
+    clearTimeout(draftTimer)
+    try {
+      const content = mdMode ? mdArea.value : editor.innerHTML
+      if (content.length > 2 * 1024 * 1024) return // 超配额口径，静默跳过（服务端自动保存仍在）
+      localStorage.setItem(
+        draftKey(),
+        JSON.stringify({ t: titleEl.value, c: content, m: mdMode ? 'md' : 'rich', at: Date.now() })
+      )
+    } catch { /* 配额满 / 隐私模式等，备份失败不阻塞写作 */ }
+  }
+  function clearLocalDraft() {
+    try { localStorage.removeItem(draftKey()) } catch { /* ignore */ }
+    // 新文章落库后换了键，旧 'new' 键一起清掉（此刻服务端草稿已接住内容）
+    if (post.id) { try { localStorage.removeItem('ed-draft-new') } catch { /* ignore */ } }
+  }
+  // 写入节流：连续输入不刷屏 localStorage（写入是同步的，会卡输入）
+  function scheduleLocalDraft() {
+    clearTimeout(draftTimer)
+    draftTimer = setTimeout(writeLocalDraft, 2000)
+  }
+
+
   editor.innerHTML = post.content || ''
+
+  /* ---------- 本地备份恢复检查：备份比服务端内容新且不同 → 弹窗让用户二选一 ----------
+   * 只在有差异时问（老文章正常重进不该被打扰）；恢复支持 md 备份（先进 Markdown 模式再回填） */
+  checkLocalDraft()
+  function checkLocalDraft() {
+    let bak = null
+    try { bak = JSON.parse(localStorage.getItem(draftKey()) || 'null') } catch { /* 脏数据当不存在 */ }
+    if (!bak || typeof bak.c !== 'string') return
+    const serverHtml = post.content || ''
+    const same = bak.m === 'md' ? false : bak.c === serverHtml
+    if (same || !bak.c.trim()) return
+    const when = bak.at ? new Date(bak.at).toLocaleString('zh-CN') : '未知时间'
+    const m = modal(
+      `<div class="modal-head"><span>发现未同步的本地备份</span><button class="modal-close" data-close>×</button></div>
+      <div class="modal-body"><div style="font-size:14px;line-height:1.8;">
+        上次编辑（${esc(when)}）的内容可能没保存到服务器——停在本页时断网、崩溃或误关都会造成这种情况。
+        ${bak.m === 'md' ? '备份是 Markdown 模式的纯文本。' : ''}要恢复吗？</div></div>
+      <div class="modal-foot"><button class="btn" id="ld-drop">丢弃备份</button><button class="btn btn-primary" id="ld-restore">恢复备份</button></div>`
+    )
+    m.mask.querySelector('#ld-restore').addEventListener('click', async () => {
+      m.close()
+      if (bak.m === 'md') {
+        await enterMdMode()
+        mdArea.value = bak.c
+      } else {
+        editor.innerHTML = bak.c
+      }
+      markDirty() // 立即触发自动保存，把恢复的内容推上服务端
+      updateCount()
+      toast('本地备份已恢复，正在自动保存…')
+    })
+    m.mask.querySelector('#ld-drop').addEventListener('click', () => {
+      m.close()
+      clearLocalDraft()
+      toast('已丢弃本地备份')
+    })
+  }
 
   /* ---------- 选择保存 / 恢复 ---------- */
   function saveSelection() {
@@ -711,8 +859,17 @@ export async function mountEditor(root, postId, opts = {}) {
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress && onProgress(Math.round((e.loaded / e.total) * 100))
       xhr.onload = () => {
         const d = xhr.response || {}
-        if (xhr.status >= 200 && xhr.status < 300) resolve(d)
-        else reject(new Error(d.error || '上传失败'))
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(d)
+          return
+        }
+        // 会话过期：本模块不持后台路由状态，回 /admin/ 让 SPA 重新校验会话（无会话即落登录页）
+        if (xhr.status === 401) {
+          location.href = '/admin/'
+          reject(new Error('登录已过期，请重新登录'))
+          return
+        }
+        reject(new Error(d.error || '上传失败'))
       }
       xhr.onerror = () => reject(new Error('网络错误，上传失败'))
       const fd = new FormData()
@@ -732,6 +889,7 @@ export async function mountEditor(root, postId, opts = {}) {
     dirty = true
     dirtySeq++
     saveState.textContent = '有未保存更改'
+    scheduleLocalDraft()
     clearTimeout(saveTimer)
     // catch 兜底：md 模式转换失败等异常不能变成 unhandled rejection
     saveTimer = setTimeout(() => save(false).catch(() => {}), 1500)
@@ -739,17 +897,31 @@ export async function mountEditor(root, postId, opts = {}) {
 
   function collect(extra = {}) {
     const catVal = document.getElementById('ed-category').value
+    // 查找高亮不进存库内容：序列化前剥掉 mark——只剥 DOM 不清 findHits，
+    // 自动保存（collect 的主调用方）不能毁掉用户正在进行的查找/替换状态
+    if (!mdMode) stripFindMarks()
+    // 访问密码只在「有话可说」时才带上 password 键（服务端缺键即保留）：
+    // 勾选且填了 = 设置/更换；取消勾选且原来加密 = 空串解除；
+    // 勾选但没填 = 保持现状（新建文另由 publish() 拦下要求必填），自动保存永远不会误清密码
+    let passwordPatch = {}
+    if (!lockSwitch.checked) {
+      if (post.hasPassword) passwordPatch = { password: '' }
+    } else if (passwordInput.value) {
+      passwordPatch = { password: passwordInput.value }
+    }
     return {
       title: titleEl.value.trim(),
-      content: editor.innerHTML,
+      content: stripEmojiImgs(editor.innerHTML),
       summary: document.getElementById('ed-summary').value.trim(),
       cover: post.cover,
       tags: post.tags,
       categoryId: catVal ? Number(catVal) : null,
       pinned: document.getElementById('ed-pinned').checked,
+      minTier: document.getElementById('ed-min-tier').value,
       slug: document.getElementById('ed-slug').value.trim(),
       status: post.status,
       publishAt: post.publish_at,
+      ...passwordPatch,
       ...extra,
     }
   }
@@ -785,6 +957,7 @@ export async function mountEditor(root, postId, opts = {}) {
         if (dirtySeq === seqAtSave) {
           dirty = false
           clearTimeout(saveTimer)
+          clearLocalDraft()
           const t = new Date()
           saveState.textContent = `已保存 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
         } else {
@@ -837,6 +1010,12 @@ export async function mountEditor(root, postId, opts = {}) {
     if (!titleEl.value.trim()) {
       titleEl.focus()
       return toast('发布前先取个标题吧', true)
+    }
+    // 新文章开了加密但还没填密码：拦下来要求必填（老文章留空 = 保持原密码，不拦）
+    if (lockSwitch.checked && !passwordInput.value && !post.hasPassword) {
+      lockPicker.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      passwordInput.focus()
+      return toast('开了加密访问就要填一个访问密码', true)
     }
     if (mdMode) {
       // Markdown → HTML 转换失败要明确告知（弱网/接口 500 时不能「点了没反应」）
@@ -954,6 +1133,8 @@ export async function mountEditor(root, postId, opts = {}) {
       await linkDialog()
     } else if (act === 'image') {
       await imageDialog()
+    } else if (act === 'table') {
+      insertTable()
     } else if (act === 'video') {
       pickVideoFile()
     } else if (act === 'clear') {
@@ -961,6 +1142,8 @@ export async function mountEditor(root, postId, opts = {}) {
       document.execCommand('removeFormat')
       document.execCommand('formatBlock', false, 'p')
       markDirty()
+    } else if (act === 'emoji') {
+      await emojiDialog()
     }
     refreshToolbarState()
   })
@@ -972,31 +1155,294 @@ export async function mountEditor(root, postId, opts = {}) {
   document.addEventListener('selectionchange', onSelectionChange)
 
   /* ---------- 对话框们 ---------- */
-  function linkDialog() {
+  /* ---------- 微信表情（文本码体系，渲染层 [微笑]→站内小图；存库永远是文本码） ---------- */
+  async function emojiDialog() {
+    await loadEmoji()
+    const m = modal(
+      `<div class="modal-head"><span>微信表情</span><button class="modal-close" data-close>×</button></div>
+      <div class="modal-body wxq-modal-body">${emojiGridHtml()}</div>`
+    )
+    // 点击插入不关面板（连续选表情）；富文本插 img（保存时反替换为文本码），Markdown 模式直接插码
+    m.mask.addEventListener('click', (e) => {
+      const cell = e.target.closest('[data-wxq]')
+      if (!cell) return
+      const name = cell.getAttribute('data-wxq')
+      if (mdMode) {
+        insertToken(mdArea, `[${name}]`)
+      } else {
+        insertHTML(emojiEditorImg(name))
+      }
+      markDirty()
+    })
+  }
+
+  /* ---------- 卡片 HTML 组装（服务端 src/linkmeta.ts linkCardHtml 的手工镜像，
+     两侧同改；esc 为编辑器内的属性转义） ---------- */
+  function clampCardText(s, n) {
+    const t = String(s || '').replace(/\s+/g, ' ').trim()
+    const chars = Array.from(t)
+    return chars.length > n ? chars.slice(0, n).join('') + '…' : t
+  }
+  function hostOfUrl(u) {
+    try { return new URL(u).hostname } catch { return '' }
+  }
+  function linkCardHtmlClient(input) {
+    const host = clampCardText(input.siteName, 30) || hostOfUrl(input.url)
+    const title = clampCardText(input.title, 40) || host || '打开链接'
+    const desc = clampCardText(input.description, 64)
+    const img = String(input.image || '').trim()
+    // 站内相对地址（/post/…）解析不出 host，host 位可能为空——空则不出该行
+    const hostPart = host ? `<span class="lc-host">${esc(host)}</span>` : ''
+    // 内部全用 span（块级 div 会在 <p> 内插入时把段落截断、卡片散架，与服务端同口径）
+    const textPart =
+      `<span class="lc-title">${esc(title)}</span>` +
+      (desc ? `<span class="lc-desc">${esc(desc)}</span>` : '') +
+      hostPart
+    const body = img
+      ? `<span class="lc-body"><span class="lc-text">${textPart}</span><img class="lc-img" src="${esc(img)}" alt="" loading="lazy"></span>`
+      : `<span class="lc-body"><span class="lc-text">${textPart}</span></span>`
+    return `<a class="link-card" data-link-card="link-card" href="${esc(input.url)}" target="_blank" rel="noopener noreferrer">${body}</a><p><br></p>`
+  }
+
+  async function linkDialog() {
     saveSelection()
     const selText = window.getSelection().toString()
-    const m = modal(`<div class="modal-head"><span>插入链接</span><button class="modal-close" data-close>×</button></div>
+    // Markdown 模式：插入目标只有 textarea，弹窗退化成「普通链接」单页签（卡片/文章选择是富文本能力）
+    if (mdMode) {
+      const m = modal(`<div class="modal-head"><span>插入链接</span><button class="modal-close" data-close>×</button></div>
       <div class="modal-body">
-        <div class="auth-field"><label>链接地址</label><input class="input" id="lk-url" placeholder="https://…"></div>
+        <div class="auth-field"><label>链接地址</label><input class="input" id="lk-url2" placeholder="https://…"></div>
         <div class="auth-field"><label>文字（留空则显示地址）</label><input class="input" id="lk-text" value="${esc(selText)}"></div>
       </div>
       <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="lk-ok">插入</button></div>`)
+      m.mask.querySelector('#lk-url2').focus()
+      const doMd = () => {
+        let url = m.mask.querySelector('#lk-url2').value.trim()
+        const text = m.mask.querySelector('#lk-text').value.trim()
+        if (!url) return
+        if (!/^(https?:\/\/|mailto:|#|\/)/i.test(url)) url = 'https://' + url
+        m.close()
+        insertToken(mdArea, `[${text || url}](${url})`)
+        markDirty()
+      }
+      m.mask.querySelector('#lk-ok').addEventListener('click', doMd)
+      m.mask.addEventListener('keydown', (e) => {
+        if (e.isComposing || e.keyCode === 229) return
+        if (e.key === 'Enter') doMd()
+      })
+      return
+    }
+    const m = modal(`<div class="modal-head"><span>插入链接</span><button class="modal-close" data-close>×</button></div>
+      <div class="modal-body upload-dialog">
+        <div class="tab-line"><button class="is-active" data-tab="card">网址卡片</button><button data-tab="plain">普通链接</button><button data-tab="post">站内文章</button></div>
+        <div data-pane="card">
+          <div class="auth-field"><label>链接地址</label><input class="input" id="lk-url" placeholder="https://…"></div>
+          <div id="lk-meta" style="display:none;">
+            <div class="lk-meta-row">
+              ${'' /* 预览由抓取结果回填 */}
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--sub);margin-top:6px;">自动抓取标题、摘要与配图生成卡片；抓不到时用域名占位。想用普通的蓝色超链接请切「普通链接」。</div>
+        </div>
+        <div data-pane="plain" style="display:none;">
+          <div class="auth-field"><label>链接地址</label><input class="input" id="lk-url2" placeholder="https://…"></div>
+          <div class="auth-field"><label>文字（留空则显示地址）</label><input class="input" id="lk-text" value="${esc(selText)}"></div>
+        </div>
+        <div data-pane="post" style="display:none;">
+          <input class="input" id="lk-q" placeholder="搜索文章标题，留空看最新发布">
+          <div class="lk-post-list" id="lk-posts"><div style="color:var(--sub);font-size:13px;padding:20px;text-align:center;">加载中…</div></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+            <span id="lk-page" style="font-size:12px;color:var(--sub);"></span>
+            <span style="display:flex;gap:8px;">
+              <button class="btn btn-sm" id="lk-prev" disabled>上一页</button>
+              <button class="btn btn-sm" id="lk-next" disabled>下一页</button>
+            </span>
+          </div>
+          <div style="font-size:12px;color:var(--sub);margin-top:8px;">选择文章后可选插入样式；仅列已发布文章，加密文会带锁标记。</div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <label id="lk-style" style="display:none;align-items:center;gap:6px;font-size:13px;color:var(--sub);cursor:pointer;margin-right:auto;">
+          <input type="radio" name="lk-style" value="card" checked>卡片
+          <input type="radio" name="lk-style" value="link" style="margin-left:8px;">超链接
+        </label>
+        <button class="btn" data-close>取消</button><button class="btn btn-primary" id="lk-ok">插入</button>
+      </div>`)
     m.mask.querySelector('#lk-url').focus()
+
+    /* ---- 页签 1：网址卡片 ---- */
+    const metaState = { fetched: '', meta: null, loading: false } // 抓取结果缓存：预览与插入共用，不重复打接口
+    const metaBox = m.mask.querySelector('#lk-meta')
+    let metaTimer = null
+    async function fetchCardMeta(url) {
+      metaState.loading = true
+      metaBox.style.display = ''
+      metaBox.innerHTML = '<div style="font-size:12px;color:var(--sub);padding:8px 0;">正在抓取页面信息…</div>'
+      try {
+        const d = await api('/admin/tools/linkmeta', { method: 'POST', body: { url } })
+        if (metaState.fetched !== url) return // 用户又改了地址，过期结果不回填
+        metaState.meta = d.meta || {}
+        const meta = metaState.meta
+        const img = meta.image ? `<img class="lk-meta-img" src="${esc(meta.image)}" alt="">` : ''
+        const title = meta.title || hostOfUrl(url) || url
+        const desc = meta.description ? `<div class="lk-meta-desc">${esc(clampCardText(meta.description, 64))}</div>` : ''
+        metaBox.innerHTML =
+          `<div style="font-size:12px;color:var(--sub);margin-bottom:6px;">将生成以下卡片：</div>` +
+          `<div class="lk-meta-card"><div class="lk-meta-text"><div class="lk-meta-title">${esc(clampCardText(title, 40))}</div>${desc}</div>${img}</div>`
+      } catch (e) {
+        if (metaState.fetched === url) {
+          metaState.meta = null
+          metaBox.innerHTML = `<div style="font-size:12px;color:var(--sub);padding:8px 0;">抓取失败（${esc(e.message || '网络错误')}），将用域名占位生成卡片。</div>`
+        }
+      } finally {
+        metaState.loading = false
+      }
+    }
+    m.mask.querySelector('#lk-url').addEventListener('input', (e) => {
+      const url = e.target.value.trim()
+      metaState.fetched = url
+      metaState.meta = null
+      clearTimeout(metaTimer)
+      if (!url) { metaBox.style.display = 'none'; metaBox.innerHTML = ''; return }
+      metaTimer = setTimeout(() => fetchCardMeta(url), 500)
+    })
+
+    /* ---- 页签 3：站内文章 ---- */
+    let postPage = 1
+    let postTotalPages = 1
+    let postQ = ''
+    let selectedPost = null
+    const postList = m.mask.querySelector('#lk-posts')
+    async function loadPosts() {
+      postList.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:20px;text-align:center;">加载中…</div>'
+      try {
+        const d = await api(`/admin/posts/lookup?page=${postPage}${postQ ? `&q=${encodeURIComponent(postQ)}` : ''}`)
+        postTotalPages = d.totalPages || 1
+        if (!d.items.length) {
+          postList.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:20px;text-align:center;">没有匹配的文章</div>'
+        } else {
+          postList.innerHTML = d.items
+            .map(
+              (p) => `<div class="lk-post-item${selectedPost && selectedPost.id === p.id ? ' is-active' : ''}" data-id="${p.id}" data-slug="${esc(p.slug)}" data-title="${esc(p.title)}" data-cover="${esc(p.cover)}" data-summary="${esc(p.summary)}" data-pw="${p.hasPassword ? 1 : 0}" data-tier="${esc(p.minTier)}">
+              <div class="lk-post-title">${esc(p.title)}${p.hasPassword ? ' 🔒' : ''}${p.minTier && p.minTier !== 'all' ? ' · 会员' : ''}</div>
+              ${p.cover ? `<img class="lk-post-cover" src="${esc(p.cover)}" alt="" loading="lazy">` : ''}
+            </div>`
+            )
+            .join('')
+        }
+        m.mask.querySelector('#lk-page').textContent = d.total ? `共 ${d.total} 篇 · ${d.page}/${postTotalPages} 页` : ''
+        m.mask.querySelector('#lk-prev').disabled = postPage <= 1
+        m.mask.querySelector('#lk-next').disabled = postPage >= postTotalPages
+      } catch (e) {
+        postList.innerHTML = `<div style="color:var(--sub);font-size:13px;padding:20px;text-align:center;">${esc(e.message || '加载失败')}</div>`
+      }
+    }
+    let qTimer = null
+    m.mask.querySelector('#lk-q').addEventListener('input', (e) => {
+      clearTimeout(qTimer)
+      qTimer = setTimeout(() => {
+        postQ = e.target.value.trim()
+        postPage = 1
+        loadPosts()
+      }, 300)
+    })
+    m.mask.querySelector('#lk-prev').addEventListener('click', () => { if (postPage > 1) { postPage--; loadPosts() } })
+    m.mask.querySelector('#lk-next').addEventListener('click', () => { if (postPage < postTotalPages) { postPage++; loadPosts() } })
+    postList.addEventListener('click', (e) => {
+      const item = e.target.closest('.lk-post-item')
+      if (!item) return
+      selectedPost = {
+        slug: item.dataset.slug,
+        title: item.dataset.title,
+        cover: item.dataset.cover,
+        summary: item.dataset.summary,
+        pw: item.dataset.pw === '1',
+        tier: item.dataset.tier,
+      }
+      postList.querySelectorAll('.lk-post-item').forEach((el) => el.classList.remove('is-active'))
+      item.classList.add('is-active')
+      // 站内文打开样式选择（默认卡片）
+      m.mask.querySelector('#lk-style').style.display = 'flex'
+    })
+    loadPosts()
+
+    /* ---- 页签切换 ---- */
+    m.mask.querySelectorAll('.tab-line button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        m.mask.querySelectorAll('.tab-line button').forEach((b) => b.classList.remove('is-active'))
+        btn.classList.add('is-active')
+        const tab = btn.dataset.tab
+        m.mask.querySelectorAll('[data-pane]').forEach((p) => { p.style.display = p.dataset.pane === tab ? '' : 'none' })
+        // 站内文章页签显示样式选择，其余隐藏
+        m.mask.querySelector('#lk-style').style.display = tab === 'post' && selectedPost ? 'flex' : 'none'
+        if (tab === 'card') m.mask.querySelector('#lk-url').focus()
+        else if (tab === 'plain') m.mask.querySelector('#lk-url2').focus()
+        else m.mask.querySelector('#lk-q').focus()
+      })
+    })
+
+    /* ---- 插入 ---- */
     const ok = m.mask.querySelector('#lk-ok')
-    const doInsert = () => {
-      let url = m.mask.querySelector('#lk-url').value.trim()
-      const text = m.mask.querySelector('#lk-text').value.trim()
-      if (!url) return
-      if (!/^(https?:\/\/|mailto:|#|\/)/i.test(url)) url = 'https://' + url
+    const doInsert = async () => {
+      const activeTab = m.mask.querySelector('.tab-line .is-active').dataset.tab
+      if (activeTab === 'card') {
+        let url = m.mask.querySelector('#lk-url').value.trim()
+        if (!url) return
+        if (!/^(https?:\/\/|mailto:|#|\/)/i.test(url)) url = 'https://' + url
+        // 预览抓成功过的结果直接用（metaState 缓存）；没等到就插入则用域名占位
+        let meta = metaState.fetched === url ? metaState.meta || null : null
+        if (metaState.loading && metaState.fetched === url) {
+          toast('正在抓取页面信息，稍等片刻再插入可得完整卡片；已先用占位插入', true)
+        }
+        const title = (meta && meta.title) || hostOfUrl(url) || url
+        m.close()
+        restoreSelection()
+        insertHTML(
+          linkCardHtmlClient({
+            url,
+            title,
+            description: meta ? meta.description : '',
+            image: meta ? meta.image : '',
+            siteName: meta ? meta.siteName : '',
+          })
+        )
+        return
+      }
+      if (activeTab === 'plain') {
+        let url = m.mask.querySelector('#lk-url2').value.trim()
+        const text = m.mask.querySelector('#lk-text').value.trim()
+        if (!url) return
+        if (!/^(https?:\/\/|mailto:|#|\/)/i.test(url)) url = 'https://' + url
+        m.close()
+        restoreSelection()
+        insertHTML(`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text || url)}</a>&nbsp;`)
+        return
+      }
+      // 站内文章
+      if (!selectedPost) { toast('请先选择一篇文章', true); return }
+      const style = m.mask.querySelector('input[name="lk-style"]:checked').value
+      const p = selectedPost
       m.close()
       restoreSelection()
-      insertHTML(`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text || url)}</a>&nbsp;`)
+      if (style === 'link') {
+        insertHTML(`<a href="/post/${esc(p.slug)}" target="_blank" rel="noopener noreferrer">${esc(p.title)}</a>&nbsp;`)
+      } else {
+        const desc = p.summary || (p.pw ? '加密文章，输入密码后阅读' : '来自本站的往期文章')
+        insertHTML(linkCardHtmlClient({ url: `/post/${p.slug}`, title: p.title, description: desc, image: p.cover }))
+      }
     }
     ok.addEventListener('click', doInsert)
     m.mask.addEventListener('keydown', (e) => {
       // 输入法组词回车（确认候选词）不触发插入
       if (e.isComposing || e.keyCode === 229) return
-      if (e.key === 'Enter') doInsert()
+      if (e.key === 'Enter') {
+        const t = e.target
+        // 站内文章列表里的回车不劫持（radio/翻页按钮焦点）
+        if (t.id === 'lk-url' || t.id === 'lk-url2' || t.id === 'lk-text') {
+          e.preventDefault()
+          doInsert()
+        }
+      }
     })
   }
 
@@ -1005,13 +1451,23 @@ export async function mountEditor(root, postId, opts = {}) {
     const m = modal(
       `<div class="modal-head"><span>插入图片</span><button class="modal-close" data-close>×</button></div>
       <div class="modal-body upload-dialog">
-        <div class="tab-line"><button class="is-active" data-tab="up">上传到图床</button><button data-tab="url">图片地址</button></div>
+        <div class="tab-line"><button class="is-active" data-tab="up">上传到图床</button><button data-tab="url">图片地址</button><button data-tab="lib">媒体库</button></div>
         <div data-pane="up">
           <div class="upload-drop" id="up-drop">点击选择图片，或拖拽到此处<br><span style="font-size:12px;">支持 JPG / PNG / WebP / GIF，≤ 25MB</span></div>
           <div class="upload-progress" id="up-progress"><i></i></div>
         </div>
         <div data-pane="url" style="display:none;">
           <div class="auth-field"><label>图片 URL</label><input class="input" id="img-url" placeholder="https://… 或 /images/…"></div>
+        </div>
+        <div data-pane="lib" style="display:none;">
+          <div class="media-picker" id="lib-grid"><div style="color:var(--sub);font-size:13px;padding:20px;text-align:center;">加载中…</div></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+            <span id="lib-page" style="font-size:12px;color:var(--sub);"></span>
+            <span style="display:flex;gap:8px;">
+              <button class="btn btn-sm" id="lib-prev" disabled>上一页</button>
+              <button class="btn btn-sm" id="lib-next" disabled>下一页</button>
+            </span>
+          </div>
         </div>
       </div>
       <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn btn-primary" id="img-ok">插入</button></div>`
@@ -1051,14 +1507,9 @@ export async function mountEditor(root, postId, opts = {}) {
       progress.classList.remove('on')
       bar.style.width = '0%'
     }
-    drop.addEventListener('click', () => {
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = 'image/jpeg,image/png,image/webp,image/gif'
-      input.multiple = true
-      input.onchange = () => handleFiles(input.files)
-      input.click()
-    })
+    drop.addEventListener('click', () =>
+      pickFiles('image/jpeg,image/png,image/webp,image/gif', true, (files) => handleFiles(files))
+    )
     drop.addEventListener('dragover', (e) => {
       e.preventDefault()
       drop.classList.add('is-over')
@@ -1076,23 +1527,81 @@ export async function mountEditor(root, postId, opts = {}) {
       })
     )
     m.mask.querySelector('#img-ok').addEventListener('click', () => {
+      // 媒体库 tab 有选中项时优先插入选中项；否则看 URL 输入框
+      const picked = m.mask.querySelector('.media-item.is-picked')
+      if (picked) {
+        const url = picked.dataset.url
+        m.close()
+        restoreSelection()
+        probeWidth(url).then((w) => {
+          insertHTML(`<img src="${esc(url)}"${w ? ` data-w="${w}"` : ''} alt="${esc(picked.dataset.name || '')}"><p><br></p>`)
+        })
+        return
+      }
       const url = m.mask.querySelector('#img-url').value.trim()
       if (!url) return
       m.close()
       restoreSelection()
       insertHTML(`<img src="${esc(url)}" alt=""><p><br></p>`)
     })
+
+    /* 媒体库 picker：复用 /admin/uploads 分页接口；单选高亮，再点一次取消；
+     * 插入时 probeWidth 探测原始宽度补 data-w，与上传插入同口径 */
+    const grid = m.mask.querySelector('#lib-grid')
+    const pageEl = m.mask.querySelector('#lib-page')
+    const prevBtn = m.mask.querySelector('#lib-prev')
+    const nextBtn = m.mask.querySelector('#lib-next')
+    let libPage = 1
+    const loadLib = async () => {
+      grid.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:20px;text-align:center;">加载中…</div>'
+      try {
+        const d = await api(`/admin/uploads?page=${libPage}`)
+        const totalPages = Math.max(1, Math.ceil(d.total / 24))
+        pageEl.textContent = d.total ? `第 ${d.page} / ${totalPages} 页 · 共 ${d.total} 个文件` : ''
+        prevBtn.disabled = d.page <= 1
+        nextBtn.disabled = d.page >= totalPages
+        if (!d.items.length) {
+          grid.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:20px;text-align:center;">媒体库还是空的，先「上传到图床」</div>'
+          return
+        }
+        grid.innerHTML = d.items
+          .map(
+            (u) => `<div class="media-item" data-url="${esc(u.url)}" data-name="${esc(u.name || '')}" data-mime="${esc(u.mime)}">
+            <div class="media-thumb">${String(u.mime).startsWith('video/') ? `<video src="${esc(u.url)}" muted></video>` : `<div style="background-image:url('${esc(u.url)}');"></div>`}</div>
+            <div class="media-name" title="${esc(u.name || '')}">${esc(u.name || u.key || '')}</div>
+          </div>`
+          )
+          .join('')
+      } catch (e) {
+        grid.innerHTML = `<div style="color:var(--sub);font-size:13px;padding:20px;text-align:center;">${esc(e.message)}</div>`
+      }
+    }
+    grid.addEventListener('click', (e) => {
+      const item = e.target.closest('.media-item')
+      if (!item) return
+      // 单选语义：再点同一项取消选中（回到「用 URL 输入框」的路径）
+      const was = item.classList.contains('is-picked')
+      grid.querySelectorAll('.media-item.is-picked').forEach((x) => x.classList.remove('is-picked'))
+      if (!was) item.classList.add('is-picked')
+    })
+    prevBtn.addEventListener('click', () => {
+      if (libPage > 1) {
+        libPage--
+        loadLib()
+      }
+    })
+    nextBtn.addEventListener('click', () => {
+      libPage++
+      loadLib()
+    })
+    loadLib()
   }
 
   function pickVideoFile() {
     saveSelection()
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'video/mp4,video/webm'
-    input.onchange = async () => {
-      if (input.files[0]) await uploadAndInsert(input.files[0])
-    }
-    input.click()
+    pickFiles('video/mp4,video/webm', false, (files) => {
+      if (files[0]) uploadAndInsert(files[0])
+    })
   }
 
   function modal(html) {
@@ -1118,6 +1627,224 @@ export async function mountEditor(root, postId, opts = {}) {
     return { mask, close }
   }
 
+  /* ---------- 点击图片：改 alt 描述与显示宽度 ----------
+   * alt 是无障碍/SEO 的关键字段，上传时自动填文件名，之后只有这里有入口改；
+   * 宽度走 data-w（微信排版规范 1.4.3 的原始像素宽度口径），不写 style 防体检报固定宽度 */
+  editor.addEventListener('click', (e) => {
+    const img = e.target.closest('img')
+    // 表情小图与拖拽选区（用户在拉选文本路过图片）不弹
+    if (!img || img.classList.contains('wxq-emoji') || window.getSelection()?.toString()) return
+    e.preventDefault()
+    imagePropsDialog(img)
+  })
+
+  function imagePropsDialog(img) {
+    const curW = img.getAttribute('data-w') || ''
+    // data-w（原始像素）→ 档位命中率：±3px 内算命中，回显选中态
+    const percentHit = (dataW, pct) => {
+      const nat = img.naturalWidth
+      if (!nat) return ''
+      return Math.abs(Number(dataW) - (nat * pct) / 100) <= 3 ? ' selected' : ''
+    }
+    const m = modal(
+      `<div class="modal-head"><span>图片设置</span><button class="modal-close" data-close>×</button></div>
+      <div class="modal-body">
+        <div style="background:#f6f6f6;border-radius:8px;overflow:hidden;margin-bottom:14px;display:flex;align-items:center;justify-content:center;max-height:180px;">
+          <img src="${esc(img.getAttribute('src') || '')}" style="max-width:100%;max-height:180px;">
+        </div>
+        <div class="auth-field"><label>描述 alt（无障碍与 SEO，读屏软件会朗读）</label>
+          <input class="input" id="ip-alt" maxlength="200" value="${esc(img.getAttribute('alt') || '')}" placeholder="这张图讲了什么"></div>
+        <div class="auth-field"><label>显示宽度（微信排版规范：按原始像素宽度百分比）</label>
+          <select class="input" id="ip-w">
+            <option value="">100%（默认，撑满版心）</option>
+            <option value="75"${curW ? percentHit(curW, 75) : ''}>75%</option>
+            <option value="50"${curW ? percentHit(curW, 50) : ''}>50%</option>
+            <option value="35"${curW ? percentHit(curW, 35) : ''}>35%</option>
+          </select>
+          <div style="font-size:12px;color:var(--sub);margin-top:6px;">按原始宽度的百分比写入 data-w；改成 100% 即恢复撑满</div>
+        </div>
+      </div>
+      <div class="modal-foot"><button class="btn btn-danger" id="ip-del">删除图片</button><button class="btn btn-primary" id="ip-ok">应用</button></div>`
+    )
+    m.mask.querySelector('#ip-ok').addEventListener('click', () => {
+      const alt = m.mask.querySelector('#ip-alt').value.trim()
+      const w = m.mask.querySelector('#ip-w').value
+      if (alt) img.setAttribute('alt', alt)
+      else img.removeAttribute('alt')
+      if (w && img.naturalWidth) img.setAttribute('data-w', String(Math.round((img.naturalWidth * Number(w)) / 100)))
+      else img.removeAttribute('data-w')
+      m.close()
+      markDirty()
+    })
+    m.mask.querySelector('#ip-del').addEventListener('click', () => {
+      m.close()
+      img.remove()
+      markDirty()
+      updateCount()
+    })
+  }
+
+  /* ---------- 表格：插入 3x3 骨架 + 光标进表格时浮现行列操作条 ----------
+   * 前台 .rich table 与编辑器 .ed-editor table 样式均已就位，这里只管编辑体验。
+   * 操作条挂在 .ed-rich-wrap 上随滚动容器定位，点外部/离开表格即收起。 */
+  function insertTable() {
+    const head = '<thead><tr>' + Array.from({ length: 3 }, (_, c) => `<th>标题${c + 1}</th>`).join('') + '</tr></thead>'
+    const body = '<tbody>' + Array.from({ length: 2 }, () => '<tr>' + '<td><br></td>'.repeat(3) + '</tr>').join('') + '</tbody>'
+    insertHTML(`<table>${head}${body}</table><p><br></p>`)
+    // 光标放进表头第一个单元格，直接开写
+    const th = editor.querySelector('table th')
+    if (th) {
+      const sel = window.getSelection()
+      const r = document.createRange()
+      r.selectNodeContents(th)
+      r.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(r)
+    }
+  }
+
+  function currentCell() {
+    const sel = window.getSelection()
+    if (!sel || !sel.anchorNode) return null
+    let n = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement
+    while (n && n !== editor) {
+      if (n.tagName === 'TD' || n.tagName === 'TH') return n
+      n = n.parentElement
+    }
+    return null
+  }
+
+  function cloneRow(tr, refCell, after) {
+    const copy = tr.cloneNode(true)
+    copy.querySelectorAll('td,th').forEach((c) => (c.innerHTML = '<br>'))
+    if (after) tr.after(copy)
+    else tr.before(copy)
+    placeCaretIn(copy.querySelector('td,th'))
+    markDirty()
+  }
+
+  function placeCaretIn(cell) {
+    if (!cell) return
+    const sel = window.getSelection()
+    const r = document.createRange()
+    r.selectNodeContents(cell)
+    r.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(r)
+  }
+
+  function removeRow(tr) {
+    const table = tr.closest('table')
+    tr.remove()
+    // 表格空了连壳一起删，留个空段落接住光标
+    if (table && !table.querySelector('td,th')) {
+      table.replaceWith(document.createElement('p'))
+    }
+    markDirty()
+    updateCount()
+  }
+
+  function addCol(refCell, after) {
+    const table = refCell.closest('table')
+    const idx = refCell.cellIndex
+    table.querySelectorAll('tr').forEach((tr) => {
+      // 与该行既有单元格类型保持一致（表头行加 th，正文行加 td）
+      const type = tr.children[idx] && tr.children[idx].tagName === 'TH' ? 'th' : 'td'
+      const nc = document.createElement(type)
+      nc.innerHTML = '<br>'
+      const ref = tr.children[idx]
+      if (after) ref.after(nc)
+      else ref.before(nc)
+    })
+    markDirty()
+  }
+
+  function removeCol(refCell) {
+    const table = refCell.closest('table')
+    const idx = refCell.cellIndex
+    table.querySelectorAll('tr').forEach((tr) => {
+      if (tr.children[idx]) tr.children[idx].remove()
+    })
+    if (!table.querySelector('td,th')) {
+      table.replaceWith(document.createElement('p'))
+    }
+    markDirty()
+    updateCount()
+  }
+
+  let cellBar = null
+  function showCellBar(cell) {
+    if (!cellBar) {
+      cellBar = document.createElement('div')
+      cellBar.className = 'ed-cellbar'
+      cellBar.innerHTML = `
+        <button type="button" data-op="row-before" title="在上方插入行">↑行</button>
+        <button type="button" data-op="row-after" title="在下方插入行">↓行</button>
+        <button type="button" data-op="row-del" title="删除本行">删行</button>
+        <span class="ed-cellbar-sep"></span>
+        <button type="button" data-op="col-before" title="在左侧插入列">←列</button>
+        <button type="button" data-op="col-after" title="在右侧插入列">→列</button>
+        <button type="button" data-op="col-del" title="删除本列">删列</button>
+        <span class="ed-cellbar-sep"></span>
+        <button type="button" data-op="head" title="切换首行为表头/正文">表头</button>
+        <button type="button" data-op="table-del" title="删除整个表格">删表</button>`
+      cellBar.addEventListener('mousedown', (e) => e.preventDefault()) // 不抢光标
+      cellBar.addEventListener('click', (e) => {
+        const op = e.target.closest('[data-op]')?.dataset.op
+        const cell = currentCell()
+        if (!op || !cell) return
+        const tr = cell.closest('tr')
+        if (op === 'row-before') cloneRow(tr, cell, false)
+        else if (op === 'row-after') cloneRow(tr, cell, true)
+        else if (op === 'row-del') removeRow(tr)
+        else if (op === 'col-before') addCol(cell, false)
+        else if (op === 'col-after') addCol(cell, true)
+        else if (op === 'col-del') removeCol(cell)
+        else if (op === 'head') {
+          // 首行 th ↔ td 互换
+          const first = cell.closest('table').querySelector('tr')
+          first.querySelectorAll('th,td').forEach((c) => {
+            const nc = document.createElement(c.tagName === 'TH' ? 'TD' : 'TH')
+            while (c.firstChild) nc.appendChild(c.firstChild)
+            for (const attr of [...c.attributes]) nc.setAttribute(attr.name, attr.value)
+            c.replaceWith(nc)
+          })
+          markDirty()
+        } else if (op === 'table-del') {
+          cell.closest('table').replaceWith(document.createElement('p'))
+          hideCellBar()
+          markDirty()
+          updateCount()
+        }
+        refreshToolbarState()
+      })
+      root.querySelector('.ed-rich-wrap').appendChild(cellBar)
+    }
+    // 定位到当前单元格上方（相对滚动容器）
+    const wrap = root.querySelector('.ed-rich-wrap')
+    const cr = cell.getBoundingClientRect()
+    const wr = wrap.getBoundingClientRect()
+    cellBar.style.top = cr.top - wr.top + wrap.scrollTop - 40 + 'px'
+    cellBar.style.left = Math.max(0, cr.left - wr.left) + 'px'
+    cellBar.style.display = 'flex'
+  }
+
+  function hideCellBar() {
+    if (cellBar) cellBar.style.display = 'none'
+  }
+
+  // 光标进表格显示操作条，出表格收起；点击单元格也刷新定位
+  editor.addEventListener('keyup', () => {
+    const cell = currentCell()
+    if (cell && !mdMode) showCellBar(cell)
+    else hideCellBar()
+  })
+  editor.addEventListener('mouseup', () => {
+    const cell = currentCell()
+    if (cell && !mdMode) showCellBar(cell)
+    else hideCellBar()
+  })
+
   /* ---------- 编辑区事件 ---------- */
   editor.addEventListener('input', () => {
     markDirty()
@@ -1125,13 +1852,28 @@ export async function mountEditor(root, postId, opts = {}) {
   })
   titleEl.addEventListener('input', markDirty)
   titleEl.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return
     if (e.key === 'Enter') {
       e.preventDefault()
       editor.focus()
     }
   })
   ;['ed-summary', 'ed-slug'].forEach((id) => document.getElementById(id).addEventListener('input', markDirty))
+  document.getElementById('ed-min-tier').addEventListener('change', markDirty)
   document.getElementById('ed-pinned').addEventListener('change', markDirty)
+
+  /* ---------- 访问密码（src/protect.ts） ---------- */
+  const lockSwitch = document.getElementById('ed-locked')
+  const lockPicker = document.getElementById('ed-lock-picker')
+  const passwordInput = document.getElementById('ed-password')
+  const syncLockPicker = () => { lockPicker.style.display = lockSwitch.checked ? '' : 'none' }
+  lockSwitch.addEventListener('change', () => {
+    syncLockPicker()
+    if (lockSwitch.checked) passwordInput.focus()
+    markDirty()
+  })
+  passwordInput.addEventListener('input', markDirty)
+  syncLockPicker()
 
   /* ---------- 定时发布 ---------- */
   const scheduleSwitch = document.getElementById('ed-scheduled')
@@ -1380,6 +2122,9 @@ export async function mountEditor(root, postId, opts = {}) {
   // 离开提醒（关闭标签页/刷新时浏览器兜底确认；SPA 内部路由由 flushEditorSave 兜底）
   const beforeUnload = (e) => {
     if (dirty) {
+      // 同步补写最后一份本地备份：beforeunload 里异步操作不可靠，setItem 是同步 API
+      clearTimeout(draftTimer)
+      writeLocalDraft()
       e.preventDefault()
       e.returnValue = ''
     }
@@ -1388,18 +2133,34 @@ export async function mountEditor(root, postId, opts = {}) {
 
   // 注册全局监听器的清理函数：下次挂载前先拆掉上一次的，防止随挂载次数累积
   flushSave = async () => {
-    if (dirty) await save(false)
+    if (dirty) {
+      await save(false)
+      return
+    }
+    // 干净退出（无未保存内容）：只清「内容与当前正文一致」的备份——
+    // 一致 = 已同步，留着只会下次弹窗打扰；不一致 = 可能是用户没确认过的孤儿备份，留给下次恢复弹窗
+    try {
+      const bak = JSON.parse(localStorage.getItem(draftKey()) || 'null')
+      const cur = mdMode ? mdArea.value : editor.innerHTML
+      if (!bak || typeof bak.c !== 'string' || bak.c === cur) clearLocalDraft()
+    } catch {
+      clearLocalDraft() // 脏数据读不出来，直接清
+    }
   }
   cleanupEditor = () => {
     document.removeEventListener('selectionchange', onSelectionChange)
+    document.removeEventListener('keydown', onFocusKeydown)
     window.removeEventListener('beforeunload', beforeUnload)
-    // 挂起的自动保存一并取消：路由已切走，定时器再触发只会打在已卸载的 DOM 上
+    // 挂起的自动保存与本地备份定时器一并取消：路由已切走，定时器再触发只会打在已卸载的 DOM 上
     clearTimeout(saveTimer)
+    clearTimeout(draftTimer)
+    findBar = null // 查找条挂在顶栏 DOM 上，随 root 一起销毁，只清状态引用
     flushSave = null
   }
 
   /* ---------- Markdown 模式 ---------- */
   async function enterMdMode() {
+    hideCellBar() // 表格操作条随富文本消失（表格已变纯文本）
     mdArea.value = htmlToMd(editor.innerHTML)
     root.querySelector('.editor-page').classList.add('ed-mode-md')
     document.getElementById('ed-md-toggle').classList.add('is-active')
@@ -1424,6 +2185,26 @@ export async function mountEditor(root, postId, opts = {}) {
   })
   mdArea.addEventListener('input', markDirty)
 
+  /* ---------- 专注模式：隐藏顶栏/工具栏/抽屉/底栏，只留写作纸面 ----------
+   * 开关记住用户偏好；Esc 退出（弹窗的 Esc 关闭在 modal 层已 stopPropagation 不了——
+   * modal 先注册在 document 上，这里 keydown 也挂 document 但要避开弹窗打开时误退） */
+  const focusToggle = document.getElementById('ed-focus-toggle')
+  const applyFocus = (on, remember) => {
+    root.querySelector('.editor-page').classList.toggle('ed-focus', on)
+    focusToggle.classList.toggle('is-active', on)
+    focusToggle.textContent = on ? '退出专注' : '专注'
+    if (remember) { try { localStorage.setItem('ed-focus', on ? 'on' : 'off') } catch { /* 不记住偏好 */ } }
+  }
+  // 有弹窗打开时不响应 Esc（弹窗自己会关闭并 stopPropagation）
+  const onFocusKeydown = (e) => {
+    if (e.key !== 'Escape' || !root.querySelector('.editor-page.ed-focus')) return
+    if (document.querySelector('.modal-mask')) return
+    applyFocus(false, true)
+  }
+  focusToggle.addEventListener('click', () => applyFocus(!root.querySelector('.editor-page.ed-focus'), true))
+  document.addEventListener('keydown', onFocusKeydown)
+  applyFocus(window.matchMedia('(min-width: 701px)').matches && (() => { try { return localStorage.getItem('ed-focus') === 'on' } catch { return false } })(), false)
+
   /* ---------- 顶栏按钮 ---------- */
   document.getElementById('ed-save').addEventListener('click', () => save(false).catch(() => {}))
   document.getElementById('ed-publish').addEventListener('click', publish)
@@ -1433,6 +2214,269 @@ export async function mountEditor(root, postId, opts = {}) {
     if (!p.slug) return toast('先写点内容再预览', true)
     window.open(`/post/${p.slug}?preview=1`, '_blank')
   })
+  /* ---------- 查找替换（富文本高亮 <mark data-find>，保存前剥除；Markdown 模式操作纯文本） ---------- */
+  let findBar = null
+  let findHits = [] // 富文本模式：命中所在的文本节点列表（顺序与高亮一致）
+  let findIdx = -1
+
+  function clearFindMarks() {
+    stripFindMarks()
+    findHits = []
+    findIdx = -1
+  }
+
+  /** 只剥 DOM 上的 mark、不动 findHits/findIdx——highlightHit 重画高亮前用它，
+   *  不能调 clearFindMarks（会清空命中数组让高亮直接 return，画不出任何标记） */
+  function stripFindMarks() {
+    editor.querySelectorAll('mark[data-find]').forEach((mk) => {
+      const parent = mk.parentNode
+      while (mk.firstChild) parent.insertBefore(mk.firstChild, mk)
+      parent.removeChild(mk)
+      parent.normalize() // 合并回相邻文本节点，恢复原始 DOM 结构
+    })
+  }
+
+  /** 收集命中：按文本节点扫描（跳过 code/pre 内部——代码内容改字面量容易改坏语义，用户可进 Markdown 模式改） */
+  function collectFindHits(term, caseSensitive) {
+    findHits = []
+    findIdx = -1
+    if (!term) return
+    const needle = caseSensitive ? term : term.toLowerCase()
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) =>
+        n.parentElement.closest('pre, code, mark[data-find]')
+          ? NodeFilter.FILTER_REJECT
+          : n.nodeValue.toLowerCase().includes(needle)
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_SKIP,
+    })
+    const nodes = []
+    while (walker.nextNode()) nodes.push(walker.currentNode)
+    for (const node of nodes) {
+      const hay = caseSensitive ? node.nodeValue : node.nodeValue.toLowerCase()
+      let i = 0
+      while ((i = hay.indexOf(needle, i)) !== -1) {
+        findHits.push({ node, start: i, end: i + term.length })
+        i += term.length
+      }
+    }
+  }
+
+  /** 把第 idx 个命中包进 <mark data-find> 并滚到可见；其余命中暂不高亮（避免反复切分文本节点）。
+   *  splitText 方案：节点切成 [前段][mark 内文本][后段]，三段引用全部显式掌握，
+   *  不用 surroundContents——它在前段为空文本节点等场景下节点归属不可控，替换会打错位置 */
+  function highlightHit(idx) {
+    stripFindMarks() // 只剥旧 mark，findHits 保留
+    if (idx < 0 || idx >= findHits.length) return
+    const hit = findHits[idx]
+    const textNode = hit.node
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return
+    // splitText 两次：先切尾部（tail=后段），再在原节点上切头部（markText=命中段，textNode 剩前段）
+    const tail = hit.end < textNode.nodeValue.length ? textNode.splitText(hit.end) : null
+    const markText = hit.start > 0 ? textNode.splitText(hit.start) : textNode
+    const mk = document.createElement('mark')
+    mk.setAttribute('data-find', '')
+    markText.parentNode.insertBefore(mk, markText)
+    mk.appendChild(markText)
+    // 重定位所有引用原节点的命中：以坐标区间判归属（splitText 不改原引用，
+    // textNode 此刻即前段；markText/tail 是切出来的新节点，必须显式改写 h.node）
+    for (const h of findHits) {
+      if (h.node !== textNode) continue
+      if (h.start >= hit.end) {
+        h.node = tail || textNode // 后段（无 tail 说明命中到文末，后段不存在）
+        h.start -= hit.end
+        h.end -= hit.end
+      } else if (h.start >= hit.start) {
+        h.node = markText // mark 内（含 hit 自己）
+        h.start -= hit.start
+        h.end -= hit.start
+      }
+      // else：完全落在前段（命中互不重叠时不存在，防御保留）
+    }
+    mk.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+
+  function findStatus() {
+    const el = findBar?.querySelector('#fd-status')
+    if (el) el.textContent = findHits.length ? `${findIdx + 1} / ${findHits.length}` : '无结果'
+  }
+
+  function findNext() {
+    if (!findHits.length) return
+    findIdx = (findIdx + 1) % findHits.length
+    highlightHit(findIdx)
+    findStatus()
+  }
+
+  function findPrev() {
+    if (!findHits.length) return
+    findIdx = (findIdx - 1 + findHits.length) % findHits.length
+    highlightHit(findIdx)
+    findStatus()
+  }
+
+  function runFind() {
+    clearFindMarks()
+    const term = findBar.querySelector('#fd-find').value
+    const cs = findBar.querySelector('#fd-case').checked
+    if (!term) {
+      findHits = []
+      findStatus()
+      return
+    }
+    if (mdMode) {
+      // Markdown 模式：在 textarea 里定位选中即可
+      const hay = cs ? mdArea.value : mdArea.value.toLowerCase()
+      const needle = cs ? term : term.toLowerCase()
+      findHits = [{ node: null, start: 0, end: 0 }]
+      findIdx = -1
+      let i = 0
+      let count = 0
+      while ((i = hay.indexOf(needle, i)) !== -1) {
+        count++
+        i += term.length
+      }
+      findHits.length = count
+      findIdx = -1
+      findStatus()
+      return
+    }
+    collectFindHits(term, cs)
+    if (findHits.length) {
+      findIdx = 0
+      highlightHit(0)
+    }
+    findStatus()
+  }
+
+  function replaceOne() {
+    const term = findBar.querySelector('#fd-find').value
+    const rep = findBar.querySelector('#fd-replace').value
+    const cs = findBar.querySelector('#fd-case').checked
+    if (!term || !findHits.length) return
+    if (mdMode) {
+      const v = mdArea.value
+      const hay = cs ? v : v.toLowerCase()
+      const needle = cs ? term : term.toLowerCase()
+      const at = hay.indexOf(needle)
+      if (at === -1) return
+      mdArea.value = v.slice(0, at) + rep + v.slice(at + term.length)
+      mdArea.dispatchEvent(new Event('input')) // 走 markDirty 链
+      runFind()
+      return
+    }
+    if (findIdx < 0) findNext()
+    const h = findHits[findIdx]
+    if (!h) return
+    const node = h.node
+    node.nodeValue = node.nodeValue.slice(0, h.start) + rep + node.nodeValue.slice(h.end)
+    clearFindMarks()
+    markDirty()
+    updateCount()
+    runFind() // 重新扫描：内容变了，旧坐标作废；停在原序号继续替换下一个
+  }
+
+  function replaceAll() {
+    const term = findBar.querySelector('#fd-find').value
+    const rep = findBar.querySelector('#fd-replace').value
+    const cs = findBar.querySelector('#fd-case').checked
+    if (!term) return
+    if (mdMode) {
+      const hay = cs ? mdArea.value : mdArea.value.toLowerCase()
+      const needle = cs ? term : term.toLowerCase()
+      let n = 0
+      let i = hay.indexOf(needle)
+      let v = mdArea.value
+      while (i !== -1) {
+        n++
+        v = v.slice(0, i) + rep + v.slice(i + term.length)
+        const next = (cs ? v : v.toLowerCase()).indexOf(needle, i + rep.length)
+        i = next
+      }
+      if (!n) return
+      mdArea.value = v
+      mdArea.dispatchEvent(new Event('input'))
+      toast(`已替换 ${n} 处`)
+      runFind()
+      return
+    }
+    if (!findHits.length) return
+    const n = findHits.length
+    // 从后往前按坐标改写文本节点，坐标不失效；同节点多命中时倒序天然正确
+    const byNode = new Map()
+    for (const h of findHits) {
+      if (!byNode.has(h.node)) byNode.set(h.node, [])
+      byNode.get(h.node).push(h)
+    }
+    for (const [node, list] of byNode) {
+      let v = node.nodeValue
+      for (const h of list.sort((a, b) => b.start - a.start)) {
+        v = v.slice(0, h.start) + rep + v.slice(h.end)
+      }
+      node.nodeValue = v
+    }
+    clearFindMarks()
+    markDirty()
+    updateCount()
+    toast(`已替换 ${n} 处`)
+    runFind()
+  }
+
+  function openFindBar() {
+    if (findBar) {
+      findBar.querySelector('#fd-find').focus()
+      findBar.querySelector('#fd-find').select()
+      return
+    }
+    findBar = document.createElement('div')
+    findBar.className = 'ed-findbar'
+    findBar.innerHTML = `
+      <input class="input" id="fd-find" placeholder="查找" style="width:150px;">
+      <input class="input" id="fd-replace" placeholder="替换为" style="width:150px;">
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--sub);white-space:nowrap;">
+        <input type="checkbox" id="fd-case">区分大小写</label>
+      <span id="fd-status" style="font-size:12px;color:var(--sub);white-space:nowrap;">—</span>
+      <button class="btn btn-sm" id="fd-prev" title="上一个">↑</button>
+      <button class="btn btn-sm" id="fd-next" title="下一个">↓</button>
+      <button class="btn btn-sm" id="fd-one">替换</button>
+      <button class="btn btn-sm" id="fd-all">全部</button>
+      <button class="btn btn-ghost btn-sm" id="fd-close" title="关闭">✕</button>`
+    document.querySelector('.ed-topbar').appendChild(findBar)
+    const input = findBar.querySelector('#fd-find')
+    input.addEventListener('input', runFind)
+    input.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        e.shiftKey ? findPrev() : findNext()
+      }
+    })
+    findBar.querySelector('#fd-next').addEventListener('click', findNext)
+    findBar.querySelector('#fd-prev').addEventListener('click', findPrev)
+    findBar.querySelector('#fd-one').addEventListener('click', replaceOne)
+    findBar.querySelector('#fd-all').addEventListener('click', replaceAll)
+    findBar.querySelector('#fd-case').addEventListener('change', runFind)
+    findBar.querySelector('#fd-close').addEventListener('click', closeFindBar)
+    input.focus()
+  }
+
+  function closeFindBar() {
+    clearFindMarks()
+    findBar?.remove()
+    findBar = null
+  }
+
+  document.getElementById('ed-find').addEventListener('click', openFindBar)
+  const onFindKeydown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+      e.preventDefault()
+      openFindBar()
+    } else if (e.key === 'Escape' && findBar && !document.querySelector('.modal-mask')) {
+      closeFindBar()
+    }
+  }
+  root.addEventListener('keydown', onFindKeydown)
+
   document.getElementById('ed-check').addEventListener('click', () => {
     if (mdMode) return toast('请先退出 Markdown 模式', true)
     const issues = runChecks(editor.innerHTML)
@@ -1462,14 +2506,16 @@ export async function mountEditor(root, postId, opts = {}) {
     })
   })
   // 元信息抽屉：默认收起给写作让位，开关状态记住用户的选择；小屏是覆盖层，始终默认收起
+  // 隐私加固浏览器访问 localStorage 即抛 SecurityError：偏好存取吞异常，降级默认收起
   const drawer = document.getElementById('ed-drawer')
   const drawerBtn = document.getElementById('ed-drawer-toggle')
+  const drawerPref = () => { try { return localStorage.getItem('ed-drawer') } catch { return null } }
   const applyDrawer = (hidden, remember) => {
     drawer.classList.toggle('is-hidden', hidden)
     drawerBtn.classList.toggle('is-active', !hidden)
-    if (remember) localStorage.setItem('ed-drawer', hidden ? 'hidden' : 'open')
+    if (remember) { try { localStorage.setItem('ed-drawer', hidden ? 'hidden' : 'open') } catch { /* 不记住偏好 */ } }
   }
-  applyDrawer(window.matchMedia('(max-width: 860px)').matches || localStorage.getItem('ed-drawer') !== 'open', false)
+  applyDrawer(window.matchMedia('(max-width: 860px)').matches || drawerPref() !== 'open', false)
   drawerBtn.addEventListener('click', () => applyDrawer(!drawer.classList.contains('is-hidden'), true))
   document.getElementById('ed-drawer-close').addEventListener('click', () => applyDrawer(true, true))
 
@@ -1482,13 +2528,10 @@ export async function mountEditor(root, postId, opts = {}) {
       markDirty()
       return
     }
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif'
-    input.onchange = async () => {
-      if (!input.files[0]) return
+    pickFiles('image/jpeg,image/png,image/webp,image/gif', false, async (files) => {
+      if (!files[0]) return
       try {
-        const out = await compressImage(input.files[0])
+        const out = await compressImage(files[0])
         const d = await uploadFile(out, null)
         post.cover = d.url
         coverBox.innerHTML = `<img src="${esc(post.cover)}"><button class="cover-remove" id="ed-cover-remove" title="移除封面">×</button>`
@@ -1502,8 +2545,7 @@ export async function mountEditor(root, postId, opts = {}) {
       } catch (err) {
         toast(err.message, true)
       }
-    }
-    input.click()
+    })
   })
 
   /* ---------- 标签 ---------- */

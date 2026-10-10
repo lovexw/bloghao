@@ -3,7 +3,7 @@ import { escAttr } from './sanitize'
 /**
  * 轻量 Markdown 渲染器（编辑器 Markdown 模式使用）
  * 支持：# 标题、**粗体**、*斜体*、`行内代码`、``` 代码块、> 引用、
- * -/1. 列表、![图](src)、[链接](href)、--- 分隔线、表格不支持（v1）
+ * -/1. 列表、![图](src)、[链接](href)、--- 分隔线、GFM 管道表格
  */
 
 interface CodeSpan {
@@ -63,6 +63,8 @@ export function mdToHtml(md: string): string {
   let quote: string[] = []
   let codeLang = ''
   let codeBuf: string[] = []
+  // GFM 管道表格状态：表头行 + 分隔行收集齐后整体产出 <table>；后续数据行追加
+  let tableRows: string[] = []
 
   const flushPara = () => {
     if (para.length) {
@@ -86,10 +88,51 @@ export function mdToHtml(md: string): string {
       quote = []
     }
   }
+  /** 分隔行（| --- | :---: |）才是表格确认信号；没有它的一串 | 行当普通段落 */
+  const isTableSeparator = (line: string) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line)
+  const splitTableRow = (line: string) =>
+    line
+      .trim()
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .split('|')
+      .map((cell) => cell.trim())
+  const flushTable = () => {
+    if (tableRows.length < 2 || !isTableSeparator(tableRows[1])) {
+      // 不构成表格（没分隔行）：按原样退回普通段落
+      for (const r of tableRows) para.push(escLine(r))
+      tableRows = []
+      flushPara()
+      return
+    }
+    const aligns = splitTableRow(tableRows[1]).map((c) =>
+      /^:-+:$/.test(c) ? ' style="text-align:center"' : /^-+:$/.test(c) ? ' style="text-align:right"' : ''
+    )
+    const headCells = splitTableRow(tableRows[0])
+    let html = '<table><thead><tr>'
+    headCells.forEach((cell, i) => {
+      const codes: CodeSpan[] = []
+      html += `<th${aligns[i] || ''}>${inline(escLine(cell), codes)}</th>`
+    })
+    html += '</tr></thead><tbody>'
+    for (const row of tableRows.slice(2)) {
+      const cells = splitTableRow(row)
+      html += '<tr>'
+      headCells.forEach((_, i) => {
+        const codes: CodeSpan[] = []
+        html += `<td${aligns[i] || ''}>${inline(escLine(cells[i] ?? ''), codes)}</td>`
+      })
+      html += '</tr>'
+    }
+    html += '</tbody></table>'
+    out.push(html)
+    tableRows = []
+  }
   const flushAll = () => {
     flushPara()
     flushList()
     flushQuote()
+    flushTable()
   }
 
   for (const raw of lines) {
@@ -128,6 +171,11 @@ export function mdToHtml(md: string): string {
       out.push('<hr>')
       continue
     }
+    // 表格行：含竖线的行进缓冲（是否真表格由分隔行判定）；分隔行本身也缓冲用于对齐解析
+    if (tableRows.length ? /\|/.test(line) : /\|/.test(line) && line.trim().length > 1) {
+      tableRows.push(line)
+      continue
+    }
     const q = /^>\s?(.*)$/.exec(line)
     if (q) {
       flushPara()
@@ -163,6 +211,7 @@ export function mdToHtml(md: string): string {
     }
     flushList()
     flushQuote()
+    flushTable()
     para.push(escLine(line))
   }
   // 结尾处理

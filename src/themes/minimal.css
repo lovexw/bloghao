@@ -102,6 +102,19 @@ img { max-width: 100%; height: auto; }
 .rich h4 { font-size: 17px; font-weight: 700; }
 .rich a { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: #bbb; transition: text-decoration-color 0.15s ease; }
 .rich a:hover { text-decoration-color: currentColor; }
+/* 链接卡片（编辑器「插入链接 → 网址卡片 / 站内文章卡片」，结构见 src/linkmeta.ts） */
+.rich a.link-card {
+  display: flex; text-decoration: none; color: inherit;
+  margin: 20px 0; border: 1px solid var(--mn-line); border-radius: 10px;
+  background: var(--mn-bg); overflow: hidden;
+}
+.rich a.link-card:hover { border-color: #d5d5d5; }
+.rich a.link-card .lc-body { display: flex; width: 100%; justify-content: space-between; gap: 12px; padding: 12px 14px; }
+.rich a.link-card .lc-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.rich a.link-card .lc-title { font-size: 15px; font-weight: 600; color: var(--mn-ink); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.rich a.link-card .lc-desc { font-size: 13px; color: var(--mn-sub); margin-top: 4px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.rich a.link-card .lc-host { font-size: 12px; display: block; color: #b5b5b5; margin-top: 8px; }
+.rich a.link-card .lc-img { flex: 0 0 84px; width: 84px; height: 84px; object-fit: cover; border-radius: 8px; align-self: center; margin: 0; }
 .rich blockquote { margin: 0 0 24px; padding: 4px 0 4px 18px; border-left: 2px solid var(--mn-ink); color: #555; }
 .rich blockquote p:last-child { margin-bottom: 0; }
 .rich ul, .rich ol { margin: 0 0 22px; padding-left: 24px; }
@@ -148,6 +161,9 @@ img { max-width: 100%; height: auto; }
 .cmt-item { padding: 16px 0; border-bottom: 1px solid var(--mn-line); }
 .cmt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .cmt-name { font-size: 14px; font-weight: 600; }
+
+.cmt-avatar { width: 22px; height: 22px; flex: none; align-self: center; border-radius: 0; background: var(--mn-ink); color: #fff; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+.cmt-avatar-img { object-fit: cover; }
 .cmt-time { font-size: 12px; color: var(--mn-sub); }
 .cmt-body { font-size: 15px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
 .cmt-children { list-style: none; margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--mn-line); }
@@ -323,6 +339,9 @@ img { max-width: 100%; height: auto; }
 .wb-cmt-item { padding: 8px 0; }
 .wb-cmt-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .wb-cmt-name { font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+
+.wb-cmt-avatar { width: 20px; height: 20px; flex: none; border-radius: 0; background: var(--mn-ink); color: #fff; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+.wb-cmt-avatar-img { object-fit: cover; }
 .wb-cmt-badge { font-size: 11px; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; font-weight: 400; }
 .wb-cmt-time { font-size: 11.5px; color: var(--mn-sub); }
 .wb-cmt-body { font-size: 14.5px; line-height: 1.7; margin-top: 3px; white-space: pre-wrap; word-break: break-word; }
@@ -432,6 +451,8 @@ img { max-width: 100%; height: auto; }
   font-size: 11px; line-height: 1; padding: 4px 9px; border-radius: 999px;
   color: var(--mn-sub); border: 1px solid var(--mn-line); letter-spacing: 0.05em;
 }
+.wb-link { color: inherit; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #bbb; }
+.wb-link:hover { text-decoration-color: var(--mn-ink); }
 .wb-topic { color: inherit; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #bbb; }
 .wb-topic:hover { text-decoration-color: var(--mn-ink); }
 .wb-topics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
@@ -577,3 +598,47 @@ main .gb-section { margin-top: 12px; }
 
 /* 微博+博客模式：首页微博流（头部复用 .wb-home-head，卡片复用 .wb-list 间距） */
 .wb-home-feed { margin: 0 0 40px; }
+
+/* ---------- 会员 / 排行榜（/rank /member 页，结构在 render.ts 共享） ---------- */
+.rk-list { margin: 0; padding: 0; list-style: none; }
+.rk-item { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--mn-line); }
+.rk-item:last-child { border-bottom: none; }
+.rk-no { flex: 0 0 24px; font-size: 13px; color: var(--mn-sub); font-variant-numeric: tabular-nums; text-align: center; }
+
+.rk-avatar { width: 28px; height: 28px; flex: none; border-radius: 0; background: var(--mn-ink); color: #fff; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+.rk-avatar-img { object-fit: cover; }
+.rk-item.is-top1 .rk-no, .rk-item.is-top2 .rk-no, .rk-item.is-top3 .rk-no { color: var(--mn-ink); font-weight: 700; }
+.rk-name { flex: 1 1 auto; min-width: 0; font-size: 14px; color: var(--mn-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rk-tier { flex: 0 0 auto; font-size: 11px; color: var(--mn-sub); border: 1px solid var(--mn-line); border-radius: 999px; padding: 1px 8px; }
+.rk-pts { flex: 0 0 auto; font-size: 14px; font-weight: 600; color: var(--mn-ink); font-variant-numeric: tabular-nums; }
+.rk-item.is-me { background: #fafafa; box-shadow: inset 2px 0 0 var(--mn-ink); }
+.mn-rank, .mn-member { margin: 8px 0 32px; }
+.rk-list-page { margin: 0; border-top: 1px solid var(--mn-line); }
+.rk-list-page .rk-item { padding: 14px 0; }
+.mem-card { border: 1px solid var(--mn-line); padding: 22px 20px; margin: 16px 0; }
+.mem-form-title { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
+.mem-input { display: block; width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 12px; border: 1px solid var(--mn-line); border-radius: 0; background: #fff; font-size: 16px; color: var(--mn-ink); outline: none; }
+.mem-input:focus { border-color: var(--mn-ink); }
+.mem-btn { display: block; width: 100%; padding: 13px; border: 1px solid var(--mn-ink); border-radius: 0; background: var(--mn-ink); color: #fff; font-size: 14px; cursor: pointer; }
+.mem-btn:disabled { opacity: 0.5; }
+.mem-btn-ghost { background: transparent; border: 1px solid var(--mn-line); color: var(--mn-sub); margin-top: 16px; }
+.mem-swap { margin: 12px 0 0; font-size: 13px; color: var(--mn-sub); text-align: center; }
+.mem-swap-btn { border: none; background: none; color: var(--mn-ink); font-size: 13px; cursor: pointer; padding: 0; text-decoration: underline; }
+.mem-tip { margin: 10px 0 0; font-size: 13px; color: var(--mn-ink); min-height: 1em; text-align: center; }
+.mem-who { display: flex; align-items: center; gap: 14px; }
+.mem-avatar { width: 48px; height: 48px; flex: 0 0 48px; border-radius: 0; background: var(--mn-ink); color: #fff; font-size: 20px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+.mem-avatar-img { object-fit: cover; }
+.mem-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mem-name { font-size: 16px; color: var(--mn-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-tier { align-self: flex-start; font-size: 11px; color: var(--mn-sub); border: 1px solid var(--mn-line); border-radius: 999px; padding: 1px 8px; }
+.mem-points { flex: 0 0 auto; text-align: center; }
+.mem-points b { display: block; font-size: 22px; color: var(--mn-ink); font-variant-numeric: tabular-nums; }
+.mem-points span { font-size: 11px; color: var(--mn-sub); }
+.mem-email { margin: 12px 0 0; font-size: 13px; color: var(--mn-sub); word-break: break-all; }
+
+/* ---------- 付费墙遮挡卡（locked 文章试读段之后，结构在 render.ts paywallHtml） ---------- */
+.paywall { margin: 24px 0; padding: 26px 20px; border: 1px solid var(--mn-line); text-align: center; }
+.paywall-ico { width: 22px; height: 22px; color: var(--mn-ink); }
+.paywall-title { margin: 12px 0 6px; font-size: 15px; font-weight: 600; color: var(--mn-ink); }
+.paywall-text { margin: 0 0 18px; font-size: 13.5px; line-height: 1.7; color: var(--mn-sub); }
+.paywall-cta { display: inline-block; padding: 11px 28px; border-radius: 0; background: var(--mn-ink); color: #fff; font-size: 14px; text-decoration: none; }

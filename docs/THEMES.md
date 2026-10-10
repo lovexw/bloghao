@@ -1,6 +1,6 @@
 # 主题开发指南
 
-博客号的公开页面（首页 / 文章页 / **微博页** / **友链页** / 关于我页 / **独立页面** / **归档页** / **留言板页**）由**主题模块**服务端渲染。任何会写 HTML/CSS 的人都可以新增主题，无需理解后端。
+博客号的公开页面（首页 / 文章页 / **微博页** / **友链页** / 关于我页 / **独立页面** / **归档页** / **留言板页** / **会员中心** / **积分排行榜**）由**主题模块**服务端渲染。任何会写 HTML/CSS 的人都可以新增主题，无需理解后端。
 
 ## 目录结构
 
@@ -11,16 +11,18 @@ src/themes/
 ├── journal.ts / journal.css
 ├── paper.ts / paper.css
 ├── minimal.ts / minimal.css
-└── midnight.ts / midnight.css
+├── midnight.ts / midnight.css
+└── bitcoin.ts / bitcoin.css
 ```
 
 ## 一个主题需要提供什么
 
-一套主题 = **八个渲染函数**（`home` / `weibo` / `links` / `post` / `about` / `page` / `archives` / `guestbook`）+ 全局 CSS。新建 `src/themes/mytheme.ts` 与 `src/themes/mytheme.css`：
+一套主题 = **八个必需渲染函数**（`home` / `weibo` / `links` / `post` / `about` / `page` / `archives` / `guestbook`）+ 两个可选函数（`member` 会员中心 / `rank` 排行榜，缺省时 pages.ts 渲染通用版）+ 全局 CSS。新建 `src/themes/mytheme.ts` 与 `src/themes/mytheme.css`：
 
 ```ts
 import type {
   HomeData, WeiboData, LinksData, PostData, AboutData, PageData, ArchivesData, GuestbookData,
+  MemberData, RankData,
 } from './registry'
 import {
   esc, fmtDate, likesBtn, pagerHtml,
@@ -32,7 +34,7 @@ import css from './mytheme.css'
 const id = 'mytheme'
 
 // 入参类型全部来自 registry 的命名类型（HomeData / WeiboData / …，字段含义以 registry.ts 注释为准），
-// 五套官方主题（wechat.ts 最完整）是现成参照。这里示范最常用的 home()：
+// 六套官方主题（wechat.ts 最完整）是现成参照。这里示范最常用的 home()：
 export function home(d: HomeData): string {
   return `<div class="my-page">
     ${siteNav({ cls: 'my-snav', categories: d.categories, tags: d.tags, pages: d.pages, active: d.navActive })}
@@ -139,6 +141,9 @@ export const THEMES: Record<string, ThemeModule> = {
 | `weiboTopicBar(topics, active?)` | 微博话题条（`?topic=` 筛选用） |
 | `friendLinkCards(items)` / `friendLinkApply()` | 友链卡片列表 / 访客申请收录表单（含蜜罐），class `.fl-*` |
 | `archiveGroups(posts)` / `archiveListHtml(groups)` | 归档按年分组 / 归档列表（年份小节 + 日期外置链接列表），class `.ar-*` |
+| `memberCardHtml(v)` / `memberAuthHtml()` | 会员中心：已登录会员卡 / 登录注册双表单（`member()` 可选函数内用） |
+| `rankListHtml(entries, me?)` | 积分排行榜列表（/rank 页主体，含本人行高亮），class `.rk-*` |
+| `paywallHtml(tierName)` | 会员付费墙遮挡卡（`locked` 文章正文收尾处渲染；`locked` 由 pages 层判定） |
 
 ## 交互约定
 
