@@ -229,3 +229,14 @@ test('rssDateToMs：RFC822 与 ISO8601 都能吃，垃圾回退 now', () => {
   assert.equal(rssDateToMs('昨天', now), now)
   assert.equal(rssDateToMs('', now), now)
 })
+
+test('validateIngest：顶层 avatar 白名单（https 才收、超长截断、非字符串忽略）', async () => {
+  const { validateIngest } = await import('../plaza/src/core.ts')
+  const base = { items: [{ kind: 'post', ref: 'a', url: 'https://x.test/p' }] }
+  assert.equal(validateIngest({ ...base, avatar: 'https://x.test/a.png' }).avatar, 'https://x.test/a.png')
+  assert.equal(validateIngest({ ...base, avatar: 'http://x.test/a.png' }).avatar, '')
+  assert.equal(validateIngest({ ...base, avatar: 'javascript:alert(1)' }).avatar, '')
+  assert.equal(validateIngest({ ...base, avatar: 123 }).avatar, '')
+  assert.equal(validateIngest(base).avatar, '')
+  assert.equal(validateIngest({ ...base, avatar: 'https://' + 'a'.repeat(600) + '.png' }).avatar.length, 500)
+})

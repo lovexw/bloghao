@@ -51,11 +51,13 @@
         '<article class="plaza-card' + (it.kind === 'weibo' ? ' is-weibo' : '') + '">' +
         '<div class="plaza-card-media" aria-hidden="true">' +
         '<span class="plaza-media-fallback">' + initial + '</span>' +
-        (it.image
-          ? '<img src="' + esc(it.image) + '" alt="" loading="lazy" onerror="this.remove()">'
-          // 站点头像走 favicon 链：bloghao 系站点标配 /favicon.svg（站长可自定义），404 再试 /favicon.ico，全失败露首字
-          : '<img src="' + favBase + 'favicon.svg" data-f="' + favBase + 'favicon.ico" alt="" loading="lazy" ' +
-            'onerror="if(this.dataset.f){var f=this.dataset.f;this.removeAttribute(\'data-f\');this.src=f}else{this.remove()}">') +
+        (it.siteAvatar
+          ? '<img src="' + esc(it.siteAvatar) + '" alt="" loading="lazy" onerror="this.remove()">'
+          : it.image
+            ? '<img src="' + esc(it.image) + '" alt="" loading="lazy" onerror="this.remove()">'
+            // 站点头像走 favicon 链：bloghao 系站点标配 /favicon.svg（站长可自定义），404 再试 /favicon.ico，全失败露首字
+            : '<img src="' + favBase + 'favicon.svg" data-f="' + favBase + 'favicon.ico" alt="" loading="lazy" ' +
+              'onerror="if(this.dataset.f){var f=this.dataset.f;this.removeAttribute(\'data-f\');this.src=f}else{this.remove()}">') +
         '</div>' +
         '<div class="plaza-card-main">' +
         '<a class="plaza-card-link" href="' + esc(it.url) + '" target="_blank" rel="noopener">' +

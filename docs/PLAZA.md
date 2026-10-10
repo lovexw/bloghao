@@ -13,7 +13,7 @@
 ## 给博客号站长：三步接入
 
 1. **联系官方**（[GitHub Issues](https://github.com/bloghao/bloghao/issues) 或社区群）提供你的站点地址，审核通过后拿到一枚 **32 位站点 Token**
-2. **后台填配置**：「设置 → 服务端插件」→ 广场站点 Token 粘贴进去，保存（广场地址保持默认 `https://plaza.bloghao.com`，自建 hub 才改）
+2. **后台填配置**：「设置 → 服务端插件」→ 广场站点 Token 粘贴进去，保存（广场地址**留空即官方 hub** `https://plaza.bloghao.com`——唯一官方入口，稳定版 / 开发版一律由此接入；自建 hub 才改）
 3. **开启插件**：「插件」页 → 服务端插件 → **广场同步（bloghao.com）** 打开
 
 之后**每次发布**（文章 / 微博，后台、定时、开放 API、TG 机器人四条路都算）会自动推一条到广场；重复编辑已发布内容不重推。不想同步了，把插件关掉即可，hub 里的历史内容可请管理员清除。
@@ -40,7 +40,8 @@ npx wrangler deploy -c plaza/wrangler.jsonc
 | --- | --- |
 | `POST /api/admin/sites` | 注册站点 `{"url":"https://…","name":"显示名"}`，**token 明文只在此返回一次** |
 | `GET /api/admin/sites` | 站点列表（含 token、心跳、条数） |
-| `PATCH /api/admin/sites/:id` | 局部更新：`name` / `verified`（认证徽标）/ `weight`（0-10）/ `disabled` / `pullEnabled` / `rotateToken:true` |
+| `PATCH /api/admin/sites/:id` | 局部更新：`name` / `avatar`（站点头像 https，空串清除）/ `verified`（认证徽标）/ `weight`（0-10）/ `disabled` / `pullEnabled` / `rotateToken:true` |
+| `GET /api/admin/stats` | 全局统计：站点 / 内容 / 今日与累计调用（feed≈广场页访问、ingest 上报）/ 近 14 天趋势（ops 控制面消费） |
 | `DELETE /api/admin/sites/:id` | 删站并级联清内容 |
 | `PATCH /api/admin/items/:kind/:ref?siteId=N` | body `{"hidden":true}` 下架单条（违规处置） |
 
@@ -70,6 +71,7 @@ X-Plaza-Signature: <hex(HMAC-SHA256(token, timestamp + "." + rawBody))>
 
 ```json
 {
+  "avatar": "https://…",       // 可选，站点头像（后台「站点头像」），随上报更新站点级
   "items": [{
     "kind": "post",            // post | weibo
     "ref": "slug 或微博 id",    // 站内唯一引用，重发同一 ref = 更新（幂等）

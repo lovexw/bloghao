@@ -263,6 +263,9 @@ export async function plazaSign(token: string, ts: string, rawBody: string): Pro
   return s
 }
 
+/** 官方广场 hub（唯一官方入口）：plazaEndpoint 留空时回落到这里 */
+const PLAZA_OFFICIAL_HUB = 'https://plaza.bloghao.com'
+
 const plazaSync: ServerPlugin = {
   id: 'plaza-sync',
   title: '广场同步（bloghao.com）',
@@ -272,10 +275,12 @@ const plazaSync: ServerPlugin = {
   author: '官方',
   async onPostPublished(p, ctx) {
     if (p.locked) return
-    const endpoint = (ctx.settings.plazaEndpoint || '').trim().replace(/\/+$/, '')
+    const endpoint = (ctx.settings.plazaEndpoint || PLAZA_OFFICIAL_HUB).trim().replace(/\/+$/, '')
     const token = (ctx.settings.plazaToken || '').trim()
     if (!/^https:\/\//i.test(endpoint) || !token) return
     await plazaIngest(endpoint, token, {
+      // 站点头像随上报更新（hub 端 https 校验，空/非法忽略）：后台「站点头像」改了，下一条发布即同步
+      avatar: (ctx.settings.avatarUrl || '').trim(),
       items: [
         {
           kind: 'post',
@@ -290,10 +295,12 @@ const plazaSync: ServerPlugin = {
     })
   },
   async onWeiboPublished(p, ctx) {
-    const endpoint = (ctx.settings.plazaEndpoint || '').trim().replace(/\/+$/, '')
+    const endpoint = (ctx.settings.plazaEndpoint || PLAZA_OFFICIAL_HUB).trim().replace(/\/+$/, '')
     const token = (ctx.settings.plazaToken || '').trim()
     if (!/^https:\/\//i.test(endpoint) || !token) return
     await plazaIngest(endpoint, token, {
+      // 站点头像随上报更新（hub 端 https 校验，空/非法忽略）：后台「站点头像」改了，下一条发布即同步
+      avatar: (ctx.settings.avatarUrl || '').trim(),
       items: [
         {
           kind: 'weibo',
