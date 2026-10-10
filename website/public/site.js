@@ -69,4 +69,21 @@
         grid.innerHTML = '<div class="showcase-empty">目录暂时加载失败，刷新再试试。</div>'
       })
   }
+  // 广场实况：接入站点数（hub 公开名录，与广场页同源）
+  var plazaStat = document.getElementById('plaza-stat')
+  if (plazaStat) {
+    fetch('https://plaza.bloghao.com/api/sites', { cache: 'no-cache' })
+      .then(function (r) {
+        return r.json()
+      })
+      .then(function (d) {
+        var n = d && d.sites ? d.sites.length : 0
+        plazaStat.textContent = n > 0
+          ? '已有 ' + n + ' 个博客号在广场相聚，随时欢迎新的。'
+          : '广场虚位以待，第一个上榜的就是你。'
+      })
+      .catch(function () {
+        plazaStat.textContent = '广场内容实时聚合中。'
+      })
+  }
 })()

@@ -54,6 +54,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; ba
 .nav-links a:hover { color: var(--ink); }
 .nav-cta { display: flex; align-items: center; gap: 12px; }
 .nav-demo { font-size: 13px; color: var(--accent); font-weight: 600; }
+.nav-links a.nav-plaza { color: var(--accent); font-weight: 700; }
+.nav-links a.nav-plaza:hover { color: var(--accent-dark); }
 .nav-demo:hover { opacity: 0.8; }
 
 /* ---------- 按钮 ---------- */
