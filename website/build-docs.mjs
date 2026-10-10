@@ -20,6 +20,7 @@ const GITHUB_BLOB = 'https://github.com/bloghao/bloghao/blob/main/'
 const DOCS = [
   { slug: 'deploy', file: 'DEPLOY.md', icon: '🚀', title: '部署教程', desc: '从注册 Cloudflare 到部署 Worker、绑定自定义域名、自动部署、备份与恢复，含 Docker 自托管。' },
   { slug: 'guide', file: 'GUIDE.md', icon: '📖', title: '使用手册', desc: '后台导览、写文章全流程、快捷键、评论与媒体管理、设置逐项说明。' },
+  { slug: 'plaza', file: 'PLAZA.md', icon: '🧭', title: '广场', desc: '内容聚合流：三步接入官方广场，让每篇文章与微博被更多博主看到；含混排口径与自建 hub。' },
   { slug: 'themes', file: 'THEMES.md', icon: '🎨', title: '主题开发', desc: '一套主题 = 八个必需渲染函数（+ 可选 member / rank）+ 全局 CSS，三步注册新主题。' },
   { slug: 'plugins', file: 'PLUGINS.md', icon: '🧩', title: '插件开发', desc: '一个 JS 文件扩展编辑器，window.BlogHao 插件 API 与加载机制，无需构建。' },
   { slug: 'api', file: 'API.md', icon: '🔌', title: 'API 参考', desc: '全部公开 / 管理接口与 HTML 净化白名单摘要，写自己的客户端。' },
