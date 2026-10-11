@@ -97,7 +97,7 @@ npm run db:init:local  # 初始化本地 D1（.wrangler/state，幂等）
 **外链中间页（tests/outlink.test.ts、冒烟「外链中间页」，机制在 src/outlink.ts）**
 
 - 第三方链接一律走 `outHref` 判定：白名单（`TRUSTED_OUT_DOMAINS`，主域名 + 子域跟随）与本站同源直出，其余包成 `/go?u=<encodeURIComponent>` 确认页（免责声明、noindex、无 JS 不自动跳转——`/go` 路由只对白名单/同源 302 直跳，非白名单**永不**服务端跳转，不构成开放重定向；目标必须 http(s) 且 ≤2048 字符，非法一律回首页）。新增「想给外链加中间页」的公开面只准调 `outHref` / `wrapAnchorHref`，别手搓白名单判断
-- **包装只发生在渲染层**：文章/页面/关于我走 `sanitizeHtml(html, { origin })`（不传 origin 的存库/RSS/导出路径保持原始 URL，`/go?u=` 是相对地址所以重复净化天然幂等），微博文本走 render.ts `weiboTextHtml`；weiboTextHtml 用 URL 与 #话题# **单次扫描**的分词正则（先转链接再扫话题会把 href 的 #fragment 误判成话题），URL 字符集排除 CJK 与全角标点（`https://x.com的官网` 链接停在汉字前）
+- **包装只发生在渲染层**：文章/页面/关于我走 `sanitizeHtml(html, { origin })`（不传 origin 的存库/RSS/导出路径保持原始 URL，`/go?u=` 是相对地址所以重复净化天然幂等），微博文本走 render.ts `weiboTextHtml`；weiboTextHtml 用 URL 与 #话题 **单次扫描**的分词正则（先转链接再扫话题会把 href 的 #fragment 误判成话题），URL 字符集排除 CJK 与全角标点（`https://x.com的官网` 链接停在汉字前）。话题主推**单井号**写法 `#话题`（成对 `#话题#` 兼容旧内容），三处镜像同口径：utils.ts `WEIBO_TOPIC_RE`（提取落库）/ render.ts 分词（SSR 渲染）/ site.js `WB_TEXT_RE`（客户端）——话题名**汉字后可直接跟**（中文不打空格），守卫只拦 ASCII 字母数字紧贴的 `#`（C# 不算话题），单井号话题名到**句读即停**（`，。！？` 等，`#日常，今天` 的话题是「日常」），`/` 不在停顿集（Memos 层级标签 `#软件/apple/mac` 整个算一个）；改话题边界三处同改并跑 tests/utils.test.ts + tests/outlink.test.ts，话题高亮样式在六主题 `.wb-topic`（同改）
 - **site.js 的 `wbTextHtml` / `TRUSTED_OUT` / `outHrefJs` / `trimUrlTailJs` 是服务端的手工镜像**（白名单表、分词正则、尾标点修剪四处同步），改任一侧必须两边同改并跑 tests/outlink.test.ts（其中的镜像守卫用例把 site.js 源码切片执行、与服务端同输入比对输出）；**改正则先数捕获组**——wbTextHtml 分支曾用错捕获组序号（m[4] 当 URL），前台编辑微博保存后假报错，tests 拦不住客户端代码直到镜像守卫补上；客户端仍守 ES5 与禁 lookbehind 老规矩
 - 白名单只收主流官方大站（开发线另有站长自有域名前四项，官方版挑洗时按 RELEASING 个人定制台账剔除）；友链页是站长逐条审核的收录结果，属「把握的域名」，不走中间页
 

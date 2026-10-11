@@ -168,8 +168,8 @@ async function bufferCreatePost(
   }
 }
 
-/** 微博文本 → Buffer/X 帖文：话题 #xx# 改 #xx（X 话题语法，长度口径与站内话题提取同限 1-24 字），
- *  超 270 码点截断（emoji 截半个也不破头） */
+/** 微博文本 → Buffer/X 帖文：站内成对 #xx# 转 X 的 #xx（X 话题语法；单 # 写法本就是 X 格式，
+ *  原样通过），长度口径与站内话题提取同限 1-24 字，超 270 码点截断（emoji 截半个也不破头） */
 export function bufferPostText(content: string): string {
   const t = content.replace(/#([^#\n]{1,24})#/g, '#$1').trim()
   if ([...t].length <= BUFFER_X_CHARS) return t
